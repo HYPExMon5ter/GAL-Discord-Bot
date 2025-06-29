@@ -1,0 +1,115 @@
+# GAL Bot Embed Message Configuration
+# Available variables for message fields:
+# {count}    - Number of members cleared/reset
+# {role}     - The name of the role or reset operation (e.g. Registration, Check-in)
+# {elapsed}  - Number of seconds the operation took (float, use in reset completion)
+# You can use {count}, {role}, {elapsed} in any title/description below!
+
+registration:
+  title: Please type your TFT username below!
+#  description: Please type your TFT username below!
+  color: "#3498db"
+
+registration_closed:
+  title: Tournament Registration Closed
+#  description: "Registration is currently closed."
+  color: "#e67e22"
+
+registration_channel_toggled:
+  title: Registration Channel Toggled
+  description_visible: "👁️ Registration channel is now visible to Angels."
+  description_hidden: "🙈 Registration channel has been hidden from Angels."
+  color_visible: "#2ecc71"
+  color_hidden: "#e67e22"
+
+checkin:
+  title: Please check in below!
+  color: "#3498db"
+
+checkin_closed:
+  title: Check-in Closed
+  description: "Check-in is currently closed."
+  color: "#e67e22"
+
+checkin_requires_registration:
+  title: Registration Required
+  description: "You must register first before you can check in! Please type your TFT username in the registration channel."
+  color: "#e74c3c"
+
+checked_in:
+  title: Checked In
+  description: "You are now checked in! Good luck in the tournament."
+  color: "#2ecc71"
+
+checked_out:
+  title: Checked Out
+  description: "You are no longer checked in."
+  color: "#e67e22"
+
+checkin_channel_toggled:
+  title: Check-in Channel Toggled
+  description_visible: "👁️ Check-in channel is now visible to Registered Angels."
+  description_hidden: "🙈 Check-in channel has been hidden from Registered Angels."
+  color_visible: "#2ecc71"
+  color_hidden: "#e67e22"
+
+resetting:
+  title: Resetting...
+  description: "Removed the role **{role}** from **{count}** Angel(s)!\n\nPlease wait while we reset the Google Sheet."
+  color: "#e67e22"
+
+reset_complete:
+  title: "{role} Reset Complete"
+  description: "Google Sheet updated!\n\nOperation finished in **{elapsed:.2f} seconds**."
+  color: "#2ecc71"
+
+placements:
+  title: Checked-In Player Latest Placements
+  color: "#3498db"
+  no_players_title: No checked-in players found.
+  no_players_description: There are currently no checked-in users to report.
+  player_field: "{ign}: {placement}"
+
+validate:
+  title: IGN Validation Results
+  color_valid: "#2ecc71"
+  color_invalid: "#e67e22"
+  valid_field: "✅ Valid IGNs"
+  invalid_field: "❌ Invalid IGNs"
+  valid_none: "None"
+  invalid_none: "None"
+  no_players_title: No checked-in players found.
+  no_players_description: There are currently no checked-in users to validate.
+
+cache:
+  title: Cache Refreshed
+  description: |
+    Total users in cache: **{count}**
+    Users updated: **{updated}**
+    
+    Refresh time: **{elapsed:.2f} seconds**
+  color: "#2ecc71"
+
+help:
+  title: GAL Bot Help
+  description: |
+    Here are the available commands:
+  color: "#7289da"  # Discord blurple
+
+  commands:
+    reg: "Toggles the registration channel for the Angels role and sends the registration embed."
+    checkin: "Toggles the check-in channel for the Registered role and sends the check-in embed."
+    cache: "Forces a manual refresh of the user cache from the Google Sheet."
+    reload: "Reloads the embeds config and updates live messages."
+    help: "Shows this help message."
+    #validate: "Validates all checked-in IGNs with lolchess.gg and reports valid/invalid names."
+    #placements: "Shows the latest TFT placements for all checked-in users (with live update from lolchess.gg)."
+
+permission_denied:
+  title: Permission Denied
+  description: "You don't have permission to use this."
+  color: "#e74c3c"
+
+error:
+  title: Error
+  color: "#e74c3c"

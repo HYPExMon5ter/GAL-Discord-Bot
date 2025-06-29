@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "guardian-angel-league",
+  "private_key_id": "e20b2c5b83b75342e632e3d7159156ba4b17a90e",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDAv2BuRR9GNFPC\njTwjJqYP/YCDOny+XSMewakAeU8RahfxltDU4Hd03Mv2Ms4K3JLfrBXqTOrhQu89\n1CC+MW2Iac4dEDfjtJzJi0jZLbrGaGkI2ROUsfAYiJWhXg35ZtzU+rPYjXywIlNk\nK0KiJwZCMmU/XvGyW4k9gri617xjoE3zZmFnaHg3kpj/9x2fm0hOTYegzcVD9vBf\n/WjQPS/euzsjfrDnUG+saKxOgrVg4yH1Pu6lOUcpRg6ZksKjb1mwttDVIpnvOCIY\nl76Sw6q7gF2332b6fa3Sps8l/OMacq+JIbCwlNPQFIwj3OUB0c5HE121YLrbEF3V\nGaoh5/01AgMBAAECggEAIeydDZNzZ3EWy+99ReeLw1U4HQC6i2vLnmJx+yAewz8j\n0zTa8RjH1aT17hFvk9hSLnV0jv42OesEviJbl/YNo/yRVyqvV4/Gp69w5S6oCLtA\nP1srl9iAnGTPxyzNc1fAJukwJb1zVHHaMQ9vJSiOsLB7gv2UNzLmsxGSr2oAoZz7\nYRGihop8VS9Ifc40ITKZUAY3o9QLkI+yJ5VWVScpOXse3siasXosHSR7oFWH1F2E\nUhavnj1BBpNoDn0X4Xwh/HoDqIgwXNwteCJyz6lox2Td3HQo1sesWeui6sL3f/+2\nRY69gDXDtnsGrvlOvfFDWLmv6v91Z5ciSMjtL9BXqQKBgQDf2rwjE/GvNomr9sXG\ngcOa2ncQUeaffAF/QHBWWQDPwO1E+jsgkLHQ5FsQ06Qw7SBlTMNvl8pZhWFVIVmM\nggodFWyo/6gaMCNtr2bVE3EwVTJN+AR2GV3QFpqzz2UBmhT25ClyI/1mv1vtzb7Q\nDnBK+26dqnbZXTmwEumRA+k46QKBgQDcbRndd+aC97urwaQgyztpJfhaMzTcj7VU\njboSaoIBdOnBzuFVpSCshgZBVpy1iT393eLXvCsA+YvhNyuMaxFHOVIWPolJuFVD\nxqU8kPpeunMTO3f+lHHRxR/1C4wpixS8iftVYdW1iKPdGE1qm5ItbvbY8KIhYu2A\nlyTUcEtybQKBgQC8mr2izF334vpxobQWwSQ+J0zjui2WN9PHFFLR3aFaaVE/qZkB\noge/WXcEoVyYQGHoF5oePoSlkkRkhnm9cZ71zCRF60kF74MaGguJAR1/vHhqyslv\ne4XYGgNz9gxDIkABmFD3My2AUUAyBwR6pX+lHVygiIwkLXC6UeTqYqIwaQKBgQDR\nLdP64Nrm9JOrdhL8cAEMUtUxPCDxIouRFwI6kcqX+UwP+PTMIu0z6+gpvzjt6bTj\notqvokkpHqgI7SMtmTmHXrUwmN4OEJkRvYR3SpnepY+o86l29YZh7HDcSb4UeoEO\nPt89cp+tK2Nd4L8u6T26UfB9hTZG+quqeUShOYPPrQKBgHcUhfugWZLHsDVBCIg3\n7SiC1cQaQzzwAK8JneTaiPbM9kEKhLA9CQbF55pRQKElplFv9TGWIOhaYrzZCWNE\nNQSPcO3XlUM9RxJa0V66U6FGjenJxiB46w2TBiqJ4RKHtFbu/WEmM11vU0A4lDpt\n7qaySrmgffyAtx7+pA6iBf6f\n-----END PRIVATE KEY-----\n",
+  "client_email": "galapi@guardian-angel-league.iam.gserviceaccount.com",
+  "client_id": "112582966265421775235",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/galapi%40guardian-angel-league.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

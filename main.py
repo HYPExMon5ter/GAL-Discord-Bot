@@ -54,11 +54,18 @@ PING_USER = "<@162359821100646401>"
 
 # --- Google Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_json = os.environ.get("GOOGLE_CREDS_JSON")
-if not creds_json:
-    raise RuntimeError("Missing GOOGLE_CREDS_JSON environment variable! Please set this on Railway.")
-creds_dict = json.loads(creds_json)
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+
+if os.path.exists("google-creds.json"):
+    # Local file exists, use it
+    creds = ServiceAccountCredentials.from_json_keyfile_name("google-creds.json", scope)
+else:
+    # Use Railway environment variable
+    creds_json = os.environ.get("GOOGLE_CREDS_JSON")
+    if not creds_json:
+        raise RuntimeError("Missing google-creds.json file AND GOOGLE_CREDS_JSON environment variable!")
+    creds_dict = json.loads(creds_json)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_KEY).worksheet("GAL Database")
 
@@ -71,7 +78,7 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.members = True
-bot = commands.Bot(command_prefix='!gal ', intents=intents)
+bot = commands.Bot(command_prefix=None, intents=intents)
 tree = bot.tree
 
 RIOT_API_KEY = os.environ.get("RIOT_API_KEY")

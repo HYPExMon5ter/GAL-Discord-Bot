@@ -7,12 +7,12 @@
 
 registration:
   title: Please type your TFT username below!
-#  description: Please type your TFT username below!
+  description: ""#Please type your TFT username below!
   color: "#3498db"
 
 registration_closed:
   title: Tournament Registration Closed
-#  description: "Registration is currently closed."
+  description: ""#"Registration is currently closed."
   color: "#e67e22"
 
 registration_channel_toggled:
@@ -22,8 +22,19 @@ registration_channel_toggled:
   color_visible: "#2ecc71"
   color_hidden: "#e67e22"
 
+unregister_success:
+  title: "Unregistered"
+  description: "You have been successfully unregistered."
+  color: "#e67e22"
+
+unregister_not_registered:
+  title: "Not Registered"
+  description: "You are not currently registered."
+  color: "#e74c3c"
+
 checkin:
   title: Please check in below!
+  description: ""
   color: "#3498db"
 
 checkin_closed:
@@ -62,6 +73,34 @@ reset_complete:
   title: "{role} Reset Complete"
   description: "Google Sheet updated!\n\nOperation finished in **{elapsed:.2f} seconds**."
   color: "#2ecc71"
+
+schedule_usage:
+  title: "{role} Scheduling"
+  description: |
+    Usage: `/gal schedule <reg/checkin> [MM-DD-YY HH:MM AM/PM]`
+    Example: `/gal schedule reg 07-08-25 05:03 PM`
+    (Time must be in **PST**!)
+  color: "#3498db"
+
+schedule_status:
+  title: "{role} Scheduled Open Time"
+  description: "{role} is scheduled to open at **{time}** (PST)."
+  color: "#e67e22"
+
+schedule_set:
+  title: "{role} Open Scheduled"
+  description: "{role} channel will open at **{time}** (PST)."
+  color: "#2ecc71"
+
+schedule_cancel:
+  title: "{role} Schedule Cancelled"
+  description: "The scheduled open for {role} has been cancelled."
+  color: "#e67e22"
+
+schedule_cancel_none:
+  title: "{role} Not Scheduled"
+  description: "There was no scheduled open to cancel for {role}."
+  color: "#e67e22"
 
 placements:
   title: Checked-In Player Latest Placements

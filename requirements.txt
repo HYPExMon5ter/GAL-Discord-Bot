@@ -6,3 +6,5 @@ pyyaml
 httpx
 beautifulsoup4
 riotwatcher
+pytz
+tzdata

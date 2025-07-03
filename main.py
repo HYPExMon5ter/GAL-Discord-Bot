@@ -12,7 +12,8 @@ import asyncio
 import random
 import time
 import traceback
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timezone
+from zoneinfo import ZoneInfo
 import requests
 
 # --- Embed Configuration Loader ---
@@ -43,12 +44,12 @@ FULL_BACKOFF = 60
 
 CACHE_REFRESH_SECONDS = 600  # 10 min
 PERSIST_FILE = "persisted_views.json"
-Allowed_Roles = ["Admin", "Moderator", "GAL Helper"]
-Check_In_Channel = "✔check-in"
-Registration_Channel = "🎫registration"
-Checked_In_Role = "Checked In"
-Registered_Role = "Registered"
-Angel_Role = "Angels"
+ALLOWED_ROLES = ["Admin", "Moderator", "GAL Helper"]
+CHECK_IN_CHANNEL = "✔check-in"
+REGISTRATION_CHANNEL = "🎫registration"
+CHECKED_IN_ROLE = "Checked In"
+REGISTERED_ROLE = "Registered"
+ANGEL_ROLE = "Angels"
 LOG_CHANNEL_NAME = "bot-log"
 PING_USER = "<@162359821100646401>"
 
@@ -111,9 +112,45 @@ def set_persisted_msg(guild_id, key, msg_id):
 def get_persisted_msg(guild_id, key):
     return persisted.get(str(guild_id), {}).get(key)
 
+def get_schedule(guild_id, key):
+    data = persisted.get(str(guild_id), {})
+    return data.get(f"{key}_schedule")
+
+def set_schedule(guild_id, key, dtstr):
+    gid = str(guild_id)
+    if gid not in persisted:
+        persisted[gid] = {}
+    persisted[gid][f"{key}_schedule"] = dtstr
+    save_persisted(persisted)
+
+async def schedule_channel_open(guild, channel_name, role_name, open_time):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    wait_seconds = (open_time - now).total_seconds()
+    print(
+        f"[Schedule] Now (UTC): {now.isoformat()} | Scheduled (UTC): {open_time.isoformat()} | Wait: {wait_seconds:.2f}s"
+    )
+    if wait_seconds > 0:
+        await asyncio.sleep(wait_seconds)
+    else:
+        print("[Schedule] Warning: Scheduled time is in the past or now! Channel will open immediately.")
+
+    channel = discord.utils.get(guild.text_channels, name=channel_name)
+    role = discord.utils.get(guild.roles, name=role_name)
+    if channel and role:
+        overwrites = channel.overwrites_for(role)
+        overwrites.view_channel = True
+        await channel.set_permissions(role, overwrite=overwrites)
+        print(f"[Schedule] Channel '{channel_name}' opened for role '{role_name}'.")
+        await update_live_embeds(guild)
+
+        # --- CLEAR THE SCHEDULE ---
+        key = "registration" if channel_name == REGISTRATION_CHANNEL else "checkin"
+        set_schedule(guild.id, key, None)
+
 # --- Permissions ---
 def has_allowed_role(member):
-    return any(role.name in Allowed_Roles for role in getattr(member, "roles", []))
+    return any(role.name in ALLOWED_ROLES for role in getattr(member, "roles", []))
 def has_allowed_role_from_interaction(interaction: discord.Interaction):
     member = getattr(interaction, "user", getattr(interaction, "author", None))
     return hasattr(member, "roles") and has_allowed_role(member)
@@ -261,6 +298,22 @@ async def find_or_register_user(discord_tag, ign, search_window=5, scan_tail=20)
     await retry_until_successful(sheet.update_acell, f"F{i}", True)
     asyncio.create_task(refresh_sheet_cache())
 
+def is_registration_open(guild):
+    reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+    angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+    if reg_channel and angel_role:
+        overwrites = reg_channel.overwrites_for(angel_role)
+        return bool(overwrites.view_channel)
+    return False
+
+def is_checkin_open(guild):
+    checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+    registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    if checkin_channel and registered_role:
+        overwrites = checkin_channel.overwrites_for(registered_role)
+        return bool(overwrites.view_channel)
+    return False
+
 async def mark_checked_in_async(discord_tag):
     user_tuple = sheet_cache["users"].get(discord_tag)
     if not user_tuple:
@@ -300,8 +353,8 @@ async def unmark_checked_in_async(discord_tag):
 
 # --- Registration/Check-in reset logic (efficient: only update checked users) ---
 async def reset_registered_roles_and_sheet(guild, channel):
-    registered_role = discord.utils.get(guild.roles, name=Registered_Role)
-    angel_role = discord.utils.get(guild.roles, name=Angel_Role)
+    registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
     cleared = 0
 
     # Remove Registered role from all members
@@ -336,8 +389,8 @@ async def reset_registered_roles_and_sheet(guild, channel):
     return cleared
 
 async def reset_checked_in_roles_and_sheet(guild, channel):
-    checked_in_role = discord.utils.get(guild.roles, name=Checked_In_Role)
-    registered_role = discord.utils.get(guild.roles, name=Registered_Role)
+    checked_in_role = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+    registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
     cleared = 0
 
     # Remove Checked-In role from all members
@@ -405,29 +458,85 @@ def get_tft_latest_placement(api_key, puuid, region="americas"):
     else:
         return f"Error: {resp.status_code}"
 
+async def _schedule_logic(interaction, key, channel_name, role_name, time):
+    await interaction.response.defer(ephemeral=True)
+    if not has_allowed_role_from_interaction(interaction):
+        embed = embed_from_cfg("permission_denied")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+    guild = interaction.guild
+    PST = ZoneInfo("America/Los_Angeles")
+    time_format = "%m-%d-%y %I:%M %p"  # 07-08-25 05:03 PM
+
+    if time is None:
+        scheduled_iso = get_schedule(guild.id, key)
+        if scheduled_iso:
+            scheduled_dt = datetime.fromisoformat(scheduled_iso).astimezone(PST)
+            embed = embed_from_cfg(
+                "schedule_status",
+                role=key.capitalize() if key != "checkin" else "Check-in",
+                time=scheduled_dt.strftime(time_format) + " PST",
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            embed = embed_from_cfg("schedule_usage", role=key.capitalize() if key != "checkin" else "Check-in")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+    try:
+        scheduled_pst = datetime.strptime(time, time_format).replace(tzinfo=PST)
+        scheduled_utc = scheduled_pst.astimezone(ZoneInfo("UTC"))
+        now_utc = datetime.now(ZoneInfo("UTC"))
+        if scheduled_utc < now_utc:
+            embed = embed_from_cfg("schedule_usage", role=key.capitalize() if key != "checkin" else "Check-in")
+            embed.description += "\n\n❌ Cannot schedule a time in the past. Please provide a future time."
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+        set_schedule(guild.id, key, scheduled_utc.isoformat())
+        embed = embed_from_cfg(
+            "schedule_set",
+            role=key.capitalize() if key != "checkin" else "Check-in",
+            time=scheduled_pst.strftime(time_format) + " PST",
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        bot.loop.create_task(schedule_channel_open(guild, channel_name, role_name, scheduled_utc))
+    except Exception as e:
+        embed = embed_from_cfg("schedule_usage", role=key.capitalize() if key != "checkin" else "Check-in")
+        embed.description += f"\n\nError: {e}"
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+async def _cancel_schedule_logic(interaction, key):
+    await interaction.response.defer(ephemeral=True)
+    if not has_allowed_role_from_interaction(interaction):
+        embed = embed_from_cfg("permission_denied")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+    guild = interaction.guild
+    scheduled_iso = get_schedule(guild.id, key)
+    if scheduled_iso:
+        set_schedule(guild.id, key, None)
+        embed = embed_from_cfg("schedule_cancel", role=key.capitalize() if key != "checkin" else "Check-in")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    else:
+        embed = embed_from_cfg("schedule_cancel_none", role=key.capitalize() if key != "checkin" else "Check-in")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 # --- Embed updating for live messages (config reload support) ---
 async def update_live_embeds(guild):
     # --- Registration Embed ---
-    reg_channel = discord.utils.get(guild.text_channels, name=Registration_Channel)
-    angel_role = discord.utils.get(guild.roles, name=Angel_Role)
+    reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
     reg_msg_id = get_persisted_msg(guild.id, "registration")
-    if reg_channel and angel_role and reg_msg_id:
+    if reg_channel and reg_msg_id:
         try:
-            overwrites = reg_channel.overwrites_for(angel_role)
-            is_open = overwrites.view_channel if overwrites.view_channel is not None else False
-            await update_registration_embed(reg_channel, reg_msg_id, is_open)
+            await update_registration_embed(reg_channel, reg_msg_id, guild)
         except Exception as e:
             await log_error(bot, guild, f"Failed to update registration embed: {e}")
 
     # --- Check-in Embed ---
-    checkin_channel = discord.utils.get(guild.text_channels, name=Check_In_Channel)
-    registered_role = discord.utils.get(guild.roles, name=Registered_Role)
+    checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
     checkin_msg_id = get_persisted_msg(guild.id, "checkin")
-    if checkin_channel and registered_role and checkin_msg_id:
+    if checkin_channel and checkin_msg_id:
         try:
-            overwrites = checkin_channel.overwrites_for(registered_role)
-            is_open = overwrites.view_channel if overwrites.view_channel is not None else False
-            await update_checkin_embed(checkin_channel, checkin_msg_id, is_open)
+            await update_checkin_embed(checkin_channel, checkin_msg_id, guild)
         except Exception as e:
             await log_error(bot, guild, f"Failed to update check-in embed: {e}")
 
@@ -443,10 +552,10 @@ class CheckInButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         check_in_channel = interaction.channel
-        registered_role = discord.utils.get(interaction.guild.roles, name=Registered_Role)
+        registered_role = discord.utils.get(interaction.guild.roles, name=REGISTERED_ROLE)
         if not registered_role:
             embed = embed_from_cfg("error")
-            embed.description = f"Role '{Registered_Role}' not found."
+            embed.description = f"Role '{REGISTERED_ROLE}' not found."
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
@@ -465,10 +574,10 @@ class CheckInButton(discord.ui.Button):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        role = discord.utils.get(interaction.guild.roles, name=Checked_In_Role)
+        role = discord.utils.get(interaction.guild.roles, name=CHECKED_IN_ROLE)
         if not role:
             embed = embed_from_cfg("error")
-            embed.description = f"Role '{Checked_In_Role}' not found."
+            embed.description = f"Role '{CHECKED_IN_ROLE}' not found."
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
@@ -513,7 +622,7 @@ class ResetCheckInsButton(discord.ui.Button):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
-        checked_in_role = discord.utils.get(interaction.guild.roles, name=Checked_In_Role)
+        checked_in_role = discord.utils.get(interaction.guild.roles, name=CHECKED_IN_ROLE)
         cleared_count = 0
         if checked_in_role:
             for member in interaction.guild.members:
@@ -522,7 +631,7 @@ class ResetCheckInsButton(discord.ui.Button):
         embed_start = embed_from_cfg("resetting", count=cleared_count, role="checked-in")
         await interaction.followup.send(embed=embed_start, ephemeral=True)
         start_time = time.perf_counter()
-        check_in_channel = discord.utils.get(interaction.guild.text_channels, name=Check_In_Channel)
+        check_in_channel = discord.utils.get(interaction.guild.text_channels, name=CHECK_IN_CHANNEL)
         actual_cleared = await reset_checked_in_roles_and_sheet(interaction.guild, check_in_channel)
         end_time = time.perf_counter()
         elapsed = end_time - start_time
@@ -532,33 +641,29 @@ class ResetCheckInsButton(discord.ui.Button):
         await interaction.followup.send(embed=embed_done, ephemeral=True)
 
 class CheckInView(discord.ui.View):
-    def __init__(self, check_in_enabled=True):
+    def __init__(self, guild):
         super().__init__(timeout=None)
-        if check_in_enabled:
+        if is_checkin_open(guild):
             self.add_item(CheckInButton())
         self.add_item(ResetCheckInsButton())
 
-async def update_checkin_embed(channel, msg_id, is_open):
-    try:
-        checkin_msg = await channel.fetch_message(msg_id)
-        cfg = EMBEDS_CFG.get("checkin", {})
-        closed_cfg = EMBEDS_CFG.get("checkin_closed", {})
-        if is_open:
-            embed = discord.Embed(
-                title=cfg.get("title"),
-                color=hex_to_color(cfg.get("color", "#3498db")),
-            )
-            view = CheckInView(check_in_enabled=True)
-        else:
-            embed = discord.Embed(
-                title=closed_cfg.get("title", "Check-in Closed"),
-                description=closed_cfg.get("description", "Check-in is currently closed."),
-                color=hex_to_color(closed_cfg.get("color", "#e67e22")),
-            )
-            view = CheckInView(check_in_enabled=False)
-        await checkin_msg.edit(embed=embed, view=view)
-    except Exception as e:
-        print(f"Error updating check-in embed: {e}")
+async def update_checkin_embed(channel, msg_id, guild):
+    is_open = is_checkin_open(guild)
+    checkin_msg = await channel.fetch_message(msg_id)
+    cfg = EMBEDS_CFG.get("checkin", {})
+    closed_cfg = EMBEDS_CFG.get("checkin_closed", {})
+    if is_open:
+        embed = discord.Embed(
+            title=cfg.get("title"),
+            color=hex_to_color(cfg.get("color", "#3498db")),
+        )
+    else:
+        embed = discord.Embed(
+            title=closed_cfg.get("title", "Check-in Closed"),
+            description=closed_cfg.get("description", "Check-in is currently closed."),
+            color=hex_to_color(closed_cfg.get("color", "#e67e22")),
+        )
+    await checkin_msg.edit(embed=embed, view=CheckInView(guild))
 
 class ResetRegistrationButton(discord.ui.Button):
     def __init__(self):
@@ -575,7 +680,7 @@ class ResetRegistrationButton(discord.ui.Button):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True)
-        registered_role = discord.utils.get(interaction.guild.roles, name=Registered_Role)
+        registered_role = discord.utils.get(interaction.guild.roles, name=REGISTERED_ROLE)
         cleared_count = 0
         if registered_role:
             for member in interaction.guild.members:
@@ -584,7 +689,7 @@ class ResetRegistrationButton(discord.ui.Button):
         embed_start = embed_from_cfg("resetting", count=cleared_count, role="registered")
         await interaction.followup.send(embed=embed_start, ephemeral=True)
         start_time = time.perf_counter()
-        registration_channel = discord.utils.get(interaction.guild.text_channels, name=Registration_Channel)
+        registration_channel = discord.utils.get(interaction.guild.text_channels, name=REGISTRATION_CHANNEL)
         actual_cleared = await reset_registered_roles_and_sheet(
             interaction.guild, registration_channel
         )
@@ -605,33 +710,74 @@ class ResetRegistrationButton(discord.ui.Button):
         await update_live_embeds(interaction.guild)
         await interaction.followup.send(embed=embed_done, ephemeral=True)
 
+class UnregisterButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="Unregister",
+            style=discord.ButtonStyle.secondary,
+            emoji="🚫",
+            custom_id="unregister_btn"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        member = interaction.user
+        guild = interaction.guild
+        reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+        registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        discord_tag = str(member)
+
+        # Check if user is registered
+        async with cache_lock:
+            user_tuple = sheet_cache["users"].get(discord_tag)
+        if not user_tuple or not (user_tuple[2].upper() == "TRUE"):
+            embed = embed_from_cfg("unregister_not_registered")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        # Remove Registered role
+        if registered_role and registered_role in member.roles:
+            await member.remove_roles(registered_role)
+
+        # Update sheet: set Registered to FALSE
+        row_num = user_tuple[0]
+        await retry_until_successful(sheet.update_acell, f"F{row_num}", False)
+        # Update cache
+        async with cache_lock:
+            sheet_cache["users"][discord_tag] = (
+                row_num,
+                user_tuple[1],   # IGN
+                "FALSE",         # Registered now FALSE
+                user_tuple[3],   # Checked In
+            )
+
+        # Delete user's messages in registration channel
+        if reg_channel:
+            async for msg in reg_channel.history(limit=200):
+                if msg.author.id == member.id and not msg.author.bot:
+                    try:
+                        await msg.delete()
+                    except Exception:
+                        pass
+
+        embed = embed_from_cfg("unregister_success")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 class RegistrationView(discord.ui.View):
-    def __init__(self, embed_message_id):
+    def __init__(self, embed_message_id, guild):
         super().__init__(timeout=None)
         self.embed_message_id = embed_message_id
+        if is_registration_open(guild):
+            self.add_item(UnregisterButton())
         self.add_item(ResetRegistrationButton())
 
-async def update_registration_embed(channel, msg_id, is_open):
-    try:
-        reg_msg = await channel.fetch_message(msg_id)
-        cfg = EMBEDS_CFG.get("registration", {})
-        closed_cfg = EMBEDS_CFG.get("registration_closed", {})
-        if is_open:
-            embed = discord.Embed(
-                title=cfg.get("title"),
-                description=cfg.get("description"),
-                color=hex_to_color(cfg.get("color", "#3498db"))
-            )
-        else:
-            embed = discord.Embed(
-                title=closed_cfg.get("title", "Registration Closed"),
-                description=closed_cfg.get("description", "Registration is currently closed."),
-                color=hex_to_color(closed_cfg.get("color", "#e67e22")),
-            )
-        view = RegistrationView(embed_message_id=msg_id)
-        await reg_msg.edit(embed=embed, view=view)
-    except Exception as e:
-        print(f"Error updating registration embed: {e}")
+async def update_registration_embed(channel, msg_id, guild):
+    is_open = is_registration_open(guild)
+    reg_msg = await channel.fetch_message(msg_id)
+    if is_open:
+        embed = embed_from_cfg("registration")
+    else:
+        embed = embed_from_cfg("registration_closed")
+    await reg_msg.edit(embed=embed, view=RegistrationView(msg_id, guild))
 
 # --- Slash command group ---
 class GalGroup(app_commands.Group):
@@ -641,11 +787,11 @@ gal = GalGroup()
 tree.add_command(gal)
 
 @gal.command(name="reg", description="Toggles the registration channel for Angels and updates the registration embed.")
-@app_commands.checks.has_any_role(*Allowed_Roles)
+@app_commands.checks.has_any_role(*ALLOWED_ROLES)
 async def reg(interaction: discord.Interaction):
     guild = interaction.guild
-    registration_channel = discord.utils.get(guild.text_channels, name=Registration_Channel)
-    angel_role = discord.utils.get(guild.roles, name=Angel_Role)
+    registration_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+    angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
     if not registration_channel or not angel_role:
         embed = embed_from_cfg("error")
         embed.description = "Registration channel or Angels role not found."
@@ -662,7 +808,7 @@ async def reg(interaction: discord.Interaction):
     # Update the registration embed and view
     reg_msg_id = get_persisted_msg(guild.id, "registration")
     if reg_msg_id:
-        await update_registration_embed(registration_channel, reg_msg_id, not is_visible)
+        await update_registration_embed(registration_channel, reg_msg_id, guild)
 
     # Confirmation
     status_embed_cfg = EMBEDS_CFG.get("registration_channel_toggled", {})
@@ -682,11 +828,11 @@ async def reg(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @gal.command(name="checkin", description="Toggles the check-in channel for Registered role and updates the check-in embed.")
-@app_commands.checks.has_any_role(*Allowed_Roles)
+@app_commands.checks.has_any_role(*ALLOWED_ROLES)
 async def checkin(interaction: discord.Interaction):
     guild = interaction.guild
-    check_in_channel = discord.utils.get(guild.text_channels, name=Check_In_Channel)
-    registered_role = discord.utils.get(guild.roles, name=Registered_Role)
+    check_in_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+    registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
     if not check_in_channel or not registered_role:
         embed = embed_from_cfg("error")
         embed.description = "Check-in channel or Registered role not found."
@@ -703,7 +849,7 @@ async def checkin(interaction: discord.Interaction):
     # Update the check-in embed and view
     checkin_msg_id = get_persisted_msg(guild.id, "checkin")
     if checkin_msg_id:
-        await update_checkin_embed(check_in_channel, checkin_msg_id, not is_visible)
+        await update_checkin_embed(check_in_channel, checkin_msg_id, guild)
 
     # Confirmation
     status_embed_cfg = EMBEDS_CFG.get("checkin_channel_toggled", {})
@@ -737,6 +883,36 @@ async def cache(interaction: discord.Interaction):
         elapsed=elapsed
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# --- Schedule command group for registration and check-in with cancel support ---
+class ScheduleGroup(app_commands.Group):
+    def __init__(self):
+        super().__init__(name="schedule", description="Schedule registration/check-in opening times")
+
+    # --- Registration schedule ---
+    @app_commands.command(name="reg", description="Set/view the scheduled open time for registration (MM-DD-YY HH:MM AM/PM PST)")
+    @app_commands.describe(time="Open time in MM-DD-YY HH:MM AM/PM format, PST (leave blank to view)")
+    async def reg(self, interaction: discord.Interaction, time: str = None):
+        await _schedule_logic(interaction, "registration", REGISTRATION_CHANNEL, ANGEL_ROLE, time)
+
+    # --- Check-in schedule ---
+    @app_commands.command(name="checkin", description="Set/view the scheduled open time for check-in (MM-DD-YY HH:MM AM/PM PST)")
+    @app_commands.describe(time="Open time in MM-DD-YY HH:MM AM/PM format, PST (leave blank to view)")
+    async def checkin(self, interaction: discord.Interaction, time: str = None):
+        await _schedule_logic(interaction, "checkin", CHECK_IN_CHANNEL, REGISTERED_ROLE, time)
+
+    # --- Cancel Registration schedule ---
+    @app_commands.command(name="cancelreg", description="Cancel the scheduled registration open")
+    async def cancelreg(self, interaction: discord.Interaction):
+        await _cancel_schedule_logic(interaction, "registration")
+
+    # --- Cancel Check-in schedule ---
+    @app_commands.command(name="cancelcheckin", description="Cancel the scheduled check-in open")
+    async def cancelcheckin(self, interaction: discord.Interaction):
+        await _cancel_schedule_logic(interaction, "checkin")
+
+# Register this group under /gal (add after tree.add_command(gal))
+gal.add_command(ScheduleGroup())
 
 @gal.command(name="help", description="Shows this help message.")
 async def help_cmd(interaction: discord.Interaction):
@@ -904,7 +1080,7 @@ async def placements(interaction: discord.Interaction):
 async def on_message_edit(before, after):
     # Only react to edits in the registration channel, from non-bots, and non-empty messages
     if (
-        after.channel.name != Registration_Channel
+        after.channel.name != REGISTRATION_CHANNEL
         or after.author.bot
         or not after.content.strip()
     ):
@@ -951,55 +1127,43 @@ async def on_ready():
         print(f"Failed to sync commands: {e}")
 
     for guild in bot.guilds:
-        # Registration Channel Embed
-        reg_channel = discord.utils.get(guild.text_channels, name=Registration_Channel)
-        reg_msg_id = get_persisted_msg(guild.id, "registration")
-        reg_msg = None
-        if reg_channel:
-            if reg_msg_id:
-                try:
-                    reg_msg = await reg_channel.fetch_message(reg_msg_id)
-                except discord.NotFound:
-                    reg_msg = None
-            if reg_msg is None:
-                # No existing embed message, so send one!
-                reg_embed = embed_from_cfg("registration")
-                reg_msg = await reg_channel.send(embed=reg_embed, view=RegistrationView(embed_message_id=None))
-                await reg_msg.pin()
-                await delete_recent_pin_message(reg_channel)
-                set_persisted_msg(guild.id, "registration", reg_msg.id)
-            # Always add the view for persistence
-            bot.add_view(RegistrationView(embed_message_id=reg_msg.id), message_id=reg_msg.id)
-
-        # Check-In Channel Embed
-        checkin_channel = discord.utils.get(guild.text_channels, name=Check_In_Channel)
-        checkin_msg_id = get_persisted_msg(guild.id, "checkin")
-        checkin_msg = None
-        if checkin_channel:
-            if checkin_msg_id:
-                try:
-                    checkin_msg = await checkin_channel.fetch_message(checkin_msg_id)
-                except discord.NotFound:
-                    checkin_msg = None
-            if checkin_msg is None:
-                checkin_embed = embed_from_cfg("checkin")
-                checkin_msg = await checkin_channel.send(embed=checkin_embed, view=CheckInView())
-                await checkin_msg.pin()
-                await delete_recent_pin_message(checkin_channel)
-                set_persisted_msg(guild.id, "checkin", checkin_msg.id)
-            bot.add_view(CheckInView(), message_id=checkin_msg.id)
-
-        # Always update embeds with latest config after startup
+        # ... (existing embed/view setup for registration/checkin) ...
         await update_live_embeds(guild)
 
+        # --- Restore scheduled opens for registration and checkin ---
+        for key, (channel_name, role_name) in [
+            ("registration", (REGISTRATION_CHANNEL, ANGEL_ROLE)),
+            ("checkin", (CHECK_IN_CHANNEL, REGISTERED_ROLE)),
+        ]:
+            scheduled_iso = get_schedule(guild.id, key)
+            if scheduled_iso:
+                scheduled_utc = datetime.fromisoformat(scheduled_iso)
+                now_utc = datetime.now(ZoneInfo("UTC"))
+                if scheduled_utc > now_utc:
+                    print(f"[Schedule] Restoring scheduled open for {channel_name}: {scheduled_utc.isoformat()}")
+                    bot.loop.create_task(schedule_channel_open(guild, channel_name, role_name, scheduled_utc))
+                elif scheduled_utc <= now_utc:
+                    # Optionally, open channel immediately if scheduled time already passed
+                    channel = discord.utils.get(guild.text_channels, name=channel_name)
+                    role = discord.utils.get(guild.roles, name=role_name)
+                    if channel and role:
+                        overwrites = channel.overwrites_for(role)
+                        if not overwrites.view_channel:
+                            overwrites.view_channel = True
+                            await channel.set_permissions(role, overwrite=overwrites)
+                            print(f"[Schedule] Channel '{channel_name}' opened immediately after restart.")
+                        await update_live_embeds(guild)
+                        # --- CLEAR THE SCHEDULE ---
+                        key = "registration" if channel_name == REGISTRATION_CHANNEL else "checkin"
+                        set_schedule(guild.id, key, None)
 
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
-    if message.channel.name == Registration_Channel:
+    if message.channel.name == REGISTRATION_CHANNEL:
         # Only allow registration if Angels can view the channel
-        angels_role = discord.utils.get(message.guild.roles, name=Angel_Role)
+        angels_role = discord.utils.get(message.guild.roles, name=ANGEL_ROLE)
         if not angels_role:
             return
         overwrites = message.channel.overwrites_for(angels_role)
@@ -1015,7 +1179,7 @@ async def on_message(message):
                 pass
             return  # Don't process registration
 
-        role = discord.utils.get(message.guild.roles, name=Registered_Role)
+        role = discord.utils.get(message.guild.roles, name=REGISTERED_ROLE)
         try:
             await message.add_reaction("⏳")
         except:

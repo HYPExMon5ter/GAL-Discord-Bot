@@ -6,13 +6,13 @@
 # You can use {count}, {role}, {elapsed} in any title/description below!
 
 registration:
-  title: Please type your TFT username below!
-  description: ""#Please type your TFT username below!
+  title: Registration
+  description: "Please type your TFT username below!\n\nIf you need to unregister you can click the unregister button."
   color: "#3498db"
 
 registration_closed:
-  title: Tournament Registration Closed
-  description: ""#"Registration is currently closed."
+  title: Registration Closed
+  description: "You cannot Register at this time."
   color: "#e67e22"
 
 registration_channel_toggled:
@@ -33,18 +33,18 @@ unregister_not_registered:
   color: "#e74c3c"
 
 checkin:
-  title: Please check in below!
-  description: ""
+  title: Check In
+  description: "Please click the Check In button below.\n\n*You can check out by clicking the Check In button again.*"
   color: "#3498db"
 
 checkin_closed:
-  title: Check-in Closed
-  description: "Check-in is currently closed."
+  title: Check In Closed
+  description: "You cannot Check In at this time."
   color: "#e67e22"
 
 checkin_requires_registration:
   title: Registration Required
-  description: "You must register first before you can check in! Please type your TFT username in the registration channel."
+  description: "You must Register first before you can check in! Please type your TFT username in the Registration channel."
   color: "#e74c3c"
 
 checked_in:
@@ -133,16 +133,25 @@ help:
   title: GAL Bot Help
   description: |
     Here are the available commands:
-  color: "#7289da"  # Discord blurple
 
-  commands:
-    reg: "Toggles the registration channel for the Angels role and sends the registration embed."
-    checkin: "Toggles the check-in channel for the Registered role and sends the check-in embed."
-    cache: "Forces a manual refresh of the user cache from the Google Sheet."
-    reload: "Reloads the embeds config and updates live messages."
-    help: "Shows this help message."
-    #validate: "Validates all checked-in IGNs with lolchess.gg and reports valid/invalid names."
-    #placements: "Shows the latest TFT placements for all checked-in users (with live update from lolchess.gg)."
+    • `/gal reg` — Toggle the registration channel for Angels and update the registration embed.
+    
+    • `/gal checkin` — Toggle the check-in channel for Registered users and update the check-in embed.
+    
+    • `/gal cache` — Force a manual refresh of the user cache from the Google Sheet.
+    
+    • `/gal reload` — Reload the embeds config and update live messages.
+    
+    • `/gal schedule reg [MM-DD-YY HH:MM AM/PM]` — Schedule or view the registration open time (PST).
+    
+    • `/gal schedule checkin [MM-DD-YY HH:MM AM/PM]` — Schedule or view the check-in open time (PST).
+    
+    • `/gal schedule cancelreg` — Cancel the scheduled registration open.
+    
+    • `/gal schedule cancelcheckin` — Cancel the scheduled check-in open.
+    
+    • `/gal help` — Show this help message.
+  color: "#7289da"
 
 permission_denied:
   title: Permission Denied

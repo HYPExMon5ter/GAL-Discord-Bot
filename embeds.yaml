@@ -7,7 +7,10 @@
 
 registration:
   title: Registration
-  description: "Please type your TFT username below!\n\nIf you need to unregister you can click the unregister button."
+  description: |
+    Please type your in-game name below to register for the next Guardian Angel League TFT tournament!
+
+    If you are unable to play and need to unregister, please click the unregister button.
   color: "#3498db"
 
 registration_closed:

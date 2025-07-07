@@ -8,3 +8,4 @@ beautifulsoup4
 riotwatcher
 pytz
 tzdata
+psycopg2-binary

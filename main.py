@@ -41,9 +41,8 @@ SHEET_KEY = SHEET_URL.split("/d/")[1].split("/")[0]
 SHEETS_BASE_DELAY = 1.0
 MAX_DELAY = 90
 FULL_BACKOFF = 60
-
 CACHE_REFRESH_SECONDS = 600  # 10 min
-PERSIST_FILE = "persisted_views.json"
+
 ALLOWED_ROLES = ["Admin", "Moderator", "GAL Helper"]
 CHECK_IN_CHANNEL = "✔check-in"
 REGISTRATION_CHANNEL = "🎫registration"
@@ -94,18 +93,51 @@ def ordinal_suffix(n):
     return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
 # --- Persistent State (for message IDs) ---
-def load_persisted():
-    try:
-        with open(PERSIST_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {}
+PERSIST_FILE = "persisted_views.json"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-def save_persisted(data):
-    with open(PERSIST_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+if DATABASE_URL:
+    import psycopg2
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS persisted_views (
+            key TEXT PRIMARY KEY,
+            data JSONB
+        );
+    """)
+    conn.commit()
+
+    def load_persisted():
+        cursor.execute("SELECT data FROM persisted_views WHERE key = %s", ("default",))
+        row = cursor.fetchone()
+        return row[0] if row else {}
+
+    def save_persisted(data):
+        cursor.execute(
+            "INSERT INTO persisted_views (key, data) VALUES (%s, %s) "
+            "ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data",
+            ("default", json.dumps(data))
+        )
+        conn.commit()
+
+else:
+    # Local fallback: JSON file
+    def load_persisted():
+        try:
+            with open(PERSIST_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def save_persisted(data):
+        with open(PERSIST_FILE, "w") as f:
+            json.dump(data, f, indent=2)
 
 persisted = load_persisted()
+
 def set_persisted_msg(guild_id, key, msg_id):
     gid = str(guild_id)
     if gid not in persisted:

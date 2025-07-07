@@ -82,6 +82,9 @@ intents.members = True
 bot = commands.Bot(command_prefix=None, intents=intents)
 tree = bot.tree
 
+last_registration_open = {}
+last_checkin_open = {}
+
 RIOT_API_KEY = os.environ.get("RIOT_API_KEY")
 
 def ordinal_suffix(n):
@@ -648,22 +651,25 @@ class CheckInView(discord.ui.View):
         self.add_item(ResetCheckInsButton())
 
 async def update_checkin_embed(channel, msg_id, guild):
+    global last_checkin_open
     is_open = is_checkin_open(guild)
     checkin_msg = await channel.fetch_message(msg_id)
-    cfg = EMBEDS_CFG.get("checkin", {})
-    closed_cfg = EMBEDS_CFG.get("checkin_closed", {})
     if is_open:
-        embed = discord.Embed(
-            title=cfg.get("title"),
-            color=hex_to_color(cfg.get("color", "#3498db")),
-        )
+        embed = embed_from_cfg("checkin")
     else:
-        embed = discord.Embed(
-            title=closed_cfg.get("title", "Check-in Closed"),
-            description=closed_cfg.get("description", "Check-in is currently closed."),
-            color=hex_to_color(closed_cfg.get("color", "#e67e22")),
-        )
+        embed = embed_from_cfg("checkin_closed")
     await checkin_msg.edit(embed=embed, view=CheckInView(guild))
+    # Ping Registered if just transitioned from closed to open
+    prev_state = last_checkin_open.get(guild.id, None)
+    if prev_state is not None and not prev_state and is_open:
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        if reg_role:
+            ping_msg = await channel.send(content=reg_role.mention)
+            try:
+                await ping_msg.delete()
+            except Exception:
+                pass
+    last_checkin_open[guild.id] = is_open
 
 class ResetRegistrationButton(discord.ui.Button):
     def __init__(self):
@@ -771,13 +777,22 @@ class RegistrationView(discord.ui.View):
         self.add_item(ResetRegistrationButton())
 
 async def update_registration_embed(channel, msg_id, guild):
+    global last_registration_open
     is_open = is_registration_open(guild)
     reg_msg = await channel.fetch_message(msg_id)
-    if is_open:
-        embed = embed_from_cfg("registration")
-    else:
-        embed = embed_from_cfg("registration_closed")
+    embed = embed_from_cfg("registration") if is_open else embed_from_cfg("registration_closed")
     await reg_msg.edit(embed=embed, view=RegistrationView(msg_id, guild))
+    # Ping Angels if just transitioned from closed to open
+    prev_state = last_registration_open.get(guild.id, None)
+    if prev_state is not None and not prev_state and is_open:
+        angels_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+        if angels_role:
+            ping_msg = await channel.send(content=angels_role.mention)
+            try:
+                await ping_msg.delete()
+            except Exception:
+                pass
+    last_registration_open[guild.id] = is_open
 
 # --- Slash command group ---
 class GalGroup(app_commands.Group):

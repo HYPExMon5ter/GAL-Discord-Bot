@@ -36,18 +36,25 @@ unregister_not_registered:
   color: "#e74c3c"
 
 checkin:
-  title: Check In
-  description: "Please click the Check In button below.\n\n*You can check out by clicking the Check In button again.*"
+  title: Check in is now open!
+  description: |
+    To confirm your spot in the tournament, please click the check in button below. 
+    
+    Check in will close at 5:25pm PT with lobbies being posted shortly after!
+    
+    If you did not register previously, please register in <#1387614581794537652>. Once you register, click the check in button & you will be added to the player list.
+    
+    If you plan to stream, please share your Twitch/YouTube link in <#717088485080694794>!
   color: "#3498db"
 
 checkin_closed:
   title: Check In Closed
-  description: "You cannot Check In at this time."
+  description: "You cannot check in at this time."
   color: "#e67e22"
 
 checkin_requires_registration:
   title: Registration Required
-  description: "You must Register first before you can check in! Please type your TFT username in the Registration channel."
+  description: "You must register first before you can check in! Please type your TFT username in the Registration channel."
   color: "#e74c3c"
 
 checked_in:

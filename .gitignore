@@ -16,3 +16,6 @@ google-creds.json
 
 # Log files
 discord.log
+
+# Data storage
+persisted_views.json

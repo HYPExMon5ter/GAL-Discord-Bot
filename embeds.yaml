@@ -93,23 +93,23 @@ schedule_usage:
   color: "#3498db"
 
 schedule_status:
-  title: "{role} Scheduled Open Time"
-  description: "{role} is scheduled to open at **{time}** (PST)."
+  title: "Schedule for {role}"
+  description: "{role} is scheduled to open at **{time}**."
   color: "#e67e22"
 
 schedule_set:
-  title: "{role} Open Scheduled"
-  description: "{role} channel will open at **{time}** (PST)."
+  title: "{role} Scheduled"
+  description: "{role} is now scheduled to open at **{time}**."
   color: "#2ecc71"
 
 schedule_cancel:
   title: "{role} Schedule Cancelled"
-  description: "The scheduled open for {role} has been cancelled."
+  description: "The schedule for {role} has been cancelled."
   color: "#e67e22"
 
 schedule_cancel_none:
   title: "{role} Not Scheduled"
-  description: "There was no scheduled open to cancel for {role}."
+  description: "There was no schedule to cancel for {role}."
   color: "#e67e22"
 
 placements:

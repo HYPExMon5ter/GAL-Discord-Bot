@@ -9,12 +9,13 @@ from oauth2client.service_account import ServiceAccountCredentials
 import yaml
 import json
 import asyncio
-import random
 import time
+import random
 import traceback
-from datetime import datetime, UTC, timezone
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import requests
+import urllib.parse
 
 # --- Embed Configuration Loader ---
 def hex_to_color(hex_str):
@@ -28,10 +29,24 @@ EMBEDS_CFG = load_embeds_cfg()
 
 def embed_from_cfg(key, **kwargs):
     cfg = EMBEDS_CFG.get(key, {})
+    # Support toggled embeds with visible/hidden description/color
+    if key.endswith("_toggled") and "visible" in kwargs:
+        visible = kwargs["visible"]
+        desc = cfg.get("description_visible") if visible else cfg.get("description_hidden")
+        color = hex_to_color(cfg.get("color_visible")) if visible else hex_to_color(cfg.get("color_hidden"))
+        # Fallback if missing: show at least something
+        if not desc:
+            desc = "\u200b"
+        return discord.Embed(
+            title=cfg.get("title", ""),
+            description=desc,
+            color=color
+        )
+    # Default behavior
     title = cfg.get("title", "").format(**kwargs)
     desc = cfg.get("description", "").format(**kwargs)
     if not desc:
-        desc = "\u200b"  # Zero-width space, keeps Discord happy for "empty" desc
+        desc = "\u200b"
     color = hex_to_color(cfg.get("color", "#3498db"))
     return discord.Embed(title=title, description=desc, color=color)
 
@@ -197,7 +212,7 @@ async def log_error(bot, guild, message, level="Error"):
         log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
     embed = embed_from_cfg("error")
     embed.description = message
-    embed.timestamp = datetime.now(UTC)
+    embed.timestamp = datetime.now(timezone.utc)
     embed.set_footer(text="GAL Bot")
     if log_channel:
         await log_channel.send(content=PING_USER if level == "Error" else None, embed=embed)
@@ -459,39 +474,43 @@ async def reset_checked_in_roles_and_sheet(guild, channel):
     await refresh_sheet_cache()
     return cleared
 
-# --- TFT API: Get PUUID by summoner name (no #tag) ---
-def get_tft_puuid_from_summoner_name(api_key, ign, region="na1"):
-    name_enc = ign.replace(" ", "%20")
-    url = f"https://{region}.api.riotgames.com/tft/summoner/v1/summoners/by-name/{name_enc}"
-    headers = {"X-Riot-Token": api_key}
-    resp = requests.get(url, headers=headers)
-    if resp.status_code == 200:
-        return resp.json()["puuid"]
-    else:
-        return None
+RIOT_API_REGION = "na1"      # Example: "na1", "euw1", etc.
+TFT_REGION = "americas"      # Example: "americas", "europe", etc.
 
-# --- TFT API: Get latest placement by PUUID ---
-def get_tft_latest_placement(api_key, puuid, region="americas"):
-    url = f"https://{region}.api.riotgames.com/tft/match/v1/matches/by-puuid/{puuid}/ids?count=1"
-    headers = {"X-Riot-Token": api_key}
-    resp = requests.get(url, headers=headers)
-    if resp.status_code == 200:
-        match_ids = resp.json()
-        if not match_ids:
-            return "No Recent Games"
-        match_id = match_ids[0]
-        url2 = f"https://{region}.api.riotgames.com/tft/match/v1/matches/{match_id}"
-        resp2 = requests.get(url2, headers=headers)
-        if resp2.status_code == 200:
-            match = resp2.json()
-            for participant in match["info"]["participants"]:
-                if participant["puuid"] == puuid:
-                    return f"{participant['placement']}{ordinal_suffix(participant['placement'])}"
-            return "Not Found"
-        else:
-            return f"Error: {resp2.status_code}"
-    else:
-        return f"Error: {resp.status_code}"
+def riot_headers():
+    return {"X-Riot-Token": RIOT_API_KEY}
+
+def sanitize_riot_ign(ign):
+    # Remove everything after '#' (e.g., "Setts Tiddies#NA1" => "Setts Tiddies")
+    return ign.split("#")[0].strip()
+
+def get_summoner_info(ign):
+    clean_ign = sanitize_riot_ign(ign)
+    url_ign = urllib.parse.quote(clean_ign)
+    url = f"https://{RIOT_API_REGION}.api.riotgames.com/tft/summoner/v1/summoners/by-name/{url_ign}"
+    r = requests.get(url, headers=riot_headers())
+    print(f"[RIOT DEBUG] Query IGN: {ign} | Clean: {clean_ign} | URL: {url} | Status: {r.status_code}")
+    if r.status_code != 200:
+        print(f"[RIOT DEBUG] Response: {r.text}")
+    if r.status_code == 200:
+        return r.json()
+    return None
+
+def get_latest_tft_placement(puuid):
+    matchlist_url = f"https://{TFT_REGION}.api.riotgames.com/tft/match/v1/matches/by-puuid/{puuid}/ids?count=1"
+    r = requests.get(matchlist_url, headers=riot_headers())
+    if r.status_code != 200 or not r.json():
+        return None
+    match_id = r.json()[0]
+    match_url = f"https://{TFT_REGION}.api.riotgames.com/tft/match/v1/matches/{match_id}"
+    r2 = requests.get(match_url, headers=riot_headers())
+    if r2.status_code != 200:
+        return None
+    match = r2.json()
+    for participant in match["info"]["participants"]:
+        if participant["puuid"] == puuid:
+            return participant.get("placement")
+    return None
 
 async def _schedule_logic(interaction, key, channel_name, role_name, time):
     await interaction.response.defer(ephemeral=True)
@@ -675,24 +694,74 @@ class ResetCheckInsButton(discord.ui.Button):
         await update_live_embeds(interaction.guild)
         await interaction.followup.send(embed=embed_done, ephemeral=True)
 
+class ToggleCheckInButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="Toggle Check-In Channel",
+            style=discord.ButtonStyle.primary,
+            emoji="🔓",
+            custom_id="toggle_checkin_btn"
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        if not has_allowed_role_from_interaction(interaction):
+            embed = embed_from_cfg("permission_denied")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        guild = interaction.guild
+        channel = interaction.channel
+        registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        overwrites = channel.overwrites_for(registered_role)
+        is_open = bool(overwrites.view_channel)
+        overwrites.view_channel = not is_open
+        await channel.set_permissions(registered_role, overwrite=overwrites)
+
+        # Update embed and view
+        embed = embed_from_cfg("checkin_channel_toggled", visible=not is_open)
+        await update_checkin_embed(channel, get_persisted_msg(guild.id, "checkin"), guild)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 class CheckInView(discord.ui.View):
     def __init__(self, guild):
         super().__init__(timeout=None)
-        if is_checkin_open(guild):
+        self.guild = guild
+
+        # Check channel state
+        checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+        registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        is_open = False
+        if checkin_channel and registered_role:
+            overwrites = checkin_channel.overwrites_for(registered_role)
+            is_open = bool(overwrites.view_channel)
+
+        # Order: check in/unregister, toggle, reset
+        if is_open:
             self.add_item(CheckInButton())
-        self.add_item(ResetCheckInsButton())
+            self.add_item(UnregisterButton())
+            self.add_item(ToggleCheckInButton())
+        else:
+            self.add_item(ToggleCheckInButton())
+            self.add_item(ResetCheckInsButton())
 
 async def update_checkin_embed(channel, msg_id, guild):
-    global last_checkin_open
-    is_open = is_checkin_open(guild)
-    checkin_msg = await channel.fetch_message(msg_id)
+    checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+    registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    is_open = False
+    if checkin_channel and registered_role:
+        overwrites = checkin_channel.overwrites_for(registered_role)
+        is_open = bool(overwrites.view_channel)
+
     if is_open:
         embed = embed_from_cfg("checkin")
     else:
         embed = embed_from_cfg("checkin_closed")
+
+    checkin_msg = await channel.fetch_message(msg_id)
     await checkin_msg.edit(embed=embed, view=CheckInView(guild))
-    # Ping Registered if just transitioned from closed to open
-    prev_state = last_checkin_open.get(guild.id, None)
+
+    # Only ping ONCE when transitioning from closed to open
+    prev_state = last_checkin_open.get(guild.id)
     if prev_state is not None and not prev_state and is_open:
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
         if reg_role:
@@ -800,26 +869,80 @@ class UnregisterButton(discord.ui.Button):
         embed = embed_from_cfg("unregister_success")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+class ToggleRegistrationButton(discord.ui.Button):
+    def __init__(self, embed_message_id):
+        super().__init__(
+            label="Toggle Registration Channel",
+            style=discord.ButtonStyle.primary,
+            emoji="🔓",
+            custom_id="toggle_registration_btn"
+        )
+        self.embed_message_id = embed_message_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if not has_allowed_role_from_interaction(interaction):
+            embed = embed_from_cfg("permission_denied")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        guild = interaction.guild
+        channel = interaction.channel
+        angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+        overwrites = channel.overwrites_for(angel_role)
+        is_open = bool(overwrites.view_channel)
+        overwrites.view_channel = not is_open
+        await channel.set_permissions(angel_role, overwrite=overwrites)
+
+        # Update embed and view
+        embed = embed_from_cfg("registration_channel_toggled", visible=not is_open)
+        await update_registration_embed(channel, self.embed_message_id, guild)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 class RegistrationView(discord.ui.View):
     def __init__(self, embed_message_id, guild):
         super().__init__(timeout=None)
         self.embed_message_id = embed_message_id
-        if is_registration_open(guild):
+        self.guild = guild
+
+        reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+        angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+        is_open = False
+        if reg_channel and angel_role:
+            overwrites = reg_channel.overwrites_for(angel_role)
+            is_open = bool(overwrites.view_channel)
+
+        # Order: unregister, toggle, reset
+        if is_open:
             self.add_item(UnregisterButton())
-        self.add_item(ResetRegistrationButton())
+            self.add_item(ToggleRegistrationButton(embed_message_id))
+        else:
+            self.add_item(ToggleRegistrationButton(embed_message_id))
+            self.add_item(ResetRegistrationButton())
 
 async def update_registration_embed(channel, msg_id, guild):
-    global last_registration_open
-    is_open = is_registration_open(guild)
+    reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+    angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+    is_open = False
+    if reg_channel and angel_role:
+        overwrites = reg_channel.overwrites_for(angel_role)
+        is_open = bool(overwrites.view_channel)
+
+    # Choose the correct embed (open or closed)
+    if is_open:
+        embed = embed_from_cfg("registration")
+    else:
+        embed = embed_from_cfg("registration_closed")
+
+    # Update the message and view
     reg_msg = await channel.fetch_message(msg_id)
-    embed = embed_from_cfg("registration") if is_open else embed_from_cfg("registration_closed")
     await reg_msg.edit(embed=embed, view=RegistrationView(msg_id, guild))
-    # Ping Angels if just transitioned from closed to open
-    prev_state = last_registration_open.get(guild.id, None)
+
+    # Only ping ONCE when transitioning from closed to open
+    prev_state = last_registration_open.get(guild.id)
     if prev_state is not None and not prev_state and is_open:
-        angels_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
-        if angels_role:
-            ping_msg = await channel.send(content=angels_role.mention)
+        angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+        if angel_role:
+            ping_msg = await channel.send(content=angel_role.mention)
             try:
                 await ping_msg.delete()
             except Exception:
@@ -1006,126 +1129,74 @@ async def reload_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ----------- NEW: Validate IGNs command (TFT API only) --------------
-@gal.command(name="validate", description="Validate all checked-in IGNs with Riot TFT API")
+@gal.command(name="validate", description="Validate checked-in IGNs with Riot API.")
 async def validate(interaction: discord.Interaction):
-    if not has_allowed_role_from_interaction(interaction):
-        embed = embed_from_cfg("permission_denied")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    cfg = EMBEDS_CFG.get("validate", {})
-    await interaction.response.defer(thinking=True, ephemeral=True)
-    async with cache_lock:
-        user_map = dict(sheet_cache["users"])
-    g_values = await retry_until_successful(sheet.col_values, 7)
-    d_values = await retry_until_successful(sheet.col_values, 4)
-
-    checked_in_igns = []
-    for discord_tag, row in user_map.items():
-        if row <= len(g_values) and str(g_values[row-1]).lower() == "true":
-            ign = d_values[row-1].strip() if row-1 < len(d_values) else None
-            if ign:
-                checked_in_igns.append(ign)
-
-    if not checked_in_igns:
-        embed = discord.Embed(
-            title=cfg.get("no_players_title", "No checked-in players found."),
-            description=cfg.get("no_players_description", "There are currently no checked-in users to validate."),
-            color=hex_to_color(cfg.get("color_invalid", "#e67e22"))
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-        return
-
+    await interaction.response.defer(ephemeral=True)
     valid = []
     invalid = []
-    for ign in checked_in_igns:
-        summ_name = ign.split("#")[0] if "#" in ign else ign
-        puuid = get_tft_puuid_from_summoner_name(RIOT_API_KEY, summ_name)
-        if puuid:
-            valid.append(ign)
-        else:
-            invalid.append(f"{ign} (Not found)")
+    async with cache_lock:
+        for discord_tag, user_tuple in sheet_cache["users"].items():
+            ign = user_tuple[1]
+            checked_in_flag = user_tuple[3]
+            if checked_in_flag.strip().upper() != "TRUE":
+                continue
+            summ_info = get_summoner_info(ign)
+            if summ_info:
+                valid.append(f"`{discord_tag}` — `{ign}`")
+            else:
+                invalid.append(f"`{discord_tag}` — `{ign}`")
 
-    color = hex_to_color(cfg.get("color_valid", "#2ecc71") if not invalid else cfg.get("color_invalid", "#e67e22"))
+    description = ""
+    if valid:
+        description += "**✅ Valid IGNs:**\n" + "\n".join(valid) + "\n"
+    if invalid:
+        description += "\n**❌ Invalid IGNs:**\n" + "\n".join(invalid)
+    if not valid and not invalid:
+        description = "No checked-in users to validate."
+
     embed = discord.Embed(
-        title=cfg.get("title", "IGN Validation Results"),
-        color=color
-    )
-    embed.add_field(
-        name=cfg.get("valid_field", "✅ Valid IGNs"),
-        value="\n".join(valid) if valid else cfg.get("valid_none", "None"),
-        inline=False
-    )
-    embed.add_field(
-        name=cfg.get("invalid_field", "❌ Invalid IGNs"),
-        value="\n".join(invalid) if invalid else cfg.get("invalid_none", "None"),
-        inline=False
+        title="IGN Validation Results",
+        description=description,
+        color=discord.Color.green() if valid and not invalid else discord.Color.orange() if valid else discord.Color.red(),
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ----------- NEW: Placements command (TFT API only) --------------
-@gal.command(name="placements", description="Show latest TFT placements for checked-in users using Riot TFT API.")
+@gal.command(name="placements", description="Show latest TFT placements for checked-in users.")
 async def placements(interaction: discord.Interaction):
-    if not has_allowed_role_from_interaction(interaction):
-        embed = embed_from_cfg("permission_denied")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-
-    cfg = EMBEDS_CFG.get("placements", {})
-    await interaction.response.defer(thinking=True, ephemeral=True)
-
+    await interaction.response.defer(ephemeral=True)
+    results = []
     async with cache_lock:
-        user_map = dict(sheet_cache["users"])
-    g_values = await retry_until_successful(sheet.col_values, 7)
-    d_values = await retry_until_successful(sheet.col_values, 4)
+        for discord_tag, user_tuple in sheet_cache["users"].items():
+            ign = user_tuple[1]
+            checked_in_flag = user_tuple[3]
+            if checked_in_flag.strip().upper() != "TRUE":
+                continue
+            summ_info = get_summoner_info(ign)
+            if not summ_info:
+                results.append(f"`{discord_tag}` — `{ign}`: **IGN not found**")
+                continue
+            puuid = summ_info.get("puuid")
+            placement = get_latest_tft_placement(puuid)
+            if placement:
+                results.append(f"`{discord_tag}` — `{ign}`: **{placement}th place**")
+            else:
+                results.append(f"`{discord_tag}` — `{ign}`: **No recent matches found**")
 
-    checked_in_igns = []
-    for discord_tag, row in user_map.items():
-        if row <= len(g_values) and str(g_values[row-1]).lower() == "true":
-            ign = d_values[row-1].strip() if row-1 < len(d_values) else None
-            if ign:
-                checked_in_igns.append(ign)
-
-    if not checked_in_igns:
-        embed = discord.Embed(
-            title=cfg.get("title", "Checked-In Player Latest Placements"),
-            description=cfg.get("no_players_description", "There are currently no checked-in users to report."),
-            color=hex_to_color(cfg.get("color", "#3498db"))
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-        return
-
-    placements_list = []
-    for ign in checked_in_igns:
-        summ_name = ign.split("#")[0] if "#" in ign else ign
-        tag = "NA1"  # Or parse from IGN if you want to support other regions!
-        puuid = get_tft_puuid_from_summoner_name(RIOT_API_KEY, summ_name, region="na1")
-        if not puuid:
-            placements_list.append((ign, "IGN not found", None))
-            continue
-        riot_region = "americas"
-        placement = get_tft_latest_placement(RIOT_API_KEY, puuid, region=riot_region)
-        placements_list.append((ign, placement, puuid))
-
+    description = "\n".join(results) if results else "No checked-in users to show placements for."
     embed = discord.Embed(
-        title=cfg.get("title", "Checked-In Player Latest Placements"),
-        color=hex_to_color(cfg.get("color", "#3498db"))
+        title="Checked-In Player Latest Placements",
+        description=description,
+        color=discord.Color.blue()
     )
-    for ign, place, puuid in placements_list:
-        summ_name = ign.split("#")[0] if "#" in ign else ign
-        profile_url = f"https://lolchess.gg/profile/na/{summ_name.replace(' ','')}/set14"
-        embed.add_field(
-            name=ign,
-            value=f"[Lolchess Profile]({profile_url})\n{place}",
-            inline=True
-        )
-
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # --- Update IGN in sheet on message edit (no registered.json logic) ---
 @bot.event
 async def on_message_edit(before, after):
     # Only react to edits in the registration channel, from non-bots, and non-empty messages
+    if not hasattr(after.channel, "name") or after.channel.name != REGISTRATION_CHANNEL:
+        return
     if (
         after.channel.name != REGISTRATION_CHANNEL
         or after.author.bot

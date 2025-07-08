@@ -3,9 +3,6 @@ python-dotenv
 gspread
 oauth2client
 pyyaml
-httpx
-beautifulsoup4
-riotwatcher
-pytz
-tzdata
 psycopg2-binary
+requests
+tzdata

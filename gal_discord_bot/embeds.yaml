@@ -6,12 +6,11 @@
 # You can use {count}, {role}, {elapsed} in any title/description below!
 
 registration:
-  title: Registration
+  title: "Register for the Tournament!"
   description: |
-    Please type your in-game name below to register for the next Guardian Angel League TFT tournament!
-
-    If you are unable to play and need to unregister, please click the unregister button.
-  color: "#3498db"
+    To sign up, click </gal register:{register_cmd_id}> or type /gal register in this channel.
+    Make sure to fill out your in-game name{team_required}
+  color: "#5ad763"
 
 registration_closed:
   title: Registration Closed
@@ -25,6 +24,16 @@ registration_channel_toggled:
   color_visible: "#2ecc71"
   color_hidden: "#e67e22"
 
+register_success_normal:
+  title: "New Registration!"
+  description: "**{name}** ({ign}) just registered."
+  color: "#27ae60"
+
+register_success_doubleup:
+  title: "New Registration!"
+  description: "**{name}** ({ign}) just registered for team: **{team_name}**."
+  color: "#27ae60"
+
 unregister_success:
   title: "Unregistered"
   description: "You have been successfully unregistered."
@@ -34,6 +43,13 @@ unregister_not_registered:
   title: "Not Registered"
   description: "You are not currently registered."
   color: "#e74c3c"
+
+register_channel_only:
+  title: "Please Use the Register Command"
+  description: |
+    To register for the event, please use `/gal register` in <#1387614581794537652>.
+    Normal messages or other commands are not allowed in the registration channel.
+  color: "#ff7b00"
 
 checkin:
   title: Check in is now open!
@@ -112,6 +128,14 @@ schedule_cancel_none:
   description: "There was no schedule to cancel for {role}."
   color: "#e67e22"
 
+reminder_dm:
+  description: "Hi! You are registered for the upcoming event, but have not checked in yet. Please check in before the deadline to confirm your spot!"
+
+reminder_public:
+  title: "Reminder Results"
+  description: "Sent reminders to **{count}** user(s):\n{users}"
+  color: "#f1c40f"
+
 placements:
   title: Checked-In Player Latest Placements
   color: "#3498db"
@@ -140,28 +164,17 @@ cache:
   color: "#2ecc71"
 
 help:
-  title: GAL Bot Help
-  description: |
-    Here are the available commands:
-
-    • `/gal reg` — Toggle the registration channel for Angels and update the registration embed.
-    
-    • `/gal checkin` — Toggle the check-in channel for Registered users and update the check-in embed.
-    
-    • `/gal cache` — Force a manual refresh of the user cache from the Google Sheet.
-    
-    • `/gal reload` — Reload the embeds config and update live messages.
-    
-    • `/gal schedule reg [MM-DD-YY HH:MM AM/PM]` — Schedule or view the registration open time (PST).
-    
-    • `/gal schedule checkin [MM-DD-YY HH:MM AM/PM]` — Schedule or view the check-in open time (PST).
-    
-    • `/gal schedule cancelreg` — Cancel the scheduled registration open.
-    
-    • `/gal schedule cancelcheckin` — Cancel the scheduled check-in open.
-    
-    • `/gal help` — Show this help message.
-  color: "#7289da"
+  title: "GAL Bot Help"
+  description: "Click a command below to use it, or type it manually."
+  commands:
+    register: "Register for the tournament. Example: /gal register <IGN> (and team name if double up)."
+    unregister: "Remove yourself from the tournament registration list."
+    checkin: "Check in for the event."
+    registeredlist: "View all registered players and teams."
+    cache: "Force a manual cache refresh from the sheet."
+    reminder: "DM all registered but not checked-in users a reminder."
+    event: "View or set the current event mode."
+    help: "Show this help message."
 
 permission_denied:
   title: Permission Denied

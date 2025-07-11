@@ -1,0 +1,10 @@
+discord.py
+python-dotenv
+gspread
+oauth2client
+pyyaml
+psycopg2-binary
+requests
+tzdata
+rapidfuzz
+aiohttp

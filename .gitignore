@@ -7,15 +7,15 @@ __pycache__/
 env/
 
 # Environment and secrets
-.env
-google-creds.json
+gal_discord_bot/.env
+gal_discord_bot/google-creds.json
 
 # Editor settings
 .idea/
 .vscode/
 
 # Log files
-discord.log
+gal_discord_bot/discord.log
 
 # Data storage
-persisted_views.json
+gal_discord_bot/persisted_views.json

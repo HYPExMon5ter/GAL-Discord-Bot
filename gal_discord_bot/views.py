@@ -31,6 +31,24 @@ def has_allowed_role_from_interaction(interaction: discord.Interaction):
     member = getattr(interaction, "user", getattr(interaction, "author", None))
     return hasattr(member, "roles") and has_allowed_role(member)
 
+async def create_persisted_embed(guild, channel, embed, view, persist_key, pin=True, announce_pin=True):
+    """
+    Sends an embed in `channel`, persists (channel_id, msg_id) for `persist_key` (e.g. "registration"),
+    pins the message, and deletes a confirmation pin message if announce_pin is True.
+    """
+    msg = await channel.send(embed=embed, view=view)
+    set_persisted_msg(guild.id, persist_key, channel.id, msg.id)
+    if pin:
+        await msg.pin()
+        if announce_pin:
+            pin_confirm = await channel.send("Embed pinned.")
+            try:
+                await pin_confirm.delete()
+            except Exception:
+                pass
+    return msg
+
+
 class CheckInButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
@@ -140,7 +158,6 @@ class ToggleCheckInButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        from gal_discord_bot.views import update_checkin_embed
         if not has_allowed_role(interaction.user):
             embed = embed_from_cfg("permission_denied")
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -154,7 +171,12 @@ class ToggleCheckInButton(discord.ui.Button):
         overwrites.view_channel = not is_open
         await channel.set_permissions(registered_role, overwrite=overwrites)
         embed = embed_from_cfg("checkin_channel_toggled", visible=not is_open)
-        await update_checkin_embed(channel, get_persisted_msg(guild.id, "checkin"), guild)
+
+        # Fetch (channel_id, msg_id) and update check-in embed by msg_id
+        _, checkin_msg_id = get_persisted_msg(guild.id, "checkin")
+        if checkin_msg_id:
+            await update_checkin_embed(channel, checkin_msg_id, guild)
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class UnregisterButton(discord.ui.Button):
@@ -248,7 +270,8 @@ class ResetRegistrationButton(discord.ui.Button):
         mode = get_event_mode_for_guild(guild_id)
 
         cleared = await reset_registered_roles_and_sheet(guild, reg_channel)
-        main_embed_msg_id = get_persisted_msg(guild_id, "registration")
+
+        reg_channel_id, main_embed_msg_id = get_persisted_msg(guild_id, "registration")
         messages = [m async for m in reg_channel.history(limit=50)]
         for msg in messages:
             if msg.id == main_embed_msg_id:
@@ -358,16 +381,18 @@ class PersistentRegisteredListView(discord.ui.View):
         self.add_item(PersistentReminderButton(guild.id))
 
 async def update_live_embeds(guild):
-    reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
-    reg_msg_id = get_persisted_msg(guild.id, "registration")
+    # Registration Embed
+    reg_channel_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
+    reg_channel = guild.get_channel(reg_channel_id) if reg_channel_id else None
     if reg_channel and reg_msg_id:
         try:
             await update_registration_embed(reg_channel, reg_msg_id, guild)
         except Exception as e:
             await log_error(None, guild, f"Failed to update registration embed: {e}")
 
-    checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
-    checkin_msg_id = get_persisted_msg(guild.id, "checkin")
+    # Check-in Embed
+    checkin_channel_id, checkin_msg_id = get_persisted_msg(guild.id, "checkin")
+    checkin_channel = guild.get_channel(checkin_channel_id) if checkin_channel_id else None
     if checkin_channel and checkin_msg_id:
         try:
             await update_checkin_embed(checkin_channel, checkin_msg_id, guild)

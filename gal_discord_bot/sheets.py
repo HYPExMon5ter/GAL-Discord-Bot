@@ -308,7 +308,6 @@ async def reset_registered_roles_and_sheet(guild, channel):
     return cleared
 
 async def reset_checked_in_roles_and_sheet(guild, channel):
-    from gal_discord_bot.config import CHECKED_IN_ROLE, REGISTERED_ROLE
     checked_in_role = next((r for r in guild.roles if r.name == CHECKED_IN_ROLE), None)
     registered_role = next((r for r in guild.roles if r.name == REGISTERED_ROLE), None)
     cleared = 0
@@ -350,44 +349,3 @@ def get_next_empty_row(sheet):
         if not col_b[i].strip():
             return i + 1
     return len(col_b) + 1
-
-def find_team_row_in_checkin(sheet, team_name, threshold=0.90):
-    team_names = sheet.col_values(2)[2:]
-    for idx, existing in enumerate(team_names, start=3):
-        if existing and similar(existing, team_name) >= threshold:
-            return idx
-    return None
-
-async def sync_teams_with_checkin(guild):
-    sheet = get_sheet_for_guild(guild.id, "GAL Database")
-    checkin_sheet = get_sheet_for_guild(guild.id, "Check-In")
-    data = sheet.get_all_values()
-    teams = {}
-    for row in data[2:]:
-        discord_tag = row[1] if len(row) > 1 else ""
-        ign = row[3] if len(row) > 3 else ""
-        team_name = row[4] if len(row) > 4 else ""
-        reg = row[6] if len(row) > 6 else ""
-        checkin = row[7] if len(row) > 7 else ""
-        if team_name.strip() and reg.strip().upper() == "TRUE":
-            norm_team = team_name.lower().strip()
-            if norm_team not in teams:
-                teams[norm_team] = []
-            teams[norm_team].append((ign, discord_tag, checkin))
-    checkin_sheet.batch_clear(['B3:J20'])
-    idx = 3
-    for team, members in teams.items():
-        if len(members) < 2:
-            continue
-        row_vals = [""] * 10
-        row_vals[1] = team
-        if len(members) > 0:
-            row_vals[2] = members[0][0]
-            row_vals[4] = members[0][1]
-            row_vals[5] = members[0][2]
-        if len(members) > 1:
-            row_vals[6] = members[1][0]
-            row_vals[8] = members[1][1]
-            row_vals[9] = members[1][2]
-        checkin_sheet.update(f"B{idx}:J{idx}", [row_vals[1:]])
-        idx += 1

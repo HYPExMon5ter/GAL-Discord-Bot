@@ -8,7 +8,7 @@
 registration:
   title: "Register for the Tournament!"
   description: |
-    To sign up, click </gal register:{register_cmd_id}> or type /gal register in this channel.
+    To sign up, click </gal register:{register_cmd_id}> or type it in this channel.
     Make sure to fill out your in-game name{team_required}
   color: "#5ad763"
 
@@ -168,12 +168,13 @@ help:
   description: "Click a command below to use it, or type it manually."
   commands:
     register: "Register for the tournament. Example: /gal register <IGN> (and team name if double up)."
-    unregister: "Remove yourself from the tournament registration list."
+    toggle: "Toggle Registration or Check In channels. Example: /gal toggle <registration|checkin>"
     checkin: "Check in for the event."
     registeredlist: "View all registered players and teams."
     cache: "Force a manual cache refresh from the sheet."
     reminder: "DM all registered but not checked-in users a reminder."
-    event: "View or set the current event mode."
+    event: "Change the bot mode to normal or doubleup."
+    reload: "Reloads messages from the config."
     help: "Show this help message."
 
 permission_denied:

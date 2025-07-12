@@ -14,7 +14,7 @@ from gal_discord_bot.config import (
 from gal_discord_bot.views import (
     RegistrationView, CheckInView,
     update_live_embeds, update_registration_embed, update_checkin_embed,
-    PersistentRegisteredListView
+    PersistentRegisteredListView, create_persisted_embed
 )
 from gal_discord_bot.sheets import (
     sheet_cache, cache_lock, find_or_register_user, refresh_sheet_cache, retry_until_successful,
@@ -127,8 +127,14 @@ async def toggle(interaction: discord.Interaction, channel: str):
         overwrites = reg_channel.overwrites_for(angel_role)
         overwrites.view_channel = not overwrites.view_channel
         await reg_channel.set_permissions(angel_role, overwrite=overwrites)
-        reg_msg_id = get_persisted_msg(guild.id, "registration")
-        if reg_msg_id:
+        reg_channel_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
+        if not reg_msg_id and overwrites.view_channel:
+            # Create embed, persist, and pin if it does not exist and is opening
+            embed = embed_from_cfg("registration_closed")
+            await create_persisted_embed(
+                guild, reg_channel, embed, RegistrationView(None, guild), "registration"
+            )
+        elif reg_msg_id:
             await update_registration_embed(reg_channel, reg_msg_id, guild)
         embed = embed_from_cfg("registration_channel_toggled", visible=overwrites.view_channel)
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -139,8 +145,13 @@ async def toggle(interaction: discord.Interaction, channel: str):
         overwrites = checkin_channel.overwrites_for(registered_role)
         overwrites.view_channel = not overwrites.view_channel
         await checkin_channel.set_permissions(registered_role, overwrite=overwrites)
-        checkin_msg_id = get_persisted_msg(guild.id, "checkin")
-        if checkin_msg_id:
+        checkin_channel_id, checkin_msg_id = get_persisted_msg(guild.id, "checkin")
+        if not checkin_msg_id and overwrites.view_channel:
+            embed = embed_from_cfg("checkin_closed")
+            await create_persisted_embed(
+                guild, checkin_channel, embed, CheckInView(guild), "checkin"
+            )
+        elif checkin_msg_id:
             await update_checkin_embed(checkin_channel, checkin_msg_id, guild)
         embed = embed_from_cfg("checkin_channel_toggled", visible=overwrites.view_channel)
         await interaction.response.send_message(embed=embed, ephemeral=True)

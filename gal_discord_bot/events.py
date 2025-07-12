@@ -5,33 +5,47 @@ import asyncio
 from zoneinfo import ZoneInfo
 from datetime import datetime
 
-from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView
-from gal_discord_bot.persistence import get_schedule, set_schedule
-from gal_discord_bot.config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, update_gal_command_ids
+from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView, create_persisted_embed, RegistrationView, CheckInView
+from gal_discord_bot.persistence import get_schedule, set_schedule, migrate_legacy, get_persisted_msg
+from gal_discord_bot.config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, update_gal_command_ids, embed_from_cfg
 from gal_discord_bot.sheets import refresh_sheet_cache
 
 def setup_events(bot):
     @bot.event
     async def on_ready():
         print(f"We are ready to go in, {bot.user.name}")
+        migrate_legacy()
 
-        TEST_GUILD_ID = 1385739351505240074
-        PROD_GUILD_ID = 716787949584515102
-        GUILD_IDS = [TEST_GUILD_ID, PROD_GUILD_ID]
-        for guild_id in GUILD_IDS:
-            guild = bot.get_guild(guild_id)
-            if guild:
-                await bot.tree.sync(guild=guild)
-                print(f"Synced commands to guild {guild.id}")
-            else:
-                print(f"Bot is not in guild {guild_id}")
+        # --- Sync all slash commands to all guilds the bot is in ---
+        for guild in bot.guilds:
+            await bot.tree.sync(guild=guild)
+            print(f"Synced commands to guild {guild.id}")
 
         await update_gal_command_ids(bot)
 
         await refresh_sheet_cache(bot=bot)
         asyncio.create_task(bot_cache_refresh_loop(bot))
 
+        # --- Ensure registration and check-in embeds exist for all guilds ---
         for guild in bot.guilds:
+            # Registration embed creation if missing
+            reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+            reg_channel_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
+            if reg_channel and not reg_msg_id:
+                embed = embed_from_cfg("registration_closed")
+                await create_persisted_embed(
+                    guild, reg_channel, embed, RegistrationView(None, guild), "registration"
+                )
+
+            # Check-in embed creation if missing
+            checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+            checkin_channel_id, checkin_msg_id = get_persisted_msg(guild.id, "checkin")
+            if checkin_channel and not checkin_msg_id:
+                embed = embed_from_cfg("checkin_closed")
+                await create_persisted_embed(
+                    guild, checkin_channel, embed, CheckInView(guild), "checkin"
+                )
+
             bot.add_view(PersistentRegisteredListView(guild))
             await update_live_embeds(guild)
             for key, (channel_name, role_name) in [

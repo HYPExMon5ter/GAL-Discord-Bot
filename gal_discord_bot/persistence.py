@@ -4,7 +4,7 @@ import os
 import json
 from gal_discord_bot.config import DATABASE_URL
 
-PERSIST_FILE = "persisted_views.json"
+PERSIST_FILE = os.path.join(os.path.dirname(__file__), "persisted_views.json")
 
 if DATABASE_URL:
     import psycopg2
@@ -47,15 +47,27 @@ else:
 
 persisted = load_persisted()
 
-def set_persisted_msg(guild_id, key, msg_id):
+def set_persisted_msg(guild_id, key, channel_id, msg_id):
+    """
+    Store [channel_id, msg_id] for the given guild/key.
+    """
     gid = str(guild_id)
     if gid not in persisted:
         persisted[gid] = {}
-    persisted[gid][key] = msg_id
+    persisted[gid][key] = [channel_id, msg_id]
     save_persisted(persisted)
 
 def get_persisted_msg(guild_id, key):
-    return persisted.get(str(guild_id), {}).get(key)
+    """
+    Return (channel_id, msg_id) tuple, or (None, None) if missing.
+    Legacy support: if int found, return (None, msg_id)
+    """
+    value = persisted.get(str(guild_id), {}).get(key)
+    if isinstance(value, list) and len(value) == 2:
+        return value[0], value[1]
+    elif isinstance(value, int):
+        return None, value
+    return None, None
 
 def get_event_mode_for_guild(guild_id):
     gid = str(guild_id)
@@ -78,3 +90,16 @@ def set_schedule(guild_id, key, dtstr):
         persisted[gid] = {}
     persisted[gid][f"{key}_schedule"] = dtstr
     save_persisted(persisted)
+
+# --- Migration helper (one-time, optional) ---
+def migrate_legacy():
+    changed = False
+    for gid, data in persisted.items():
+        for key in ["registration", "checkin"]:
+            val = data.get(key)
+            if isinstance(val, int):
+                data[key] = [None, val]
+                changed = True
+    if changed:
+        save_persisted(persisted)
+        print("Migrated legacy persisted messages to [channel_id, msg_id] format.")

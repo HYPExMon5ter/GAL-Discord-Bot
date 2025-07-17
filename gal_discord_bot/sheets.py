@@ -1,23 +1,20 @@
 # gal_discord_bot/sheets.py
 
-import os
-import json
 import asyncio
-import time
+import json
+import os
 import random
-import traceback
-from datetime import datetime
-from oauth2client.service_account import ServiceAccountCredentials
+import time
+
 import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 from gal_discord_bot.config import (
     SHEET_KEY, DOUBLEUP_SHEET_KEY,
-    CACHE_REFRESH_SECONDS, REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE,
-    ALLOWED_ROLES
+    CACHE_REFRESH_SECONDS, REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE
 )
 from gal_discord_bot.persistence import (
-    get_event_mode_for_guild, set_event_mode_for_guild,
-    get_schedule, set_schedule
+    get_event_mode_for_guild
 )
 
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]

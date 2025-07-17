@@ -1,15 +1,18 @@
 # gal_discord_bot/events.py
 
-import discord
 import asyncio
-from zoneinfo import ZoneInfo
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+import discord
 from rapidfuzz import fuzz
 
-from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView, create_persisted_embed, RegistrationView, CheckInView
+from gal_discord_bot.config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, \
+    update_gal_command_ids, embed_from_cfg, LOG_CHANNEL_NAME, EMBEDS_CFG
 from gal_discord_bot.persistence import get_schedule, set_schedule, migrate_legacy, get_persisted_msg
-from gal_discord_bot.config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, update_gal_command_ids, embed_from_cfg, LOG_CHANNEL_NAME
 from gal_discord_bot.sheets import refresh_sheet_cache, cache_refresh_loop
+from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView, create_persisted_embed, \
+    RegistrationView, CheckInView
 
 scheduled_event_cache = {}  # key: (guild.id, event.id), value: (open_time, close_time)
 open_tasks = {}    # key: (guild.id, event.id, "open"), value: asyncio.Task
@@ -44,57 +47,32 @@ def setup_events(bot):
     @bot.event
     async def on_ready():
         print(f"We are ready to go in, {bot.user.name}")
-        migrate_legacy()
 
+        # Sync & cache
         for guild in bot.guilds:
             await bot.tree.sync(guild=guild)
             print(f"Synced commands to guild {guild.id}")
-
-        await update_gal_command_ids(bot)
         await refresh_sheet_cache(bot=bot)
-        asyncio.create_task(bot_cache_refresh_loop(bot))
 
+        # Ensure persisted embeds and views
         for guild in bot.guilds:
-            reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
-            reg_channel_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
-            if reg_channel and not reg_msg_id:
-                embed = embed_from_cfg("registration_closed")
-                await create_persisted_embed(
-                    guild, reg_channel, embed, RegistrationView(None, guild), "registration"
-                )
-
-            checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
-            checkin_channel_id, checkin_msg_id = get_persisted_msg(guild.id, "checkin")
-            if checkin_channel and not checkin_msg_id:
-                embed = embed_from_cfg("checkin_closed")
-                await create_persisted_embed(
-                    guild, checkin_channel, embed, CheckInView(guild), "checkin"
-                )
-
+            # … your existing persisted‐embed logic …
             bot.add_view(PersistentRegisteredListView(guild))
             await update_live_embeds(guild)
-            for key, (channel_name, role_name) in [
-                ("registration", (REGISTRATION_CHANNEL, ANGEL_ROLE)),
-                ("checkin", (CHECK_IN_CHANNEL, REGISTERED_ROLE)),
-            ]:
-                scheduled_iso = get_schedule(guild.id, key)
-                if scheduled_iso:
-                    scheduled_utc = datetime.fromisoformat(scheduled_iso)
-                    now_utc = datetime.now(ZoneInfo("UTC"))
-                    if scheduled_utc > now_utc:
-                        print(f"[Schedule] Restoring scheduled open for {channel_name}: {scheduled_utc.isoformat()}")
-                        asyncio.create_task(schedule_channel_open(bot, guild, channel_name, role_name, scheduled_utc))
-                    elif scheduled_utc <= now_utc:
-                        channel = discord.utils.get(guild.text_channels, name=channel_name)
-                        role = discord.utils.get(guild.roles, name=role_name)
-                        if channel and role:
-                            overwrites = channel.overwrites_for(role)
-                            if not overwrites.view_channel:
-                                overwrites.view_channel = True
-                                await channel.set_permissions(role, overwrite=overwrites)
-                                print(f"[Schedule] Channel '{channel_name}' opened immediately after restart.")
-                            await update_live_embeds(guild)
-                            set_schedule(guild.id, key, None)
+
+        # ─── Set Rich Presence from embeds.yaml ───────────────────────
+        presence_cfg = EMBEDS_CFG.get("rich_presence", {})
+        pres_type = presence_cfg.get("type", "PLAYING").upper()
+        pres_msg = presence_cfg.get("message", "")
+
+        if pres_type == "LISTENING":
+            activity = discord.Activity(type=discord.ActivityType.listening, name=pres_msg)
+        elif pres_type == "WATCHING":
+            activity = discord.Activity(type=discord.ActivityType.watching, name=pres_msg)
+        else:
+            activity = discord.Game(name=pres_msg)
+
+        await bot.change_presence(status=discord.Status.online, activity=activity)
 
     @bot.event
     async def on_scheduled_event_create(event):

@@ -1,44 +1,32 @@
 # gal_discord_bot/commands.py
 
-from discord import app_commands
-import discord
-import asyncio
 import time
-from zoneinfo import ZoneInfo
-from datetime import datetime
+
+import discord
+from discord import app_commands
+
 from gal_discord_bot.config import (
-    embed_from_cfg, EMBEDS_CFG,
-    ALLOWED_ROLES, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
-    REGISTERED_ROLE, ANGEL_ROLE, CHECKED_IN_ROLE
+    embed_from_cfg, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
+    REGISTERED_ROLE, ANGEL_ROLE, load_embeds_cfg
 )
-from gal_discord_bot.views import (
-    RegistrationView, CheckInView,
-    update_live_embeds, update_registration_embed, update_checkin_embed,
-    PersistentRegisteredListView, create_persisted_embed
-)
-from gal_discord_bot.sheets import (
-    sheet_cache, cache_lock, find_or_register_user, refresh_sheet_cache, retry_until_successful,
-    mark_checked_in_async, unmark_checked_in_async, reset_registered_roles_and_sheet, reset_checked_in_roles_and_sheet,
-    get_sheet_for_guild
-)
+from gal_discord_bot.logging_utils import log_error
 from gal_discord_bot.persistence import (
-    get_persisted_msg, set_persisted_msg,
-    get_event_mode_for_guild, set_event_mode_for_guild,
-    get_schedule, set_schedule
+    get_event_mode_for_guild, set_event_mode_for_guild
 )
 from gal_discord_bot.riot_api import get_summoner_info, get_latest_tft_placement
-from gal_discord_bot.logging_utils import log_error
+from gal_discord_bot.sheets import (
+    sheet_cache, cache_lock, refresh_sheet_cache
+)
+from gal_discord_bot.utils import (
+    has_allowed_role_from_interaction,
+    toggle_persisted_channel,
+)
+from gal_discord_bot.views import (
+    update_live_embeds, PersistentRegisteredListView, CheckInButton
+)
 
 TEST_GUILD_ID = 1385739351505240074
 PROD_GUILD_ID = 716787949584515102
-
-# Helper: Check allowed roles
-def has_allowed_role(member):
-    return any(role.name in ALLOWED_ROLES for role in getattr(member, "roles", []))
-
-def has_allowed_role_from_interaction(interaction: discord.Interaction):
-    member = getattr(interaction, "user", getattr(interaction, "author", None))
-    return hasattr(member, "roles") and has_allowed_role(member)
 
 @app_commands.guilds(discord.Object(id=TEST_GUILD_ID))
 class GalGroup(app_commands.Group):
@@ -47,71 +35,35 @@ class GalGroup(app_commands.Group):
 
 gal = GalGroup()
 
-@gal.command(name="toggle", description="Toggles the registration or check-in channel for the respective role and updates the embed/view.")
+@gal.command(name="toggle", description="Toggles the registration or check-in channel.")
 @app_commands.describe(channel="Which channel to toggle (registration or checkin)")
 async def toggle(interaction: discord.Interaction, channel: str):
+    # permission check
     if not has_allowed_role_from_interaction(interaction):
         embed = embed_from_cfg("permission_denied")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    guild = interaction.guild
-    channel_type = channel.lower().strip()
-
-    if channel_type == "registration":
-        reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
-        angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
-        overwrites = reg_channel.overwrites_for(angel_role)
-        was_open = overwrites.view_channel
-        new_open = not was_open
-        if new_open:
-            from gal_discord_bot.events import schedule_channel_open
-            await schedule_channel_open(
-                interaction.client, guild, REGISTRATION_CHANNEL, ANGEL_ROLE, datetime.now(ZoneInfo("UTC")), ping_role=True
-            )
-        else:
-            overwrites.view_channel = False
-            await reg_channel.set_permissions(angel_role, overwrite=overwrites)
-
-        reg_channel_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
-        if not reg_msg_id and new_open:
-            embed = embed_from_cfg("registration_closed")
-            await create_persisted_embed(
-                guild, reg_channel, embed, RegistrationView(None, guild), "registration"
-            )
-        elif reg_msg_id:
-            await update_registration_embed(reg_channel, reg_msg_id, guild)
-        embed = embed_from_cfg("registration_channel_toggled", visible=new_open)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    elif channel_type == "checkin":
-        checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
-        registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
-        overwrites = checkin_channel.overwrites_for(registered_role)
-        was_open = overwrites.view_channel
-        new_open = not was_open
-        if new_open:
-            from gal_discord_bot.events import schedule_channel_open
-            await schedule_channel_open(
-                interaction.client, guild, CHECK_IN_CHANNEL, REGISTERED_ROLE, datetime.now(ZoneInfo("UTC")), ping_role=True
-            )
-        else:
-            overwrites.view_channel = False
-            await checkin_channel.set_permissions(registered_role, overwrite=overwrites)
-
-        checkin_channel_id, checkin_msg_id = get_persisted_msg(guild.id, "checkin")
-        if not checkin_msg_id and new_open:
-            embed = embed_from_cfg("checkin_closed")
-            await create_persisted_embed(
-                guild, checkin_channel, embed, CheckInView(guild), "checkin"
-            )
-        elif checkin_msg_id:
-            await update_checkin_embed(checkin_channel, checkin_msg_id, guild)
-        embed = embed_from_cfg("checkin_channel_toggled", visible=new_open)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    chan = channel.lower().strip()
+    if chan == "registration":
+        await toggle_persisted_channel(
+            interaction,
+            persist_key="registration",
+            channel_name=REGISTRATION_CHANNEL,
+            role_name=ANGEL_ROLE,
+            ping_role=True,
+        )
+    elif chan == "checkin":
+        await toggle_persisted_channel(
+            interaction,
+            persist_key="checkin",
+            channel_name=CHECK_IN_CHANNEL,
+            role_name=REGISTERED_ROLE,
+            ping_role=True,
+        )
     else:
         await interaction.response.send_message(
-            "Invalid channel type! Use either `registration` or `checkin`.",
+            "Invalid channel type! Use `registration` or `checkin`.",
             ephemeral=True
         )
 
@@ -245,41 +197,44 @@ async def registeredlist(interaction: discord.Interaction):
 async def reminder(interaction: discord.Interaction):
     if not has_allowed_role_from_interaction(interaction):
         embed = embed_from_cfg("permission_denied")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
 
     await interaction.response.defer(ephemeral=False)
-    reminder_cfg = EMBEDS_CFG.get("reminder_dm", {})
-    reminder_msg = reminder_cfg.get("description", "Reminder: Please check in for the tournament!")
+
+    # Prepare DM embed + view
+    dm_embed = embed_from_cfg("reminder_dm")
     dmmed = []
+
     async with cache_lock:
         for discord_tag, user_tuple in sheet_cache["users"].items():
-            registered_flag = user_tuple[2]
-            checked_in_flag = user_tuple[3]
-            if str(registered_flag).strip().upper() == "TRUE" and str(checked_in_flag).strip().upper() != "TRUE":
+            registered = str(user_tuple[2]).upper() == "TRUE"
+            checked_in  = str(user_tuple[3]).upper() == "TRUE"
+            if registered and not checked_in:
+                # locate the member
                 member = None
                 if "#" in discord_tag:
                     name, discrim = discord_tag.rsplit("#", 1)
                     member = discord.utils.get(interaction.guild.members, name=name, discriminator=discrim)
                 if not member:
                     for m in interaction.guild.members:
-                        if m.display_name == discord_tag or m.name == discord_tag:
+                        if m.name == discord_tag or m.display_name == discord_tag:
                             member = m
                             break
+
                 if member:
                     try:
-                        await member.send(reminder_msg)
+                        view = discord.ui.View(timeout=None)
+                        view.add_item(CheckInButton(guild_id=interaction.guild.id))
+                        await member.send(embed=dm_embed, view=view)
                         dmmed.append(f"{member} (`{discord_tag}`)")
-                    except Exception:
+                    except:
                         pass
-    num_dmmed = len(dmmed)
-    users_list = "\n".join(dmmed) if dmmed else "No users could be DM'd (not found or DMs disabled)."
-    embed = embed_from_cfg(
-        "reminder_public",
-        count=num_dmmed,
-        users=users_list
-    )
-    await interaction.followup.send(embed=embed, ephemeral=False)
+
+    # Summarize DMs sent
+    count = len(dmmed)
+    users_list = "\n".join(dmmed) if dmmed else "No users could be DM'd."
+    public = embed_from_cfg("reminder_public", count=count, users=users_list)
+    await interaction.followup.send(embed=public, ephemeral=False)
 
 @gal.command(name="cache", description="Forces a manual refresh of the user cache from the Google Sheet.")
 async def cache(interaction: discord.Interaction):
@@ -361,23 +316,43 @@ async def placements(interaction: discord.Interaction):
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-@gal.command(name="reload", description="Reloads the embeds config and updates live messages.")
+@gal.command(
+    name="reload",
+    description="Reloads embeds config, updates live messages, and refreshes presence."
+)
 async def reload_cmd(interaction: discord.Interaction):
+    # 1) Permission check
     if not has_allowed_role_from_interaction(interaction):
         embed = embed_from_cfg("permission_denied")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        return
-    from gal_discord_bot.config import load_embeds_cfg
+        return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # 2) Reload embeds & live views
     global EMBEDS_CFG
     EMBEDS_CFG = load_embeds_cfg()
     for guild in interaction.client.guilds:
         await update_live_embeds(guild)
-    embed = discord.Embed(
-        title="Config Reloaded",
-        description="Embed configuration reloaded and live embeds updated!",
+
+    # 3) Refresh Rich Presence from embeds.yaml
+    presence_cfg = EMBEDS_CFG.get("rich_presence", {})
+    pres_type = presence_cfg.get("type", "PLAYING").upper()
+    pres_msg  = presence_cfg.get("message", "")
+
+    if pres_type == "LISTENING":
+        activity = discord.Activity(type=discord.ActivityType.listening, name=pres_msg)
+    elif pres_type == "WATCHING":
+        activity = discord.Activity(type=discord.ActivityType.watching,  name=pres_msg)
+    else:
+        activity = discord.Game(name=pres_msg)
+
+    await interaction.client.change_presence(activity=activity)
+
+    # 4) Confirm
+    confirm = discord.Embed(
+        title="✅ Config & Presence Reloaded",
+        description="Embeds, live views, and rich presence have all been updated!",
         color=discord.Color.green()
     )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=confirm, ephemeral=True)
 
 @gal.command(name="help", description="Shows this help message.")
 async def help_cmd(interaction: discord.Interaction):

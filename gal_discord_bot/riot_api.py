@@ -1,7 +1,9 @@
 # gal_discord_bot/riot_api.py
 
-import requests
 import urllib.parse
+
+import requests
+
 from gal_discord_bot.config import RIOT_API_KEY
 
 RIOT_API_REGION = "na1"

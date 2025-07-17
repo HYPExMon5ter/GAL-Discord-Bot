@@ -1,10 +1,12 @@
 # gal_discord_bot/bot.py
 
+import logging
+
 import discord
 from discord.ext import commands
-import logging
-from gal_discord_bot.config import DISCORD_TOKEN, update_gal_command_ids
+
 from gal_discord_bot.commands import gal
+from gal_discord_bot.config import DISCORD_TOKEN
 from gal_discord_bot.events import setup_events
 
 # Logging setup

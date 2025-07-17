@@ -1,9 +1,10 @@
 # gal_discord_bot/config.py
 
 import os
-from dotenv import load_dotenv
-import yaml
+
 import aiohttp
+import yaml
+from dotenv import load_dotenv
 
 # --- Load environment variables ---
 load_dotenv()

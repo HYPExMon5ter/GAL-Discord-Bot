@@ -2,7 +2,9 @@
 
 import logging
 from datetime import datetime, timezone
+
 from gal_discord_bot.config import embed_from_cfg, LOG_CHANNEL_NAME, PING_USER
+
 
 async def log_error(bot, guild, message, level="Error"):
     log_channel = None

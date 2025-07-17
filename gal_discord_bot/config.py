@@ -41,7 +41,7 @@ EMBEDS_CFG = load_embeds_cfg()
 
 def embed_from_cfg(key, **kwargs):
     import discord
-    cfg = EMBEDS_CFG.get(key, {})
+    cfg = load_embeds_cfg().get(key, {})
     if key.endswith("_toggled") and "visible" in kwargs:
         visible = kwargs["visible"]
         desc = cfg.get("description_visible") if visible else cfg.get("description_hidden")

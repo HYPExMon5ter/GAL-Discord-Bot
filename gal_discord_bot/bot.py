@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO, handlers=[handler])
 
 # Discord Intents
 intents = discord.Intents.default()
+intents.guild_scheduled_events = True
 intents.messages = True
 intents.message_content = True
 intents.members = True

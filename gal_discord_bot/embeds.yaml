@@ -6,16 +6,11 @@
 # You can use {count}, {role}, {elapsed} in any title/description below!
 
 registration:
-  title: "Register for the Tournament!"
+  title: "Registration is now open!"
   description: |
-    To sign up, click </gal register:{register_cmd_id}> or type it in this channel.
-    Make sure to fill out your in-game name{team_required}
-  color: "#5ad763"
-
-registration_closed:
-  title: Registration Closed
-  description: "You cannot Register at this time."
-  color: "#e67e22"
+    Click the **Register** button below to register in the Tournament!
+    > *TIP: Edit your info at any time by clicking the **Register** button again.*
+  color: "#43b581"
 
 registration_channel_toggled:
   title: Registration Channel Toggled
@@ -23,6 +18,11 @@ registration_channel_toggled:
   description_hidden: "🙈 Registration channel has been hidden from Angels."
   color_visible: "#2ecc71"
   color_hidden: "#e67e22"
+
+registration_closed:
+  title: Registration Closed
+  description: "You cannot register at this time."
+  color: "#e67e22"
 
 register_success_normal:
   title: "New Registration!"
@@ -44,13 +44,6 @@ unregister_not_registered:
   description: "You are not currently registered."
   color: "#e74c3c"
 
-register_channel_only:
-  title: "Please Use the Register Command"
-  description: |
-    To register for the event, please use `/gal register` in <#1387614581794537652>.
-    Normal messages or other commands are not allowed in the registration channel.
-  color: "#ff7b00"
-
 checkin:
   title: Check in is now open!
   description: |
@@ -63,6 +56,13 @@ checkin:
     If you plan to stream, please share your Twitch/YouTube link in <#717088485080694794>!
   color: "#3498db"
 
+checkin_channel_toggled:
+  title: Check In Channel Toggled
+  description_visible: "👁️ Check In channel is now visible to Registered Angels."
+  description_hidden: "🙈 Check In channel has been hidden from Registered Angels."
+  color_visible: "#2ecc71"
+  color_hidden: "#e67e22"
+
 checkin_closed:
   title: Check In Closed
   description: "You cannot check in at this time."
@@ -70,25 +70,18 @@ checkin_closed:
 
 checkin_requires_registration:
   title: Registration Required
-  description: "You must register first before you can check in! Please type your TFT username in the Registration channel."
+  description: "You must register first before you can check in! Please click **Register** in the Registration channel."
   color: "#e74c3c"
 
 checked_in:
   title: Checked In
-  description: "You are now checked in! Good luck in the tournament."
+  description: "You are now checked in! Good luck in the Tournament."
   color: "#2ecc71"
 
 checked_out:
   title: Checked Out
   description: "You are no longer checked in."
   color: "#e67e22"
-
-checkin_channel_toggled:
-  title: Check-in Channel Toggled
-  description_visible: "👁️ Check-in channel is now visible to Registered Angels."
-  description_hidden: "🙈 Check-in channel has been hidden from Registered Angels."
-  color_visible: "#2ecc71"
-  color_hidden: "#e67e22"
 
 resetting:
   title: Resetting...
@@ -100,33 +93,30 @@ reset_complete:
   description: "Google Sheet updated!\n\nOperation finished in **{elapsed:.2f} seconds**."
   color: "#2ecc71"
 
-schedule_usage:
-  title: "{role} Scheduling"
-  description: |
-    Usage: `/gal schedule <reg/checkin> [MM-DD-YY HH:MM AM/PM]`
-    Example: `/gal schedule reg 07-08-25 05:03 PM`
-    (Time must be in **PST**!)
-  color: "#3498db"
-
-schedule_status:
-  title: "Schedule for {role}"
-  description: "{role} is scheduled to open at **{time}**."
-  color: "#e67e22"
-
-schedule_set:
-  title: "{role} Scheduled"
-  description: "{role} is now scheduled to open at **{time}**."
+schedule_created:
+  title: "{type} Event Scheduled"
+  description: "Event **{event}** scheduled:\n\nOpen at: <t:{open_ts}:F>{close_str}"
   color: "#2ecc71"
 
-schedule_cancel:
-  title: "{role} Schedule Cancelled"
-  description: "The schedule for {role} has been cancelled."
+schedule_edited:
+  title: "{type} Event Edited"
+  description: "Event **{event}** rescheduled:\n\nOpen at: <t:{open_ts}:F>{close_str}"
+  color: "#f1c40f"
+
+schedule_deleted:
+  title: "{type} Event Deleted"
+  description: "Event **{event}** was deleted. Schedule for {type} cleared."
   color: "#e67e22"
 
-schedule_cancel_none:
-  title: "{role} Not Scheduled"
-  description: "There was no schedule to cancel for {role}."
-  color: "#e67e22"
+schedule_open:
+  title: "{type} Channel Opened"
+  description: "{type} channel is now open! ({time})"
+  color: "#2ecc71"
+
+schedule_close:
+  title: "{type} Channel Closed"
+  description: "{type} has been auto-closed at <t:{close_ts}:F>."
+  color: "#e74c3c"
 
 reminder_dm:
   description: "Hi! You are registered for the upcoming event, but have not checked in yet. Please check in before the deadline to confirm your spot!"
@@ -135,6 +125,21 @@ reminder_public:
   title: "Reminder Results"
   description: "Sent reminders to **{count}** user(s):\n{users}"
   color: "#f1c40f"
+
+event_mode_current:
+  title: "Event Mode"
+  description: "The current event mode is **{mode}**."
+  color: "#7289da"
+
+event_mode_set:
+  title: "Event Mode Updated"
+  description: "Event mode set to **{mode}**.\n\nAll registration logic and views will now use this mode."
+  color: "#2ecc71"
+
+event_mode_invalid:
+  title: "Invalid Event Mode"
+  description: "That event mode is not recognized. Allowed: **{allowed}**."
+  color: "#e67e22"
 
 placements:
   title: Checked-In Player Latest Placements
@@ -167,7 +172,6 @@ help:
   title: "GAL Bot Help"
   description: "Click a command below to use it, or type it manually."
   commands:
-    register: "Register for the tournament. Example: /gal register <IGN> (and team name if double up)."
     toggle: "Toggle Registration or Check In channels. Example: /gal toggle <registration|checkin>"
     checkin: "Check in for the event."
     registeredlist: "View all registered players and teams."

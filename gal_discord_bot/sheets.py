@@ -69,10 +69,6 @@ async def retry_until_successful(fn, *args, **kwargs):
 sheet_cache = {"users": {}, "last_refresh": 0}
 cache_lock = asyncio.Lock()
 
-def similar(a, b):
-    from difflib import SequenceMatcher
-    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
-
 def ordinal_suffix(n):
     n = int(n)
     if 11 <= (n % 100) <= 13:
@@ -156,36 +152,62 @@ async def find_or_register_user(discord_tag, ign, guild_id=None, team_name=None)
         guild_id = str(SHEET_KEY)
     mode = get_event_mode_for_guild(guild_id)
     sheet = get_sheet_for_guild(guild_id, "GAL Database")
-    b_col = await retry_until_successful(sheet.col_values, 2)
-    row_num = None
-    # 1. Check if user exists
-    for i in range(3, len(b_col) + 1):
-        val = b_col[i - 1] if i - 1 < len(b_col) else ""
-        if val.strip() == discord_tag:
-            row_num = i
-            break
-    # 2. If not, find first empty row
-    if not row_num:
-        for i in range(3, len(b_col) + 2):
-            val = b_col[i - 1] if i - 1 < len(b_col) else ""
-            if not val.strip():
+
+    # Try to find the user in cache
+    user_tuple = sheet_cache["users"].get(discord_tag)
+    if user_tuple:
+        row_num = user_tuple[0]
+    else:
+        # Find the row in the sheet by discord_tag (B col)
+        b_col = await retry_until_successful(sheet.col_values, 2)
+        row_num = None
+        for i in range(3, len(b_col) + 1):
+            if b_col[i - 1].strip() == discord_tag:
                 row_num = i
                 break
-    if not row_num:
-        row_num = len(b_col) + 1
 
-    # Update cells
-    await retry_until_successful(sheet.update_acell, f"B{row_num}", discord_tag)
-    await retry_until_successful(sheet.update_acell, f"D{row_num}", ign)
-    if mode == "doubleup" and team_name:
-        await retry_until_successful(sheet.update_acell, f"E{row_num}", team_name)
-    reg_col = "G" if mode == "doubleup" else "F"
-    await retry_until_successful(sheet.update_acell, f"{reg_col}{row_num}", "TRUE")
-
-    # Update cache: (row, ign, reg, checkin, team)
-    team = team_name if (mode == "doubleup" and team_name) else ""
-    sheet_cache["users"][discord_tag] = (row_num, ign, "TRUE", "FALSE", team)
-    return row_num
+    if user_tuple and row_num:
+        # Update IGN if needed
+        ign_col = await retry_until_successful(sheet.col_values, 4)
+        if ign_col[row_num - 3] != ign:
+            await retry_until_successful(sheet.update_acell, f"D{row_num}", ign)
+        # Set registered to TRUE
+        reg_col = "G" if mode == "doubleup" else "F"
+        await retry_until_successful(sheet.update_acell, f"{reg_col}{row_num}", "TRUE")
+        # Update team if in doubleup
+        if mode == "doubleup" and team_name:
+            await retry_until_successful(sheet.update_acell, f"E{row_num}", team_name)
+        # Update cache directly
+        reg_val = "TRUE"
+        checkin_val = user_tuple[3] if len(user_tuple) > 3 else "FALSE"
+        team_val = team_name if mode == "doubleup" else ""
+        sheet_cache["users"][discord_tag] = (
+            row_num, ign, reg_val, checkin_val, team_val
+        )
+        return row_num
+    else:
+        # Register new user (append row)
+        values = [None] * 9  # Pad to last col
+        values[1] = discord_tag  # B
+        values[3] = ign  # D
+        if mode == "doubleup":
+            values[4] = team_name or ""  # E
+            values[6] = "TRUE"  # G: Registered
+            values[7] = "FALSE"  # H: Checked in
+        else:
+            values[5] = "TRUE"  # F: Registered
+            values[6] = "FALSE"  # G: Checked in
+        row = await retry_until_successful(sheet.append_row, values)
+        # Find new row number
+        b_col = await retry_until_successful(sheet.col_values, 2)
+        row_num = len(b_col)
+        reg_val = "TRUE"
+        checkin_val = "FALSE"
+        team_val = team_name if mode == "doubleup" else ""
+        sheet_cache["users"][discord_tag] = (
+            row_num, ign, reg_val, checkin_val, team_val
+        )
+        return row_num
 
 async def unregister_user(discord_tag, guild_id=None):
     global sheet_cache
@@ -208,11 +230,11 @@ async def unregister_user(discord_tag, guild_id=None):
         else:
             return False
     await retry_until_successful(sheet.update_acell, f"{reg_col}{row_num}", "FALSE")
-    # Update cache
+    # Update cache directly (unregister)
     user_tuple = list(user_tuple)
     user_tuple[0] = row_num
-    user_tuple[2] = "FALSE"
-    user_tuple[3] = "FALSE"
+    user_tuple[2] = "FALSE"  # Registered status
+    user_tuple[3] = "FALSE"  # Checked in status
     sheet_cache["users"][discord_tag] = tuple(user_tuple)
     return True
 
@@ -220,7 +242,7 @@ async def mark_checked_in_async(discord_tag, guild_id=None):
     global sheet_cache
     user_tuple = sheet_cache["users"].get(discord_tag)
     if not user_tuple:
-        raise Exception("User not found in cache.")
+        return False
     row_num = user_tuple[0]
     if not guild_id:
         guild_id = str(SHEET_KEY)
@@ -235,43 +257,44 @@ async def mark_checked_in_async(discord_tag, guild_id=None):
                 row_num = i
                 break
         else:
-            raise Exception("User not found in sheet after re-scan.")
-
+            return False
     await retry_until_successful(sheet.update_acell, f"{checkin_col}{row_num}", "TRUE")
-    # Update cache
+    # Update cache directly
     user_tuple = list(user_tuple)
     user_tuple[0] = row_num
     user_tuple[3] = "TRUE"
     sheet_cache["users"][discord_tag] = tuple(user_tuple)
+    return True
 
 async def unmark_checked_in_async(discord_tag, guild_id=None):
     global sheet_cache
     user_tuple = sheet_cache["users"].get(discord_tag)
-    if user_tuple:
-        row_num = user_tuple[0]
-        if not guild_id:
-            guild_id = str(SHEET_KEY)
-        mode = get_event_mode_for_guild(guild_id)
-        checkin_col = "H" if mode == "doubleup" else "G"
-        sheet = get_sheet_for_guild(guild_id, "GAL Database")
-        cell = await retry_until_successful(sheet.acell, f"B{row_num}")
-        if not cell.value or cell.value.strip() != discord_tag:
-            b_col = await retry_until_successful(sheet.col_values, 2)
-            for i in range(3, len(b_col) + 1):
-                if b_col[i - 1].strip() == discord_tag:
-                    row_num = i
-                    break
-            else:
-                return
-        await retry_until_successful(sheet.update_acell, f"{checkin_col}{row_num}", "FALSE")
-        # Update cache
-        user_tuple = list(user_tuple)
-        user_tuple[0] = row_num
-        user_tuple[3] = "FALSE"
-        sheet_cache["users"][discord_tag] = tuple(user_tuple)
+    if not user_tuple:
+        return False
+    row_num = user_tuple[0]
+    if not guild_id:
+        guild_id = str(SHEET_KEY)
+    mode = get_event_mode_for_guild(guild_id)
+    checkin_col = "H" if mode == "doubleup" else "G"
+    sheet = get_sheet_for_guild(guild_id, "GAL Database")
+    cell = await retry_until_successful(sheet.acell, f"B{row_num}")
+    if not cell.value or cell.value.strip() != discord_tag:
+        b_col = await retry_until_successful(sheet.col_values, 2)
+        for i in range(3, len(b_col) + 1):
+            if b_col[i - 1].strip() == discord_tag:
+                row_num = i
+                break
+        else:
+            return False
+    await retry_until_successful(sheet.update_acell, f"{checkin_col}{row_num}", "FALSE")
+    # Update cache directly
+    user_tuple = list(user_tuple)
+    user_tuple[0] = row_num
+    user_tuple[3] = "FALSE"
+    sheet_cache["users"][discord_tag] = tuple(user_tuple)
+    return True
 
 async def reset_registered_roles_and_sheet(guild, channel):
-    from gal_discord_bot.config import REGISTERED_ROLE, ANGEL_ROLE
     registered_role = next((r for r in guild.roles if r.name == REGISTERED_ROLE), None)
     angel_role = next((r for r in guild.roles if r.name == ANGEL_ROLE), None)
     cleared = 0

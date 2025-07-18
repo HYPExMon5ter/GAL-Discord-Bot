@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 import discord
 
-from gal_discord_bot.config import ALLOWED_ROLES, embed_from_cfg, REGISTERED_ROLE
+from gal_discord_bot.config import ALLOWED_ROLES, embed_from_cfg, REGISTERED_ROLE, REGISTRATION_CHANNEL
 from gal_discord_bot.persistence import get_persisted_msg
 from gal_discord_bot.sheets import sheet_cache, cache_lock
 
@@ -197,3 +197,34 @@ async def toggle_checkin_for_member(
     if chan_id and msg_id:
         ch = guild.get_channel(chan_id)
         await update_checkin_embed(ch, msg_id, guild)
+
+
+async def delete_previous_registrations(guild: discord.Guild, member: discord.Member):
+    """
+    Deletes all old 'New Registration' embeds (channel + DM)
+    whose footer matches member.name.
+    """
+    # 1) Channel cleanup
+    chan_id, main_msg_id = get_persisted_msg(guild.id, "registration")
+    reg_ch = guild.get_channel(chan_id) or discord.utils.get(
+        guild.text_channels,
+        name=REGISTRATION_CHANNEL
+    )
+    if reg_ch:
+        async for msg in reg_ch.history(limit=100):
+            if msg.id == main_msg_id or not (msg.author.bot and msg.embeds):
+                continue
+            emb = msg.embeds[0]
+            if emb.footer and emb.footer.text == member.name:
+                try: await msg.delete()
+                except: pass
+
+    # 2) DM cleanup
+    dm = await member.create_dm()
+    async for msg in dm.history(limit=50):
+        if not (msg.author == guild.client.user and msg.embeds):
+            continue
+        emb = msg.embeds[0]
+        if emb.footer and emb.footer.text == member.name:
+            try: await msg.delete()
+            except: pass

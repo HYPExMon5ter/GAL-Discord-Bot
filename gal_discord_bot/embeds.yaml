@@ -29,12 +29,12 @@ registration_closed:
 
 register_success_normal:
   title: "✅ New Registration!"
-  description: "**{name}** ({ign}) has just registered! 🎉"
+  description: "**{ign}** has just registered! 🎉"
   color: "#27ae60"
 
 register_success_doubleup:
   title: "✅ New Team Registration!"
-  description: "**{name}** ({ign}) joined **{team_name}**! 🤜🤛"
+  description: "**{ign}** registered for team **{team_name}**! 🤜🤛"
   color: "#27ae60"
 
 unregister_success:

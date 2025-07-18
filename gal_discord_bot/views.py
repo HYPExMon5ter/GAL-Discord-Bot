@@ -23,7 +23,7 @@ from gal_discord_bot.sheets import (
 from gal_discord_bot.utils import (
     has_allowed_role,
     has_allowed_role_from_interaction,
-    toggle_persisted_channel, send_reminder_dms, toggle_checkin_for_member,
+    toggle_persisted_channel, send_reminder_dms, toggle_checkin_for_member, delete_previous_registrations,
 )
 
 
@@ -46,15 +46,11 @@ async def create_persisted_embed(guild, channel, embed, view, persist_key, pin=T
 
 async def complete_registration(interaction, ign, pronouns, team_name, reg_modal):
     """
-    Works for both channel and DM modals, as long as you set:
-      reg_modal.guild  = <Guild>
-      reg_modal.member = <Member>
-    before calling send_modal.
+    Handles RegistrationModal submissions from both channel & DM.
+    Expects reg_modal.guild and reg_modal.member to be set,
+    and that interaction.response.defer(...) was already called.
     """
-    # 1) Ack the modal so we can use follow-ups
-    await interaction.response.defer(ephemeral=True)
-
-    # 2) Resolve guild & user from modal attributes or fallback
+    # Resolve context
     guild = getattr(reg_modal, "guild", None) or interaction.guild
     user  = getattr(reg_modal, "member", None) or interaction.user
     guild_id    = str(guild.id)
@@ -63,34 +59,77 @@ async def complete_registration(interaction, ign, pronouns, team_name, reg_modal
     reg_role    = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
 
     try:
-        # 3) Sheet writes (identical logic)
+        # 1) Write to sheet & update pronouns
         if mode == "doubleup":
-            row_num = await find_or_register_user(discord_tag, ign, guild_id=guild_id, team_name=team_name)
+            row_num = await find_or_register_user(
+                discord_tag, ign,
+                guild_id=guild_id, team_name=team_name
+            )
         else:
-            row_num = await find_or_register_user(discord_tag, ign, guild_id=guild_id)
-
+            row_num = await find_or_register_user(
+                discord_tag, ign,
+                guild_id=guild_id
+            )
         sheet = get_sheet_for_guild(guild_id, "GAL Database")
         await retry_until_successful(sheet.update_acell, f"C{row_num}", pronouns)
 
-        # 4) Give them the Registered role
+        # 2) Assign Registered role
         if reg_role and reg_role not in user.roles:
             await user.add_roles(reg_role)
 
-        # 5) Update your channel embeds
+        # 3) Refresh live embeds
         await update_live_embeds(guild)
 
-        # 6) Build and send the success embed **with the user’s avatar**
+        # 4) Delete any prior confirmations in the registration channel
+        chan_id, main_msg_id = get_persisted_msg(guild.id, "registration")
+        reg_ch = guild.get_channel(chan_id) if chan_id else None
+        if not reg_ch:
+            reg_ch = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+
+        if reg_ch:
+            async for msg in reg_ch.history(limit=100):
+                if msg.id == main_msg_id or not (msg.author.bot and msg.embeds):
+                    continue
+                emb = msg.embeds[0]
+                footer = emb.footer.text if emb.footer else ""
+                if footer == user.name:
+                    try:
+                        await msg.delete()
+                    except:
+                        pass
+
+        # 5) Also clean up old DMs (if any)
+        if isinstance(interaction.channel, discord.DMChannel):
+            dm = await user.create_dm()
+            async for msg in dm.history(limit=50):
+                if not (msg.author == interaction.client.user and msg.embeds):
+                    continue
+                emb = msg.embeds[0]
+                footer = emb.footer.text if emb.footer else ""
+                if footer == user.name:
+                    try:
+                        await msg.delete()
+                    except:
+                        pass
+
+        # 6) Build & send fresh success embed
         key = "register_success_doubleup" if mode == "doubleup" else "register_success_normal"
-        embed = embed_from_cfg(key, ign=ign, team_name=team_name or "", name=user.mention)
-        # <-- NEW LINES: set the author to the registering user -->
-        embed.set_author(
-            name=user.display_name,
-            icon_url=user.display_avatar.url
+        embed = embed_from_cfg(
+            key,
+            ign=ign,
+            team_name=team_name or "",
+            name=user.mention
         )
+        original_title = embed.title or ""
+        embed.title = None
+        embed.set_author(name=original_title, icon_url=user.display_avatar.url)
+        # footer now only the Discord username
+        embed.set_footer(text=user.name)
+
         await interaction.followup.send(embed=embed, ephemeral=False)
 
-        # 7) If this was in a DM, redraw their DM buttons
-        if interaction.channel.type is discord.ChannelType.private:
+        # 7) If in DM, redraw the buttons view
+        if isinstance(interaction.channel, discord.DMChannel):
             dm = await user.create_dm()
             async for msg in dm.history(limit=5):
                 if msg.author == interaction.client.user and msg.components:
@@ -336,85 +375,50 @@ class UnregisterButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        guild  = interaction.guild
+        member = interaction.user
+        discord_tag = str(member)
+        guild_id    = str(guild.id)
+
         try:
-            await interaction.response.defer(ephemeral=True)  # "thinking"
-            member = interaction.user
-            guild = interaction.guild
-            discord_tag = str(member)
-            guild_id = str(guild.id)
-            mode = get_event_mode_for_guild(guild_id)
+            # 1) Check registration state
             async with cache_lock:
-                user_tuple = sheet_cache["users"].get(discord_tag)
-            reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
-            registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
-            checked_in_role = discord.utils.get(guild.roles, name="Checked In")  # Make sure your checked-in role name matches
-            is_registered = False
-            is_checked_in = False
-            if user_tuple:
-                reg_val = user_tuple[2]
-                checkin_val = user_tuple[3]
-                is_registered = (
-                    (isinstance(reg_val, str) and reg_val.upper() == "TRUE") or reg_val is True
-                )
-                is_checked_in = (
-                    (isinstance(checkin_val, str) and checkin_val.upper() == "TRUE") or checkin_val is True
-                )
+                tup = sheet_cache["users"].get(discord_tag)
+            is_registered = bool(tup and str(tup[2]).upper() == "TRUE")
             if not is_registered:
                 embed = embed_from_cfg("unregister_not_registered")
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                return await interaction.response.send_message(embed=embed, ephemeral=True)
+
+            # 2) Unregister in sheet + cache
+            ok = await unregister_user(discord_tag, guild_id=guild_id)
+            if not ok:
+                # silent fail: log and return
+                await log_error(interaction.client, guild, f"[UNREGISTER-FAIL] Could not unregister {discord_tag}")
                 return
 
-            # Remove roles
-            roles_to_remove = []
-            if registered_role and registered_role in member.roles:
-                roles_to_remove.append(registered_role)
-            if checked_in_role and checked_in_role in member.roles:
-                roles_to_remove.append(checked_in_role)
-            if roles_to_remove:
-                await member.remove_roles(*roles_to_remove)
+            # 3) Remove roles
+            reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+            ci_role  = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+            to_remove = [r for r in (reg_role, ci_role) if r and r in member.roles]
+            if to_remove:
+                await member.remove_roles(*to_remove)
 
-            # Update both columns in sheet to FALSE
-            row_num = user_tuple[0]
-            if mode == "doubleup":
-                reg_col = "G"
-                checkin_col = "H"
-            else:
-                reg_col = "F"
-                checkin_col = "G"
-            sheet = get_sheet_for_guild(guild_id, "GAL Database")
-            await retry_until_successful(sheet.update_acell, f"{reg_col}{row_num}", "FALSE")
-            await retry_until_successful(sheet.update_acell, f"{checkin_col}{row_num}", "FALSE")
+            # 4) Delete old confirmations (channel + DM)
+            await delete_previous_registrations(guild, member)
 
-            # Update cache directly
-            user_tuple = list(user_tuple)
-            user_tuple[2] = "FALSE"
-            user_tuple[3] = "FALSE"
-            sheet_cache["users"][discord_tag] = tuple(user_tuple)
-
-            # Delete all previous "New Registration" embeds for this user
-            reg_channel_id, main_embed_msg_id = get_persisted_msg(guild.id, "registration")
-            if reg_channel:
-                async for msg in reg_channel.history(limit=100):
-                    if msg.id == main_embed_msg_id:
-                        continue
-                    if (
-                        msg.author.bot
-                        and msg.embeds
-                        and any(
-                            e.title and "New Registration" in e.title
-                            and (member.mention in e.description or member.display_name in e.description)
-                            for e in msg.embeds
-                        )
-                    ):
-                        try:
-                            await msg.delete()
-                        except Exception as e:
-                            await log_error(interaction.client, guild, f"Error deleting unregister msg: {e}")
-
+            # 5) Send success confirmation
             embed = embed_from_cfg("unregister_success")
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+            # 6) Refresh the persisted registration embed
+            chan_id, msg_id = get_persisted_msg(guild.id, "registration")
+            if chan_id and msg_id:
+                ch = guild.get_channel(chan_id)
+                await update_registration_embed(ch, msg_id, guild)
+
         except Exception as e:
-            await log_error(interaction.client, interaction.guild, f"[UNREGISTER-BUTTON-ERROR] {e}")
+            # silent fail on unexpected errors
+            await log_error(interaction.client, guild, f"[UNREGISTER-BUTTON-ERROR] {e}")
 
 class ToggleRegistrationButton(discord.ui.Button):
     def __init__(self):
@@ -583,14 +587,14 @@ class RegistrationModal(discord.ui.Modal):
         angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
 
+        await interaction.response.defer(ephemeral=True)  # Show "thinking..."
+
         if reg_channel and angel_role:
             overwrites = reg_channel.overwrites_for(angel_role)
             if not overwrites.view_channel:
                 embed = embed_from_cfg("registration_closed")
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
-
-        await interaction.response.defer(ephemeral=True)  # Show "thinking..."
 
         try:
             if mode == "doubleup" and not getattr(self, "bypass_similarity", False):

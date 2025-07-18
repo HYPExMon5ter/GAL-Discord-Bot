@@ -19,10 +19,10 @@ from gal_discord_bot.sheets import (
 )
 from gal_discord_bot.utils import (
     has_allowed_role_from_interaction,
-    toggle_persisted_channel,
+    toggle_persisted_channel, send_reminder_dms,
 )
 from gal_discord_bot.views import (
-    update_live_embeds, PersistentRegisteredListView, CheckInButton
+    update_live_embeds, PersistentRegisteredListView, DMActionView
 )
 
 TEST_GUILD_ID = 1385739351505240074
@@ -62,10 +62,7 @@ async def toggle(interaction: discord.Interaction, channel: str):
             ping_role=True,
         )
     else:
-        await interaction.response.send_message(
-            "Invalid channel type! Use `registration` or `checkin`.",
-            ephemeral=True
-        )
+        await interaction.response.send_message("Invalid channel type! Use `registration` or `checkin`.", ephemeral=True)
 
 @gal.command(name="event", description="View or set the event mode for this guild (normal/doubleup).")
 @app_commands.describe(mode="Set the event mode (normal/doubleup)")
@@ -196,41 +193,24 @@ async def registeredlist(interaction: discord.Interaction):
 @gal.command(name="reminder", description="DM all registered users who are not checked in.")
 async def reminder(interaction: discord.Interaction):
     if not has_allowed_role_from_interaction(interaction):
-        embed = embed_from_cfg("permission_denied")
-        return await interaction.response.send_message(embed=embed, ephemeral=True)
+        return await interaction.response.send_message(
+            embed=embed_from_cfg("permission_denied"), ephemeral=True
+        )
 
     await interaction.response.defer(ephemeral=False)
 
-    # Prepare DM embed + view
     dm_embed = embed_from_cfg("reminder_dm")
-    dmmed = []
+    guild    = interaction.guild
 
-    async with cache_lock:
-        for discord_tag, user_tuple in sheet_cache["users"].items():
-            registered = str(user_tuple[2]).upper() == "TRUE"
-            checked_in  = str(user_tuple[3]).upper() == "TRUE"
-            if registered and not checked_in:
-                # locate the member
-                member = None
-                if "#" in discord_tag:
-                    name, discrim = discord_tag.rsplit("#", 1)
-                    member = discord.utils.get(interaction.guild.members, name=name, discriminator=discrim)
-                if not member:
-                    for m in interaction.guild.members:
-                        if m.name == discord_tag or m.display_name == discord_tag:
-                            member = m
-                            break
+    # <-- NEW: single call to helper -->
+    dmmed = await send_reminder_dms(
+        client=interaction.client,
+        guild=guild,
+        dm_embed=dm_embed,
+        view_cls=DMActionView
+    )
 
-                if member:
-                    try:
-                        view = discord.ui.View(timeout=None)
-                        view.add_item(CheckInButton(guild_id=interaction.guild.id))
-                        await member.send(embed=dm_embed, view=view)
-                        dmmed.append(f"{member} (`{discord_tag}`)")
-                    except:
-                        pass
-
-    # Summarize DMs sent
+    # Summarize
     count = len(dmmed)
     users_list = "\n".join(dmmed) if dmmed else "No users could be DM'd."
     public = embed_from_cfg("reminder_public", count=count, users=users_list)
@@ -316,10 +296,7 @@ async def placements(interaction: discord.Interaction):
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-@gal.command(
-    name="reload",
-    description="Reloads embeds config, updates live messages, and refreshes presence."
-)
+@gal.command(name="reload", description="Reloads embeds config, updates live messages, and refreshes presence.")
 async def reload_cmd(interaction: discord.Interaction):
     # 1) Permission check
     if not has_allowed_role_from_interaction(interaction):

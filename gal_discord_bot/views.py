@@ -16,16 +16,14 @@ from gal_discord_bot.persistence import (
     get_event_mode_for_guild,
 )
 from gal_discord_bot.sheets import (
-    sheet_cache, cache_lock,
-    mark_checked_in_async, unmark_checked_in_async,
-    reset_registered_roles_and_sheet, reset_checked_in_roles_and_sheet,
-    retry_until_successful, get_sheet_for_guild, refresh_sheet_cache,
-    find_or_register_user
+    find_or_register_user, get_sheet_for_guild, retry_until_successful, mark_checked_in_async, unmark_checked_in_async,
+    unregister_user, refresh_sheet_cache, reset_checked_in_roles_and_sheet, cache_lock, sheet_cache,
+    reset_registered_roles_and_sheet
 )
 from gal_discord_bot.utils import (
     has_allowed_role,
     has_allowed_role_from_interaction,
-    toggle_persisted_channel,
+    toggle_persisted_channel, send_reminder_dms, toggle_checkin_for_member,
 )
 
 
@@ -47,128 +45,183 @@ async def create_persisted_embed(guild, channel, embed, view, persist_key, pin=T
     return msg
 
 async def complete_registration(interaction, ign, pronouns, team_name, reg_modal):
-    guild = interaction.guild
-    user = interaction.user
-    guild_id = str(guild.id)
+    """
+    Works for both channel and DM modals, as long as you set:
+      reg_modal.guild  = <Guild>
+      reg_modal.member = <Member>
+    before calling send_modal.
+    """
+    # 1) Ack the modal so we can use follow-ups
+    await interaction.response.defer(ephemeral=True)
+
+    # 2) Resolve guild & user from modal attributes or fallback
+    guild = getattr(reg_modal, "guild", None) or interaction.guild
+    user  = getattr(reg_modal, "member", None) or interaction.user
+    guild_id    = str(guild.id)
     discord_tag = str(user)
-    mode = get_event_mode_for_guild(guild_id)
-    reg_channel = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
-    reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    mode        = get_event_mode_for_guild(guild_id)
+    reg_role    = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
 
     try:
+        # 3) Sheet writes (identical logic)
         if mode == "doubleup":
             row_num = await find_or_register_user(discord_tag, ign, guild_id=guild_id, team_name=team_name)
-            sheet = get_sheet_for_guild(guild_id, "GAL Database")
-            await retry_until_successful(sheet.update_acell, f"C{row_num}", pronouns)
         else:
             row_num = await find_or_register_user(discord_tag, ign, guild_id=guild_id)
-            sheet = get_sheet_for_guild(guild_id, "GAL Database")
-            await retry_until_successful(sheet.update_acell, f"C{row_num}", pronouns)
 
-        # Add role
+        sheet = get_sheet_for_guild(guild_id, "GAL Database")
+        await retry_until_successful(sheet.update_acell, f"C{row_num}", pronouns)
+
+        # 4) Give them the Registered role
         if reg_role and reg_role not in user.roles:
             await user.add_roles(reg_role)
+
+        # 5) Update your channel embeds
         await update_live_embeds(guild)
 
-        # Delete previous "New Registration" embeds for this user (except main view)
-        reg_channel_id, main_embed_msg_id = get_persisted_msg(guild.id, "registration")
-        if reg_channel:
-            async for msg in reg_channel.history(limit=100):
-                if msg.id == main_embed_msg_id:
-                    continue
-                if (
-                    msg.author.bot
-                    and msg.embeds
-                    and any(
-                        e.title and "New Registration" in e.title
-                        and (user.mention in e.description or user.display_name in e.description)
-                        for e in msg.embeds
-                    )
-                ):
-                    try:
-                        await msg.delete()
-                    except Exception:
-                        pass
-
-        embed = embed_from_cfg(
-            "register_success_doubleup" if mode == "doubleup" else "register_success_normal",
-            ign=ign,
-            team_name=team_name or "",
-            name=user.mention
+        # 6) Build and send the success embed **with the user’s avatar**
+        key = "register_success_doubleup" if mode == "doubleup" else "register_success_normal"
+        embed = embed_from_cfg(key, ign=ign, team_name=team_name or "", name=user.mention)
+        # <-- NEW LINES: set the author to the registering user -->
+        embed.set_author(
+            name=user.display_name,
+            icon_url=user.display_avatar.url
         )
         await interaction.followup.send(embed=embed, ephemeral=False)
 
+        # 7) If this was in a DM, redraw their DM buttons
+        if interaction.channel.type is discord.ChannelType.private:
+            dm = await user.create_dm()
+            async for msg in dm.history(limit=5):
+                if msg.author == interaction.client.user and msg.components:
+                    await msg.edit(view=DMActionView(guild, user))
+                    break
+
     except Exception as e:
-        await log_error(interaction.client, interaction.guild, f"[REGISTER-MODAL-ERROR] {e}")
+        await log_error(interaction.client, guild, f"[REGISTER-MODAL-ERROR] {e}")
 
-class CheckInButton(discord.ui.Button):
-    def __init__(self, *, guild_id: int = None):
-        """
-        If guild_id is provided, this button is meant for a DM context;
-        otherwise it will pull guild from interaction.guild.
-        """
-        self._guild_id = guild_id
-
-        # Build a stable custom_id
-        cid = f"check_in_btn:{guild_id}" if guild_id is not None else "check_in_btn"
+class ChannelCheckInButton(discord.ui.Button):
+    def __init__(self):
         super().__init__(
-            label="Check In / Out",
+            label="Check In",
             style=discord.ButtonStyle.success,
-            custom_id=cid
+            custom_id="channel_checkin_btn"
         )
 
     async def callback(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.defer(ephemeral=True)
+        # Uses your helper to handle the sheet write, cache update, embed send, and view refresh
+        await toggle_checkin_for_member(
+            interaction,
+            mark_checked_in_async,
+            "checked_in"
+        )
 
-            # ── 1) Resolve guild & member ──────────────────────────────
-            if interaction.guild:
-                guild  = interaction.guild
-                member = interaction.user
-            else:
-                # DM case: pull guild by ID, then fetch the member
-                guild = interaction.client.get_guild(self._guild_id)
-                if guild is None:
-                    return await interaction.followup.send(
-                        "❌ Could not find the server for this reminder.",
-                        ephemeral=True
-                    )
-                member = await guild.fetch_member(interaction.user.id)
+class ChannelCheckOutButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="Check Out",
+            style=discord.ButtonStyle.danger,
+            custom_id="channel_checkout_btn"
+        )
 
-            discord_tag = str(member)
-            gid         = str(guild.id)
+    async def callback(self, interaction: discord.Interaction):
+        await toggle_checkin_for_member(
+            interaction,
+            unmark_checked_in_async,
+            "checked_out"
+        )
 
-            # ── 2) Permission check: must have REGISTERED_ROLE ─────────
-            reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
-            if reg_role not in member.roles:
-                embed = embed_from_cfg("checkin_requires_registration")
-                return await interaction.followup.send(embed=embed, ephemeral=True)
+# ─── DM REGISTER/UNREGISTER TOGGLE ──────────────────────────────
 
-            # ── 3) Read your sheet cache for current status ─────────────
-            async with cache_lock:
-                user_tuple = sheet_cache["users"].get(discord_tag, ())
-            is_checked_in = False
-            if len(user_tuple) > 3:
-                val = user_tuple[3]
-                is_checked_in = (isinstance(val, str) and val.upper()=="TRUE") or (val is True)
+class DMRegisterToggleButton(discord.ui.Button):
+    def __init__(self, guild: discord.Guild, member: discord.Member):
+        self.guild, self.member = guild, member
+        # Toggle label/style based on current registration state
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        is_reg   = reg_role in member.roles
+        label    = "Unregister" if is_reg else "Register"
+        style    = discord.ButtonStyle.danger if is_reg else discord.ButtonStyle.success
+        cid      = f"dm_regmodal_{guild.id}_{member.id}"
 
-            # ── 4) Toggle check-in state ────────────────────────────────
-            if is_checked_in:
-                ok = await unmark_checked_in_async(discord_tag, guild_id=gid)
-                resp = embed_from_cfg("checked_out") if ok else embed_from_cfg("error")
-            else:
-                ok = await mark_checked_in_async(discord_tag, guild_id=gid)
-                resp = embed_from_cfg("checked_in") if ok else embed_from_cfg("error")
+        super().__init__(label=label, style=style, custom_id=cid)
 
-            await interaction.followup.send(embed=resp, ephemeral=True)
+    async def callback(self, interaction: discord.Interaction):
+        # 1) Prefill exactly as in RegisterButton
+        guild_id = str(self.guild.id)
+        mode     = get_event_mode_for_guild(guild_id)
+        discord_tag = str(self.member)
 
-        except Exception as e:
-            # log_error is your own helper
-            await log_error(
-                interaction.client,
-                interaction.guild or interaction.client.get_guild(self._guild_id),
-                f"[CHECKIN-BUTTON-ERROR] {e}"
+        # Try to prefill from cache
+        ign = pronouns = team_name = ""
+        async with cache_lock:
+            tup = sheet_cache["users"].get(discord_tag)
+            if tup:
+                ign       = tup[1]
+                team_name = tup[4] if len(tup) > 4 else ""
+                sheet     = get_sheet_for_guild(guild_id, "GAL Database")
+                try:
+                    cell = await retry_until_successful(sheet.acell, f"C{tup[0]}")
+                    pronouns = cell.value or ""
+                except:
+                    pronouns = ""
+
+        # 2) Build the modal
+        if mode == "doubleup":
+            modal = RegistrationModal(
+                team_field=True,
+                default_ign=ign,
+                default_team=team_name,
+                default_pronouns=pronouns
             )
+        else:
+            modal = RegistrationModal(
+                team_field=False,
+                default_ign=ign,
+                default_pronouns=pronouns
+            )
+
+        # 3) Attach context for complete_registration
+        modal.guild  = self.guild
+        modal.member = self.member
+
+        # 4) Show the modal in DM
+        await interaction.response.send_modal(modal)
+
+# ─── DM CHECK-IN/OUT TOGGLE ──────────────────────────────────────
+
+class DMCheckToggleButton(discord.ui.Button):
+    def __init__(self, guild: discord.Guild, member: discord.Member):
+        self.guild, self.member = guild, member
+        # determine state & availability
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        ci_role  = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+        ci_ch    = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+        is_open  = bool(ci_ch and ci_ch.overwrites_for(reg_role).view_channel)
+        is_reg   = reg_role in member.roles
+        is_ci    = ci_role in member.roles
+
+        label = "Check Out" if is_ci else "Check In"
+        style = discord.ButtonStyle.danger if is_ci else discord.ButtonStyle.success
+        cid   = f"dm_citoggle_{guild.id}_{member.id}"
+        super().__init__(
+            label=label,
+            style=style,
+            custom_id=cid,
+            disabled=not (is_open and is_reg)
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        # pass our stored guild & member so toggle_checkin_for_member can assign roles correctly
+        await toggle_checkin_for_member(
+            interaction,
+            mark_checked_in_async if self.label == "Check In" else unmark_checked_in_async,
+            "checked_in" if self.label == "Check In" else "checked_out",
+            guild=self.guild,
+            member=self.member
+        )
+
+        # redraw your per-user DM view
+        await interaction.edit_original_response(view=DMActionView(self.guild, self.member))
 
 class ResetCheckInsButton(discord.ui.Button):
     def __init__(self):
@@ -231,31 +284,47 @@ class RegisterButton(discord.ui.Button):
         super().__init__(label=label, style=style, custom_id=custom_id)
 
     async def callback(self, interaction: discord.Interaction):
+        # 1) Gather context & prefill values
         guild_id = str(interaction.guild.id)
-        mode = get_event_mode_for_guild(guild_id)
-        user = interaction.user
+        mode     = get_event_mode_for_guild(guild_id)
+        user     = interaction.user
         discord_tag = str(user)
-        # Try to prefill from the cache (if available)
-        pronouns = ""
-        team_name = ""
-        ign = ""
+
+        # Try to prefill from the cache if available
+        ign = pronouns = team_name = ""
         async with cache_lock:
-            user_tuple = sheet_cache["users"].get(discord_tag)
-            if user_tuple:
-                ign = user_tuple[1]
-                team_name = user_tuple[4] if len(user_tuple) > 4 else ""
-                # Fetch pronouns from sheet (Col C)
+            tup = sheet_cache["users"].get(discord_tag)
+            if tup:
+                ign       = tup[1]
+                team_name = tup[4] if len(tup) > 4 else ""
+                # pronouns from sheet col C
                 sheet = get_sheet_for_guild(guild_id, "GAL Database")
                 try:
-                    pronouns_cell = await retry_until_successful(sheet.acell, f"C{user_tuple[0]}")
-                    pronouns = pronouns_cell.value if pronouns_cell and pronouns_cell.value else ""
-                except Exception:
+                    cell = await retry_until_successful(sheet.acell, f"C{tup[0]}")
+                    pronouns = cell.value or ""
+                except:
                     pronouns = ""
 
+        # 2) Build the modal
         if mode == "doubleup":
-            modal = RegistrationModal(team_field=True, default_ign=ign, default_team=team_name, default_pronouns=pronouns)
+            modal = RegistrationModal(
+                team_field=True,
+                default_ign=ign,
+                default_team=team_name,
+                default_pronouns=pronouns
+            )
         else:
-            modal = RegistrationModal(team_field=False, default_ign=ign, default_pronouns=pronouns)
+            modal = RegistrationModal(
+                team_field=False,
+                default_ign=ign,
+                default_pronouns=pronouns
+            )
+
+        # 3) Attach context so complete_registration works in DMs too
+        modal.guild  = interaction.guild
+        modal.member = interaction.user
+
+        # 4) Send the modal
         await interaction.response.send_modal(modal)
 
 class UnregisterButton(discord.ui.Button):
@@ -434,59 +503,37 @@ class ResetRegistrationButton(discord.ui.Button):
 class PersistentReminderButton(discord.ui.Button):
     def __init__(self, guild_id: int):
         super().__init__(
-            label="DM Reminder to Unchecked",
+            label="✉️ DM Reminder to Unchecked",
             style=discord.ButtonStyle.primary,
-            emoji="✉️",
             custom_id=f"reminder_dm_all_{guild_id}"
         )
         self.guild_id = guild_id
 
     async def callback(self, interaction: discord.Interaction):
-        # Permission guard
-        if not interaction.user.guild_permissions.manage_guild:
-            embed = embed_from_cfg("permission_denied")
-            return await interaction.response.send_message(embed=embed, ephemeral=True)
+        if not has_allowed_role_from_interaction(interaction):
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("permission_denied"),
+                ephemeral=True
+            )
 
-        # Load the embed once
-        dm_embed = embed_from_cfg("reminder_dm")
-        dm_view  = discord.ui.View()  # We'll attach the CheckInButton below
+        await interaction.response.defer()
 
-        # Send DMs
-        dmmed = []
         guild = interaction.client.get_guild(self.guild_id)
-        async with cache_lock:
-            for discord_tag, user_tuple in sheet_cache["users"].items():
-                registered = str(user_tuple[2]).strip().upper() == "TRUE"
-                checked_in  = str(user_tuple[3]).strip().upper() == "TRUE"
-                if registered and not checked_in:
-                    # find the Member object
-                    member = None
-                    if "#" in discord_tag:
-                        name, discrim = discord_tag.rsplit("#", 1)
-                        member = discord.utils.get(guild.members, name=name, discriminator=discrim)
-                    if not member:
-                        for m in guild.members:
-                            if m.name == discord_tag or m.display_name == discord_tag:
-                                member = m; break
+        dm_embed = embed_from_cfg("reminder_dm")
 
-                    if member:
-                        try:
-                            # attach a CheckInButton that works in DMs
-                            view = discord.ui.View(timeout=None)
-                            view.add_item(
-                                # reuse your existing CheckInButton, passing guild_id so it knows context
-                                CheckInButton(guild_id=guild.id)
-                            )
-                            await member.send(embed=dm_embed, view=view)
-                            dmmed.append(f"{member} (`{discord_tag}`)")
-                        except:
-                            pass
+        # <-- NEW: send all DMs via helper -->
+        dmmed = await send_reminder_dms(
+            client=interaction.client,
+            guild=guild,
+            dm_embed=dm_embed,
+            view_cls=DMActionView
+        )
 
-        # Report back in the guild
+        # Report back
         count = len(dmmed)
         users_list = "\n".join(dmmed) or "No users could be DM'd."
         public = embed_from_cfg("reminder_public", count=count, users=users_list)
-        await interaction.response.send_message(embed=public, ephemeral=False)
+        await interaction.followup.send(embed=public)
 
 class RegistrationModal(discord.ui.Modal):
     def __init__(self, *, team_field=False, default_ign=None, default_team=None, default_pronouns=None, bypass_similarity=False):
@@ -621,16 +668,17 @@ class CheckInView(discord.ui.View):
     def __init__(self, guild):
         super().__init__(timeout=None)
         self.guild = guild
-        checkin_channel = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
-        registered_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
-        is_open = False
-        if checkin_channel and registered_role:
-            overwrites = checkin_channel.overwrites_for(registered_role)
-            is_open = bool(overwrites.view_channel)
+        checkin_ch = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+        reg_role   = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        is_open = bool(checkin_ch and reg_role and checkin_ch.overwrites_for(reg_role).view_channel)
+
         if is_open:
-            self.add_item(CheckInButton())
+            # show both separate buttons + toggle
+            self.add_item(ChannelCheckInButton())
+            self.add_item(ChannelCheckOutButton())
             self.add_item(ToggleCheckInButton())
         else:
+            # when closed, just toggle/reset
             self.add_item(ToggleCheckInButton())
             self.add_item(ResetCheckInsButton())
 
@@ -652,6 +700,34 @@ class RegistrationView(discord.ui.View):
         else:
             self.add_item(ToggleRegistrationButton())
             self.add_item(ResetRegistrationButton())
+
+class DMActionView(discord.ui.View):
+    def __init__(self, guild: discord.Guild, member: discord.Member):
+        super().__init__(timeout=None)
+        self.guild, self.member = guild, member
+
+        # ─── Determine channel‐open status ─────────────────────────
+        reg_ch = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+        angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+        # registration open if ANGEL_ROLE can view that channel
+        reg_open = bool(reg_ch and angel_role and reg_ch.overwrites_for(angel_role).view_channel)
+
+        ci_ch = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        # check-in open if REGISTERED_ROLE can view that channel
+        ci_open = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
+
+        is_reg = reg_role in member.roles
+
+        # ─── Register / Unregister toggle (always shown) ──────────
+        reg_btn = DMRegisterToggleButton(guild, member)
+        # only enable if reg channel is open
+        reg_btn.disabled = not reg_open
+        self.add_item(reg_btn)
+
+        # ─── Check In / Check Out toggle ──────────────────────────
+        if ci_open and is_reg:
+            self.add_item(DMCheckToggleButton(guild, member))
 
 class PersistentRegisteredListView(discord.ui.View):
     def __init__(self, guild):

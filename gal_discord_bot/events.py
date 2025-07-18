@@ -8,11 +8,10 @@ import discord
 from rapidfuzz import fuzz
 
 from gal_discord_bot.config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, \
-    update_gal_command_ids, embed_from_cfg, LOG_CHANNEL_NAME, EMBEDS_CFG
-from gal_discord_bot.persistence import get_schedule, set_schedule, migrate_legacy, get_persisted_msg
+    embed_from_cfg, LOG_CHANNEL_NAME, EMBEDS_CFG
+from gal_discord_bot.persistence import set_schedule
 from gal_discord_bot.sheets import refresh_sheet_cache, cache_refresh_loop
-from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView, create_persisted_embed, \
-    RegistrationView, CheckInView
+from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView
 
 scheduled_event_cache = {}  # key: (guild.id, event.id), value: (open_time, close_time)
 open_tasks = {}    # key: (guild.id, event.id, "open"), value: asyncio.Task

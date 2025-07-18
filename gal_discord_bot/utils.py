@@ -1,12 +1,12 @@
 # gal_discord_bot/utils.py
-
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import discord
 
-from gal_discord_bot.config import ALLOWED_ROLES, embed_from_cfg
+from gal_discord_bot.config import ALLOWED_ROLES, embed_from_cfg, REGISTERED_ROLE
 from gal_discord_bot.persistence import get_persisted_msg
+from gal_discord_bot.sheets import sheet_cache, cache_lock
 
 
 def has_allowed_role(member: discord.Member) -> bool:
@@ -99,3 +99,101 @@ async def toggle_persisted_channel(
     # feedback to user
     feedback = embed_from_cfg(f"{persist_key}_channel_toggled", visible=new_open)
     await interaction.response.send_message(embed=feedback, ephemeral=True)
+
+
+def resolve_member(guild: discord.Guild, discord_tag: str) -> discord.Member | None:
+    """Find a Member in this guild by tag or name/display_name."""
+    if "#" in discord_tag:
+        name, discrim = discord_tag.rsplit("#", 1)
+        m = discord.utils.get(guild.members, name=name, discriminator=discrim)
+        if m:
+            return m
+    for m in guild.members:
+        if m.name == discord_tag or m.display_name == discord_tag:
+            return m
+    return None
+
+
+async def send_reminder_dms(
+    client: discord.Client,
+    guild: discord.Guild,
+    dm_embed: discord.Embed,
+    view_cls: type[discord.ui.View]
+) -> list[str]:
+    """
+    DM every registered-but-not-checked-in user in `guild` with `dm_embed` and a view from `view_cls`,
+    returning a list of f"{member} (`{tag}`)" for each DM successfully sent.
+    """
+    dmmed: list[str] = []
+    async with cache_lock:
+        for discord_tag, user_tuple in sheet_cache["users"].items():
+            is_reg   = str(user_tuple[2]).upper() == "TRUE"
+            is_ci    = str(user_tuple[3]).upper() == "TRUE"
+            if not (is_reg and not is_ci):
+                continue
+
+            member = resolve_member(guild, discord_tag)
+            if not member:
+                continue
+
+            try:
+                view = view_cls(guild, member)
+                await member.send(embed=dm_embed, view=view)
+                dmmed.append(f"{member} (`{discord_tag}`)")
+            except:
+                pass
+
+    return dmmed
+
+
+async def toggle_checkin_for_member(
+    interaction: discord.Interaction,
+    checkin_fn,
+    success_key: str,
+    *,
+    guild: discord.Guild = None,
+    member: discord.Member = None
+):
+    """
+    Toggle a user’s checked-in state via `checkin_fn`, update cache,
+    add/remove the CHECKED_IN_ROLE, send feedback, and refresh the embed.
+    """
+    from gal_discord_bot.views import update_checkin_embed  # lazy to avoid circular import
+    from gal_discord_bot.config import REGISTERED_ROLE, CHECKED_IN_ROLE
+
+    # 1) Defer + resolve context
+    await interaction.response.defer(ephemeral=True)
+    guild = guild or interaction.guild
+    member = member or interaction.user
+    if not guild or not member:
+        return
+
+    # 2) Must be registered
+    reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    if reg_role not in member.roles:
+        return await interaction.followup.send(
+            embed=embed_from_cfg("checkin_requires_registration"),
+            ephemeral=True
+        )
+
+    # 3) Sheet write & cache update
+    discord_tag = str(member)
+    ok = await checkin_fn(discord_tag, guild_id=str(guild.id))
+
+    # 4) Assign/unassign the actual Discord role
+    ci_role = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+    if ok and ci_role:
+        if success_key == "checked_in":
+            await member.add_roles(ci_role)
+        else:  # "checked_out"
+            await member.remove_roles(ci_role)
+
+    # 5) Feedback embed
+    resp = embed_from_cfg(success_key) if ok else embed_from_cfg("error")
+    await interaction.followup.send(embed=resp, ephemeral=True)
+
+    # 6) Refresh the shared check-in embed in the channel
+    chan_id, msg_id = get_persisted_msg(guild.id, "checkin")
+    if chan_id and msg_id:
+        ch = guild.get_channel(chan_id)
+        await update_checkin_embed(ch, msg_id, guild)

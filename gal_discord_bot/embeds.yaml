@@ -10,7 +10,7 @@
 registration:
   title: "🎉 Registration Is Now **OPEN**! 🎉"
   description: |
-    🎫 Click the **Register** button below to secure your spot in the Tournament!
+    Click the **Register** button below to secure your spot in the Tournament!
     
     > *💡 Tip:* You can update your info at any time by clicking **Register** again.
   color: "#43b581"
@@ -24,31 +24,31 @@ registration_channel_toggled:
 
 registration_closed:
   title: "⛔ Registration Closed"
-  description: "❌ You **cannot** register at this time. Stay tuned for the next round!"
+  description: "❌ You **cannot** register at this time. Stay tuned for the next Tournament!"
   color: "#e67e22"
 
 register_success_normal:
   title: "✅ New Registration!"
-  description: "**{name}** (`{ign}`) has just registered. Welcome aboard! 🎉"
+  description: "**{name}** ({ign}) has just registered! 🎉"
   color: "#27ae60"
 
 register_success_doubleup:
   title: "✅ New Team Registration!"
-  description: "**{name}** (`{ign}`) joined **{team_name}**. Good luck, team! 🤜🤛"
+  description: "**{name}** ({ign}) joined **{team_name}**! 🤜🤛"
   color: "#27ae60"
 
 unregister_success:
-  title: "🗑️ Unregistered"
-  description: "You have been successfully unregistered. We’ll miss you! 😢"
+  title: "❌ Unregistered"
+  description: "You have been successfully unregistered. Keep your eye out for future Tournaments!"
   color: "#e67e22"
 
 unregister_not_registered:
   title: "ℹ️ Not Registered"
-  description: "You’re not currently registered. Type `/gal register` to join the fun!"
+  description: "You’re not currently registered. 👉 Click the **Register** button."
   color: "#e74c3c"
 
 checkin:
-  title: "✅ Check-In Is Now **OPEN**!"
+  title: "✅ Check In Is Now **OPEN**!"
   description: |
     🔒 To lock in your spot, click the **Check In** button below.
 
@@ -59,29 +59,29 @@ checkin:
   color: "#3498db"
 
 checkin_channel_toggled:
-  title: "🔄 Check-In Channel Toggled"
-  description_visible: "👁️  Check-In channel is now **visible** to Registered Angels."
-  description_hidden:  "🙈  Check-In channel has been **hidden** from Registered Angels."
+  title: "🔄 Check In Channel Toggled"
+  description_visible: "👁️  Check In channel is now **visible** to Registered Angels."
+  description_hidden:  "🙈  Check In channel has been **hidden** from Registered Angels."
   color_visible: "#2ecc71"
   color_hidden:  "#e67e22"
 
 checkin_closed:
-  title: "⏳ Check-In Closed"
-  description: "❌ Check-in is now closed. See you next time!"
+  title: "⛔ Check In Closed"
+  description: "❌ Check In is now closed. See you next time!"
   color: "#e67e22"
 
 checkin_requires_registration:
   title: "⚠️ Registration Required"
-  description: "You must register before checking in! 👉 Click **Register** in the Registration channel."
+  description: "You must register before checking in! 👉 Click the **Register** button."
   color: "#e74c3c"
 
 checked_in:
-  title: "🎖️ Checked In"
-  description: "You’re all set! Good luck in the Tournament. 🍀"
+  title: "✅ Checked In"
+  description: "You’re now checked in. Good luck in the Tournament! 🍀"
   color: "#2ecc71"
 
 checked_out:
-  title: "🏁 Checked Out"
+  title: "❌ Checked Out"
   description: "You are no longer checked in. See you soon! 👋"
   color: "#e67e22"
 
@@ -129,16 +129,16 @@ schedule_close:
   color: "#e74c3c"
 
 reminder_dm:
-  title: "🔔 Check-In Reminder"
+  title: "🔔 Guardian Angel League Check In Reminder"
   description: |
-    Hello there! You’re registered for the upcoming tournament but **haven’t checked in** yet.
+    👋 **Hello Angel!**  
+    You’re registered for the upcoming Guardian Angel League Tournament but **haven’t checked in** yet.
     
-    👉 **How it works:**
-    • Press the **Check In / Out** button below to confirm or cancel your spot.  
-    • The button only works when check-in is **open** on this server.  
-    • You must be **registered** to use it.
+    **What to do below:**
+    📝 **Register / ❌ Unregister** – Join or leave the tournament in a flash!
+    ✅ **Check In / 🔒 Check Out** – Lock in or release your spot in the Tournament.
     
-    Good luck, and see you soon! 🍀
+    Good luck, Angel! See you in the Tournament 🏆
   color: "#3498db"
 
 reminder_public:
@@ -147,6 +147,13 @@ reminder_public:
     Sent reminders to **{count}** user(s):  
     {users}
   color: "#f1c40f"
+
+cache:
+  title: "🔄 Cache Refreshed"
+  description: |
+    ✅ Updated **{updated}** of **{count}** users from the Google Sheet!  
+    ⏱️ Completed in **{elapsed:.2f}** seconds.
+  color: "#2ecc71"
 
 event_mode_current:
   title: "🎮 Current Event Mode"

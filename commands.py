@@ -5,23 +5,23 @@ import time
 import discord
 from discord import app_commands
 
-from gal_discord_bot.config import (
+from config import (
     embed_from_cfg, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
     REGISTERED_ROLE, ANGEL_ROLE, load_embeds_cfg
 )
-from gal_discord_bot.logging_utils import log_error
-from gal_discord_bot.persistence import (
+from logging_utils import log_error
+from persistence import (
     get_event_mode_for_guild, set_event_mode_for_guild
 )
-from gal_discord_bot.riot_api import get_summoner_info, get_latest_tft_placement
-from gal_discord_bot.sheets import (
+from riot_api import get_summoner_info, get_latest_tft_placement
+from sheets import (
     sheet_cache, cache_lock, refresh_sheet_cache
 )
-from gal_discord_bot.utils import (
+from utils import (
     has_allowed_role_from_interaction,
     toggle_persisted_channel, send_reminder_dms,
 )
-from gal_discord_bot.views import (
+from views import (
     update_live_embeds, PersistentRegisteredListView, DMActionView
 )
 
@@ -339,7 +339,7 @@ async def help_cmd(interaction: discord.Interaction):
         description=cfg.get("description", ""),
         color=discord.Color.blurple()
     )
-    from gal_discord_bot.config import GAL_COMMAND_IDS
+    from config import GAL_COMMAND_IDS
     cmd_descs = cfg.get("commands", {})
     for cmd_name, cmd_id in GAL_COMMAND_IDS.items():
         desc = cmd_descs.get(cmd_name, "")

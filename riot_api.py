@@ -4,7 +4,7 @@ import urllib.parse
 
 import requests
 
-from gal_discord_bot.config import RIOT_API_KEY
+from config import RIOT_API_KEY
 
 RIOT_API_REGION = "na1"
 TFT_REGION = "americas"

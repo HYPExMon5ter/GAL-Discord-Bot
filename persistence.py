@@ -3,7 +3,7 @@
 import json
 import os
 
-from gal_discord_bot.config import DATABASE_URL
+from config import DATABASE_URL
 
 PERSIST_FILE = os.path.join(os.path.dirname(__file__), "persisted_views.json")
 

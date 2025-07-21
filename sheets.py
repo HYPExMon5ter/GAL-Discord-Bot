@@ -13,7 +13,7 @@ from urllib.parse import quote
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-from gal_discord_bot.config import (
+from config import (
     SHEET_KEY,
     DOUBLEUP_SHEET_KEY,
     CACHE_REFRESH_SECONDS,
@@ -21,7 +21,7 @@ from gal_discord_bot.config import (
     CHECKED_IN_ROLE,
     ANGEL_ROLE,
 )
-from gal_discord_bot.persistence import get_event_mode_for_guild
+from persistence import get_event_mode_for_guild
 
 scope = [
     "https://spreadsheets.google.com/feeds",

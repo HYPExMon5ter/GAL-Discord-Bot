@@ -5,9 +5,9 @@ from zoneinfo import ZoneInfo
 
 import discord
 
-from gal_discord_bot.config import ALLOWED_ROLES, embed_from_cfg, REGISTERED_ROLE, REGISTRATION_CHANNEL
-from gal_discord_bot.persistence import get_persisted_msg
-from gal_discord_bot.sheets import sheet_cache, cache_lock
+from config import ALLOWED_ROLES, embed_from_cfg
+from persistence import get_persisted_msg
+from sheets import sheet_cache, cache_lock
 
 def has_allowed_role(member: discord.Member) -> bool:
     """Check if a member has any of the staff roles."""
@@ -29,15 +29,15 @@ async def toggle_persisted_channel(
     Universal “open/close channel + update embed” helper.
     """
     # ─── Lazy imports to break circularity ───────────────────────────
-    from gal_discord_bot.events import schedule_channel_open
-    from gal_discord_bot.views import (
+    from events import schedule_channel_open
+    from views import (
         create_persisted_embed,
         RegistrationView,
         CheckInView,
         update_registration_embed,
         update_checkin_embed,
     )
-    from gal_discord_bot.utils import update_dm_action_views  # now legal, utils is fully defined
+    from utils import update_dm_action_views  # now legal, utils is fully defined
 
     guild = interaction.guild
     channel = discord.utils.get(guild.text_channels, name=channel_name)
@@ -152,9 +152,9 @@ async def toggle_checkin_for_member(
     Toggle a user’s checked-in state via `checkin_fn`, update cache,
     add/remove the CHECKED_IN_ROLE, send feedback, and refresh the embed.
     """
-    from gal_discord_bot.views import update_checkin_embed  # lazy to avoid circular import
-    from gal_discord_bot.config import REGISTERED_ROLE, CHECKED_IN_ROLE
-    from gal_discord_bot.persistence import get_persisted_msg
+    from views import update_checkin_embed  # lazy to avoid circular import
+    from config import REGISTERED_ROLE, CHECKED_IN_ROLE
+    from persistence import get_persisted_msg
 
     # 1) Defer + resolve context
     await interaction.response.defer(ephemeral=True)
@@ -199,7 +199,7 @@ async def update_dm_action_views(guild: discord.Guild):
     and re-edit it with a fresh DMActionView so buttons reflect current open/closed state.
     """
     # local import breaks circularity
-    from gal_discord_bot.views import DMActionView
+    from views import DMActionView
 
     rem_embed = embed_from_cfg("reminder_dm")
     rem_title = rem_embed.title

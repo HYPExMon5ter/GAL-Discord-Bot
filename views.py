@@ -7,22 +7,21 @@ from itertools import groupby
 import discord
 from rapidfuzz import process, fuzz
 
-from gal_discord_bot.config import (
+from config import (
     embed_from_cfg, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
-    REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE,
-    get_cmd_id
+    REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE
 )
-from gal_discord_bot.logging_utils import log_error
-from gal_discord_bot.persistence import (
+from logging_utils import log_error
+from persistence import (
     get_persisted_msg, set_persisted_msg,
     get_event_mode_for_guild,
 )
-from gal_discord_bot.sheets import (
+from sheets import (
     find_or_register_user, get_sheet_for_guild, retry_until_successful, mark_checked_in_async, unmark_checked_in_async,
     unregister_user, refresh_sheet_cache, reset_checked_in_roles_and_sheet, cache_lock, sheet_cache,
     reset_registered_roles_and_sheet, hyperlink_lolchess_profiles
 )
-from gal_discord_bot.utils import (
+from utils import (
     has_allowed_role,
     has_allowed_role_from_interaction,
     toggle_persisted_channel, send_reminder_dms, toggle_checkin_for_member,
@@ -283,7 +282,7 @@ class DMCheckToggleButton(discord.ui.Button):
         )
 
         # 5) Redraw the DM view so buttons re-enable/disable correctly
-        from gal_discord_bot.views import DMActionView
+        from views import DMActionView
         await interaction.edit_original_response(view=DMActionView(self.guild, self.member))
 
 class ResetCheckInsButton(discord.ui.Button):

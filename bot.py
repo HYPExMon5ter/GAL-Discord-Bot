@@ -5,9 +5,9 @@ import logging
 import discord
 from discord.ext import commands
 
-from gal_discord_bot.commands import gal
-from gal_discord_bot.config import DISCORD_TOKEN
-from gal_discord_bot.events import setup_events
+from commands import gal
+from config import DISCORD_TOKEN
+from events import setup_events
 
 # Logging setup
 handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')

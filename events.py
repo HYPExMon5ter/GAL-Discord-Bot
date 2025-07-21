@@ -7,12 +7,12 @@ from zoneinfo import ZoneInfo
 import discord
 from rapidfuzz import fuzz
 
-from gal_discord_bot.config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, \
+from config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, \
     embed_from_cfg, LOG_CHANNEL_NAME, EMBEDS_CFG
-from gal_discord_bot.persistence import set_schedule
-from gal_discord_bot.sheets import refresh_sheet_cache, cache_refresh_loop
-from gal_discord_bot.utils import update_dm_action_views
-from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView
+from persistence import set_schedule
+from sheets import refresh_sheet_cache, cache_refresh_loop
+from utils import update_dm_action_views
+from views import update_live_embeds, PersistentRegisteredListView
 
 scheduled_event_cache = {}  # key: (guild.id, event.id), value: (open_time, close_time)
 open_tasks = {}    # key: (guild.id, event.id, "open"), value: asyncio.Task
@@ -166,7 +166,7 @@ async def _handle_event_schedule(bot, event, is_edit):
         await log_channel.send(embed=embed)
 
 async def schedule_channel_open(bot, guild, channel_name, role_name, open_time, ping_role=True):
-    from gal_discord_bot.views import update_live_embeds
+    from views import update_live_embeds
     now = datetime.now(ZoneInfo("UTC"))
     wait_seconds = (open_time - now).total_seconds()
     if wait_seconds > 0:
@@ -196,7 +196,7 @@ async def schedule_channel_open(bot, guild, channel_name, role_name, open_time, 
         await update_dm_action_views(guild)
 
 async def schedule_channel_close(bot, guild, channel_name, role_name, close_time):
-    from gal_discord_bot.views import update_live_embeds
+    from views import update_live_embeds
     now = datetime.now(ZoneInfo("UTC"))
     wait_seconds = (close_time - now).total_seconds()
     if wait_seconds > 0:

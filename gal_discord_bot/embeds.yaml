@@ -80,10 +80,20 @@ checked_in:
   description: "You’re now checked in. Good luck in the Tournament! 🍀"
   color: "#2ecc71"
 
+already_checked_in:
+  title: "⚠️ Already Checked In"
+  description: "You’ve already confirmed your spot! If you need to cancel, click **Check Out**."
+  color: "#f1c40f"
+
 checked_out:
   title: "❌ Checked Out"
   description: "You are no longer checked in. See you soon! 👋"
   color: "#e67e22"
+
+already_checked_out:
+  title: "⚠️ Already Checked Out"
+  description: "You’re not currently checked in. Use **Check In** to confirm your spot."
+  color: "#f1c40f"
 
 resetting:
   title: "🔄 Resetting..."

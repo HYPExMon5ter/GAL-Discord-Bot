@@ -11,6 +11,7 @@ from gal_discord_bot.config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL
     embed_from_cfg, LOG_CHANNEL_NAME, EMBEDS_CFG
 from gal_discord_bot.persistence import set_schedule
 from gal_discord_bot.sheets import refresh_sheet_cache, cache_refresh_loop
+from gal_discord_bot.utils import update_dm_action_views
 from gal_discord_bot.views import update_live_embeds, PersistentRegisteredListView
 
 scheduled_event_cache = {}  # key: (guild.id, event.id), value: (open_time, close_time)
@@ -191,6 +192,8 @@ async def schedule_channel_open(bot, guild, channel_name, role_name, open_time, 
             await log_channel.send(embed=embed)
         if ping_role:
             await channel.send(f"{role.mention}", delete_after=3)
+        # refresh DMs
+        await update_dm_action_views(guild)
 
 async def schedule_channel_close(bot, guild, channel_name, role_name, close_time):
     from gal_discord_bot.views import update_live_embeds
@@ -209,6 +212,8 @@ async def schedule_channel_close(bot, guild, channel_name, role_name, close_time
         await channel.set_permissions(role, overwrite=overwrites)
         print(f"[Schedule] Channel '{channel_name}' closed for role '{role_name}'.")
         await update_live_embeds(guild)
+        # refresh DMs
+        await update_dm_action_views(guild)
         log_channel = get_log_channel(guild)
         if log_channel:
             embed = embed_from_cfg(

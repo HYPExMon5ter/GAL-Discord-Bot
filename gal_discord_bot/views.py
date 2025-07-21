@@ -20,7 +20,7 @@ from gal_discord_bot.persistence import (
 from gal_discord_bot.sheets import (
     find_or_register_user, get_sheet_for_guild, retry_until_successful, mark_checked_in_async, unmark_checked_in_async,
     unregister_user, refresh_sheet_cache, reset_checked_in_roles_and_sheet, cache_lock, sheet_cache,
-    reset_registered_roles_and_sheet
+    reset_registered_roles_and_sheet, hyperlink_lolchess_profiles
 )
 from gal_discord_bot.utils import (
     has_allowed_role,
@@ -97,6 +97,9 @@ async def complete_registration(
         embed.set_author(name=title, icon_url=user.display_avatar.url)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+        # 6) (NEW) Auto-generate lolchess.gg hyperlinks for main and alt IGNs
+        await hyperlink_lolchess_profiles(gid)
+
     except Exception as e:
         await log_error(interaction.client, guild, f"[REGISTER-MODAL-ERROR] {e}")
 
@@ -109,7 +112,24 @@ class ChannelCheckInButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        # Uses your helper to handle the sheet write, cache update, embed send, and view refresh
+        user = interaction.user
+        guild = interaction.guild
+
+        # 1) Must be registered
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        if reg_role not in user.roles:
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("checkin_requires_registration"), ephemeral=True
+            )
+
+        # 2) Can't double-check-in
+        ci_role = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+        if ci_role in user.roles:
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("already_checked_in"), ephemeral=True
+            )
+
+        # 3) Proceed
         await toggle_checkin_for_member(
             interaction,
             mark_checked_in_async,
@@ -125,6 +145,24 @@ class ChannelCheckOutButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        user = interaction.user
+        guild = interaction.guild
+
+        # 1) Must be registered
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        if reg_role not in user.roles:
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("checkin_requires_registration"), ephemeral=True
+            )
+
+        # 2) Can't check out if not checked in
+        ci_role = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+        if ci_role not in user.roles:
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("already_checked_out"), ephemeral=True
+            )
+
+        # 3) Proceed
         await toggle_checkin_for_member(
             interaction,
             unmark_checked_in_async,
@@ -192,8 +230,9 @@ class DMRegisterToggleButton(discord.ui.Button):
 
 class DMCheckToggleButton(discord.ui.Button):
     def __init__(self, guild: discord.Guild, member: discord.Member):
-        self.guild, self.member = guild, member
-        # determine state & availability
+        self.guild = guild
+        self.member = member
+
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
         ci_role  = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
         ci_ch    = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
@@ -201,18 +240,40 @@ class DMCheckToggleButton(discord.ui.Button):
         is_reg   = reg_role in member.roles
         is_ci    = ci_role in member.roles
 
-        label = "Check Out" if is_ci else "Check In"
-        style = discord.ButtonStyle.danger if is_ci else discord.ButtonStyle.success
-        cid   = f"dm_citoggle_{guild.id}_{member.id}"
+        label    = "Check Out" if is_ci else "Check In"
+        style    = discord.ButtonStyle.danger if is_ci else discord.ButtonStyle.success
+        custom_id= f"dm_citoggle_{guild.id}_{member.id}"
+
         super().__init__(
             label=label,
             style=style,
-            custom_id=cid,
+            custom_id=custom_id,
             disabled=not (is_open and is_reg)
         )
 
     async def callback(self, interaction: discord.Interaction):
-        # pass our stored guild & member so toggle_checkin_for_member can assign roles correctly
+        # 1) Must be registered
+        reg_role = discord.utils.get(self.guild.roles, name=REGISTERED_ROLE)
+        if reg_role not in self.member.roles:
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("checkin_requires_registration"), ephemeral=True
+            )
+
+        # 2) Determine current state
+        ci_role = discord.utils.get(self.guild.roles, name=CHECKED_IN_ROLE)
+        is_ci   = ci_role in self.member.roles
+
+        # 3) Guard redundant actions
+        if self.label == "Check In" and is_ci:
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("already_checked_in"), ephemeral=True
+            )
+        if self.label == "Check Out" and not is_ci:
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("already_checked_out"), ephemeral=True
+            )
+
+        # 4) Perform the toggle
         await toggle_checkin_for_member(
             interaction,
             mark_checked_in_async if self.label == "Check In" else unmark_checked_in_async,
@@ -221,7 +282,8 @@ class DMCheckToggleButton(discord.ui.Button):
             member=self.member
         )
 
-        # redraw your per-user DM view
+        # 5) Redraw the DM view so buttons re-enable/disable correctly
+        from gal_discord_bot.views import DMActionView
         await interaction.edit_original_response(view=DMActionView(self.guild, self.member))
 
 class ResetCheckInsButton(discord.ui.Button):
@@ -332,54 +394,42 @@ class RegisterButton(discord.ui.Button):
 
 class UnregisterButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(
-            label="Unregister",
-            style=discord.ButtonStyle.danger,
-            custom_id="unregister_btn"
-        )
+        super().__init__(label="Unregister", style=discord.ButtonStyle.danger, custom_id="unregister_btn")
 
     async def callback(self, interaction: discord.Interaction):
-        guild  = interaction.guild
+        guild = interaction.guild
         member = interaction.user
         discord_tag = str(member)
-        guild_id    = str(guild.id)
+        guild_id = str(guild.id)
 
-        try:
-            # 1) Check registration state
-            async with cache_lock:
-                tup = sheet_cache["users"].get(discord_tag)
-            is_registered = bool(tup and str(tup[2]).upper() == "TRUE")
-            if not is_registered:
-                embed = embed_from_cfg("unregister_not_registered")
-                return await interaction.response.send_message(embed=embed, ephemeral=True)
+        async with cache_lock:
+            tup = sheet_cache["users"].get(discord_tag)
+        if not tup or str(tup[2]).upper() != "TRUE":
+            return await interaction.response.send_message(embed=embed_from_cfg("unregister_not_registered"), ephemeral=True)
 
-            # 2) Unregister in sheet + cache
-            ok = await unregister_user(discord_tag, guild_id=guild_id)
-            if not ok:
-                # silent fail: log and return
-                await log_error(interaction.client, guild, f"[UNREGISTER-FAIL] Could not unregister {discord_tag}")
-                return
+        ok = await unregister_user(discord_tag, guild_id=guild_id)
+        if not ok:
+            await log_error(interaction.client, guild, f"[UNREGISTER-FAIL] {discord_tag}")
+            return
 
-            # 3) Remove roles
-            reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
-            ci_role  = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
-            to_remove = [r for r in (reg_role, ci_role) if r and r in member.roles]
-            if to_remove:
-                await member.remove_roles(*to_remove)
+        # remove both roles
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        ci_role  = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+        await member.remove_roles(*[r for r in (reg_role, ci_role) if r in member.roles])
 
-            # 4) Send success confirmation
-            embed = embed_from_cfg("unregister_success")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed_from_cfg("unregister_success"), ephemeral=True)
 
-            # 5) Refresh the persisted registration embed
-            chan_id, msg_id = get_persisted_msg(guild.id, "registration")
-            if chan_id and msg_id:
-                ch = guild.get_channel(chan_id)
-                await update_registration_embed(ch, msg_id, guild)
+        # refresh registration embed
+        chan_id, msg_id = get_persisted_msg(guild.id, "registration")
+        if chan_id:
+            ch = guild.get_channel(chan_id)
+            await update_registration_embed(ch, msg_id, guild)
 
-        except Exception as e:
-            # silent fail on unexpected errors
-            await log_error(interaction.client, guild, f"[UNREGISTER-BUTTON-ERROR] {e}")
+        # ─── ALSO refresh the check-in embed ───────────────────────
+        ci_chan_id, ci_msg_id = get_persisted_msg(guild.id, "checkin")
+        if ci_chan_id:
+            ci_ch = guild.get_channel(ci_chan_id)
+            await update_checkin_embed(ci_ch, ci_msg_id, guild)
 
 class ToggleRegistrationButton(discord.ui.Button):
     def __init__(self):

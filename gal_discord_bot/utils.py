@@ -1,4 +1,5 @@
 # gal_discord_bot/utils.py
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -8,17 +9,14 @@ from gal_discord_bot.config import ALLOWED_ROLES, embed_from_cfg, REGISTERED_ROL
 from gal_discord_bot.persistence import get_persisted_msg
 from gal_discord_bot.sheets import sheet_cache, cache_lock
 
-
 def has_allowed_role(member: discord.Member) -> bool:
     """Check if a member has any of the staff roles."""
     return any(role.name in ALLOWED_ROLES for role in getattr(member, "roles", []))
-
 
 def has_allowed_role_from_interaction(interaction: discord.Interaction) -> bool:
     """Check interaction.user’s roles for permission."""
     member = getattr(interaction, "user", getattr(interaction, "author", None))
     return hasattr(member, "roles") and has_allowed_role(member)
-
 
 async def toggle_persisted_channel(
     interaction: discord.Interaction,
@@ -29,7 +27,6 @@ async def toggle_persisted_channel(
 ):
     """
     Universal “open/close channel + update embed” helper.
-    Defers importing events/views until runtime to avoid circular imports.
     """
     # ─── Lazy imports to break circularity ───────────────────────────
     from gal_discord_bot.events import schedule_channel_open
@@ -40,6 +37,7 @@ async def toggle_persisted_channel(
         update_registration_embed,
         update_checkin_embed,
     )
+    from gal_discord_bot.utils import update_dm_action_views  # now legal, utils is fully defined
 
     guild = interaction.guild
     channel = discord.utils.get(guild.text_channels, name=channel_name)
@@ -57,7 +55,6 @@ async def toggle_persisted_channel(
     new_open    = not was_open
 
     if new_open:
-        # schedule the open (this also updates embeds + pings)
         await schedule_channel_open(
             interaction.client,
             guild,
@@ -74,7 +71,6 @@ async def toggle_persisted_channel(
     _, msg_id = get_persisted_msg(guild.id, persist_key)
     if new_open:
         if not msg_id:
-            # first‐time create the embed
             embed = embed_from_cfg(f"{persist_key}_closed")
             view  = (
                 RegistrationView(None, guild)
@@ -83,13 +79,11 @@ async def toggle_persisted_channel(
             )
             await create_persisted_embed(guild, channel, embed, view, persist_key)
         else:
-            # update to open view
             if persist_key == "registration":
                 await update_registration_embed(channel, msg_id, guild)
             else:
                 await update_checkin_embed(channel, msg_id, guild)
     else:
-        # update to closed view
         if msg_id:
             if persist_key == "registration":
                 await update_registration_embed(channel, msg_id, guild)
@@ -100,6 +94,8 @@ async def toggle_persisted_channel(
     feedback = embed_from_cfg(f"{persist_key}_channel_toggled", visible=new_open)
     await interaction.response.send_message(embed=feedback, ephemeral=True)
 
+    # ─── Refresh any existing reminder DMs ─────────────────────────
+    await update_dm_action_views(interaction.guild)
 
 def resolve_member(guild: discord.Guild, discord_tag: str) -> discord.Member | None:
     """Find a Member in this guild by tag or name/display_name."""
@@ -112,7 +108,6 @@ def resolve_member(guild: discord.Guild, discord_tag: str) -> discord.Member | N
         if m.name == discord_tag or m.display_name == discord_tag:
             return m
     return None
-
 
 async def send_reminder_dms(
     client: discord.Client,
@@ -145,7 +140,6 @@ async def send_reminder_dms(
 
     return dmmed
 
-
 async def toggle_checkin_for_member(
     interaction: discord.Interaction,
     checkin_fn,
@@ -160,10 +154,11 @@ async def toggle_checkin_for_member(
     """
     from gal_discord_bot.views import update_checkin_embed  # lazy to avoid circular import
     from gal_discord_bot.config import REGISTERED_ROLE, CHECKED_IN_ROLE
+    from gal_discord_bot.persistence import get_persisted_msg
 
     # 1) Defer + resolve context
     await interaction.response.defer(ephemeral=True)
-    guild = guild or interaction.guild
+    guild  = guild  or interaction.guild
     member = member or interaction.user
     if not guild or not member:
         return
@@ -197,3 +192,32 @@ async def toggle_checkin_for_member(
     if chan_id and msg_id:
         ch = guild.get_channel(chan_id)
         await update_checkin_embed(ch, msg_id, guild)
+
+async def update_dm_action_views(guild: discord.Guild):
+    """
+    Iterate all users in the cache, find any reminder DM,
+    and re-edit it with a fresh DMActionView so buttons reflect current open/closed state.
+    """
+    # local import breaks circularity
+    from gal_discord_bot.views import DMActionView
+
+    rem_embed = embed_from_cfg("reminder_dm")
+    rem_title = rem_embed.title
+
+    async with cache_lock:
+        tags = list(sheet_cache["users"].keys())
+
+    for discord_tag in tags:
+        member = resolve_member(guild, discord_tag)
+        if not member:
+            continue
+        try:
+            dm = await member.create_dm()
+            async for msg in dm.history(limit=50):
+                if msg.author == guild.client.user and msg.embeds:
+                    e = msg.embeds[0]
+                    if e.title == rem_title:
+                        await msg.edit(view=DMActionView(guild, member))
+        except Exception:
+            # ignore messages we can’t access
+            pass

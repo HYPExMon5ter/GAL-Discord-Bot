@@ -114,7 +114,7 @@ async def refresh_sheet_cache(bot=None):
         team_vals = []
         if mode == "doubleup":
             try:
-                team_vals = await retry_until_successful(sheet.col_values, 6)
+                team_vals = await retry_until_successful(sheet.col_values, 9)
             except:
                 team_vals = []
         # **Registered / Checked-In columns**
@@ -200,7 +200,7 @@ async def find_or_register_user(discord_tag, ign, guild_id=None, team_name=None)
         await retry_until_successful(sheet.update_acell, f"{reg_col}{row}", "TRUE")
         # update team if needed
         if mode == "doubleup" and team_name:
-            await retry_until_successful(sheet.update_acell, f"F{row}", team_name)
+            await retry_until_successful(sheet.update_acell, f"I{row}", team_name)
         # refresh cache (keep alt-IGN untouched)
         _, old_ign, old_reg, old_ci, old_team, old_alt = sheet_cache["users"][discord_tag]
         sheet_cache["users"][discord_tag] = (
@@ -219,7 +219,7 @@ async def find_or_register_user(discord_tag, ign, guild_id=None, team_name=None)
     values[3] = ign          # D
     # E alt-IGN left blank
     if mode == "doubleup":
-        values[5] = team_name or ""  # F
+        values[8] = team_name or ""  # I
         values[9] = "TRUE"           # J
         values[10] = "FALSE"         # K
     else:

@@ -80,9 +80,9 @@ async def complete_registration(
         if alt_igns:
             await retry_until_successful(sheet.update_acell, f"E{row}", alt_igns)
 
-        # 4) Team Name (col F) in doubleup
+        # 4) Team Name (col I) in doubleup
         if mode == "doubleup" and team_name:
-            await retry_until_successful(sheet.update_acell, f"F{row}", team_name)
+            await retry_until_successful(sheet.update_acell, f"I{row}", team_name)
 
         # 5) Role + embed refresh + confirmation (unchanged)…
         if role and role not in user.roles:
@@ -628,7 +628,7 @@ class RegistrationModal(discord.ui.Modal):
         try:
             if mode == "doubleup" and not getattr(self, "bypass_similarity", False):
                 sheet = get_sheet_for_guild(guild_id, "GAL Database")
-                team_col_raw = await retry_until_successful(sheet.col_values, 6)
+                team_col_raw = await retry_until_successful(sheet.col_values, 9)
                 user_team_value = team_value.strip().lower()
                 team_col = [
                     t.strip().lower() for t in team_col_raw[2:]

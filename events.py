@@ -1,232 +1,200 @@
 # gal_discord_bot/events.py
 
 import asyncio
+import discord
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
-import discord
 from rapidfuzz import fuzz
 
-from config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, \
+from config import (
+    REGISTRATION_CHANNEL, CHECK_IN_CHANNEL,
+    ANGEL_ROLE, REGISTERED_ROLE,
     embed_from_cfg, LOG_CHANNEL_NAME
-from persistence import set_schedule
-from sheets import refresh_sheet_cache, cache_refresh_loop
+)
+from persistence import (
+    set_schedule, get_schedule,
+    get_event_mode_for_guild
+)
+from sheets import refresh_sheet_cache
 from utils import update_dm_action_views
 from views import update_live_embeds, PersistentRegisteredListView
 
-scheduled_event_cache = {}  # key: (guild.id, event.id), value: (open_time, close_time)
-open_tasks = {}    # key: (guild.id, event.id, "open"), value: asyncio.Task
-close_tasks = {}   # key: (guild.id, event.id, "close"), value: asyncio.Task
+# In-memory caches
+scheduled_event_cache: dict = {}
+open_tasks: dict = {}
+close_tasks: dict = {}
 
-def match_event_type(event_name: str):
-    event_name_lc = event_name.lower()
-    # You can customize the keywords as needed
-    registration_keywords = ["registration", "register", "reg"]
-    checkin_keywords = ["check-in", "checkin", "check in", "check"]
-    for kw in registration_keywords:
-        if fuzz.partial_ratio(event_name_lc, kw) >= 80:
+def match_event_type(name: str) -> str | None:
+    lc = name.lower()
+    for kw in ("registration", "register", "reg"):
+        if fuzz.partial_ratio(lc, kw) >= 80:
             return "registration"
-    for kw in checkin_keywords:
-        if fuzz.partial_ratio(event_name_lc, kw) >= 80:
+    for kw in ("check-in","checkin","check in","check"):
+        if fuzz.partial_ratio(lc, kw) >= 80:
             return "checkin"
     return None
 
-def get_log_channel(guild):
-    return next((c for c in guild.text_channels if c.name == LOG_CHANNEL_NAME), None)
+def get_channel_and_role(guild, etype):
+    if etype == "registration":
+        return (
+            discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL),
+            discord.utils.get(guild.roles,         name=ANGEL_ROLE)
+        )
+    return (
+        discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL),
+        discord.utils.get(guild.roles,         name=REGISTERED_ROLE)
+    )
 
-def get_channel_and_role(guild, event_type):
-    if event_type == "registration":
-        return (discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL),
-                discord.utils.get(guild.roles, name=ANGEL_ROLE))
-    elif event_type == "checkin":
-        return (discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL),
-                discord.utils.get(guild.roles, name=REGISTERED_ROLE))
-    return (None, None)
+async def schedule_channel_open(bot, guild, channel_name, role_name, open_time, ping_role=True):
+    """Fires at open_time, then clears the persisted open_schedule."""
+    now = datetime.now(ZoneInfo("UTC"))
+    wait = (open_time - now).total_seconds()
+    if wait > 0:
+        await asyncio.sleep(wait)
+
+    ch   = discord.utils.get(guild.text_channels, name=channel_name)
+    role = discord.utils.get(guild.roles,        name=role_name)
+    if ch and role:
+        perms = ch.overwrites_for(role)
+        if not perms.view_channel:
+            perms.view_channel = True
+            await ch.set_permissions(role, overwrite=perms)
+            await update_live_embeds(guild)
+            # ping once
+            if ping_role:
+                await ch.send(f"{role.mention}", delete_after=3)
+            await update_dm_action_views(guild)
+
+        # Clear the stored open timestamp
+        set_schedule(guild.id, f"{channel_name}_open", None)
+
+async def schedule_channel_close(bot, guild, channel_name, role_name, close_time):
+    """Fires at close_time, then clears the persisted close_schedule."""
+    now = datetime.now(ZoneInfo("UTC"))
+    wait = (close_time - now).total_seconds()
+    if wait > 0:
+        await asyncio.sleep(wait)
+
+    ch   = discord.utils.get(guild.text_channels, name=channel_name)
+    role = discord.utils.get(guild.roles,        name=role_name)
+    if ch and role:
+        perms = ch.overwrites_for(role)
+        if perms.view_channel:
+            perms.view_channel = False
+            await ch.set_permissions(role, overwrite=perms)
+            await update_live_embeds(guild)
+            await update_dm_action_views(guild)
+
+        # Clear the stored close timestamp
+        set_schedule(guild.id, f"{channel_name}_close", None)
+
+async def _handle_event_schedule(bot, event, is_edit: bool):
+    etype      = match_event_type(event.name)
+    if not etype:
+        return
+
+    guild      = event.guild
+    cache_key  = (guild.id, event.id)
+    open_time  = event.start_time and event.start_time.astimezone(ZoneInfo("UTC"))
+    close_time = event.end_time   and event.end_time.astimezone(ZoneInfo("UTC"))
+
+    # Skip if nothing changed
+    if scheduled_event_cache.get(cache_key) == (open_time, close_time):
+        return
+    scheduled_event_cache[cache_key] = (open_time, close_time)
+
+    # Cancel existing tasks
+    for suffix, tasks in (("open", open_tasks), ("close", close_tasks)):
+        key = (guild.id, event.id, suffix)
+        if key in tasks and not tasks[key].done():
+            tasks[key].cancel()
+            del tasks[key]
+
+    # Persist both times
+    set_schedule(guild.id, f"{etype}_open",  open_time.isoformat() if open_time  else None)
+    set_schedule(guild.id, f"{etype}_close", close_time.isoformat() if close_time else None)
+
+    # Schedule open
+    ch, role = get_channel_and_role(guild, etype)
+    now = datetime.now(ZoneInfo("UTC"))
+    if ch and role:
+        # Open
+        if open_time and open_time > now:
+            key = (guild.id, event.id, "open")
+            open_tasks[key] = asyncio.create_task(
+                schedule_channel_open(bot, guild, ch.name, role.name, open_time)
+            )
+        else:
+            # Already past: fire immediately (no ping)
+            await schedule_channel_open(bot, guild, ch.name, role.name, now, ping_role=False)
+
+        # Close
+        if close_time and close_time > now:
+            key = (guild.id, event.id, "close")
+            close_tasks[key] = asyncio.create_task(
+                schedule_channel_close(bot, guild, ch.name, role.name, close_time)
+            )
+        else:
+            # Already past: fire immediately
+            await schedule_channel_close(bot, guild, ch.name, role.name, now)
+
+    # Log creation/edit
+    log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+    if log_ch:
+        embed_key = "schedule_edited" if is_edit else "schedule_created"
+        embed = embed_from_cfg(
+            embed_key,
+            type=etype.capitalize(),
+            event=event.name,
+            open_ts=int(event.start_time.timestamp()),
+            close_ts=int(event.end_time.timestamp()) if event.end_time else None
+        )
+        await log_ch.send(embed=embed)
 
 def setup_events(bot):
     @bot.event
     async def on_ready():
-        print(f"We are ready to go in, {bot.user.name}")
-
-        # — sync slash commands & prime cache —
+        print(f"We are ready to go in, {bot.user}")
+        # sync & prime cache
         for guild in bot.guilds:
             await bot.tree.sync(guild=guild)
-            print(f"Synced commands to guild {guild.id}")
-        await refresh_sheet_cache(bot=bot)
-
-        # — re-register views & refresh live embeds —
+            await refresh_sheet_cache(bot=bot)
+        # re-register views & live embeds
         for guild in bot.guilds:
             bot.add_view(PersistentRegisteredListView(guild))
             await update_live_embeds(guild)
-
-        # — set rich presence from config.yaml —
-        from config import _FULL_CFG
-
-        presence_cfg = _FULL_CFG.get("rich_presence", {})
-        pres_type = presence_cfg.get("type", "PLAYING").upper()
-        pres_msg = presence_cfg.get("message", "")
-
-        if pres_type == "LISTENING":
-            activity = discord.Activity(
-                type=discord.ActivityType.listening, name=pres_msg
-            )
-        elif pres_type == "WATCHING":
-            activity = discord.Activity(
-                type=discord.ActivityType.watching, name=pres_msg
-            )
-        else:
-            activity = discord.Game(name=pres_msg)
-
-        await bot.change_presence(status=discord.Status.online, activity=activity)
+        # rehydrate all Scheduled Events
+        for guild in bot.guilds:
+            for se in guild.scheduled_events:
+                await _handle_event_schedule(bot, se, is_edit=False)
 
     @bot.event
     async def on_scheduled_event_create(event):
         await _handle_event_schedule(bot, event, is_edit=False)
 
     @bot.event
-    async def on_scheduled_event_update(before, after):
-        await _handle_event_schedule(bot, after, is_edit=True)
+    async def on_scheduled_event_update(_, event):
+        await _handle_event_schedule(bot, event, is_edit=True)
 
     @bot.event
     async def on_scheduled_event_delete(event):
-        event_type = match_event_type(event.name)
-        if not event_type:
+        etype = match_event_type(event.name)
+        if not etype:
             return
         guild = event.guild
-        log_channel = get_log_channel(guild)
-        cache_key = (guild.id, event.id)
-        tkey_open = (guild.id, event.id, "open")
-        tkey_close = (guild.id, event.id, "close")
-        # Cancel tasks
-        for tkey, task in [(tkey_open, open_tasks.get(tkey_open)), (tkey_close, close_tasks.get(tkey_close))]:
-            if task and not task.done():
-                task.cancel()
-                if tkey in open_tasks: del open_tasks[tkey]
-                if tkey in close_tasks: del close_tasks[tkey]
-        scheduled_event_cache.pop(cache_key, None)
-        set_schedule(guild.id, event_type, None)
-        if log_channel:
+        # cancel tasks
+        for suffix, tasks in (("open", open_tasks), ("close", close_tasks)):
+            key = (guild.id, event.id, suffix)
+            if key in tasks and not tasks[key].done():
+                tasks[key].cancel()
+                del tasks[key]
+        scheduled_event_cache.pop((guild.id, event.id), None)
+        set_schedule(guild.id, etype, None)
+        log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+        if log_ch:
             embed = embed_from_cfg(
                 "schedule_deleted",
-                type=event_type.capitalize(),
+                type=etype.capitalize(),
                 event=event.name
             )
-            await log_channel.send(embed=embed)
-
-async def bot_cache_refresh_loop(bot):
-    await cache_refresh_loop(bot)
-
-async def _handle_event_schedule(bot, event, is_edit):
-    event_type = match_event_type(event.name)
-    if not event_type:
-        return
-    guild = event.guild
-    log_channel = get_log_channel(guild)
-    cache_key = (guild.id, event.id)
-    open_time = event.start_time and event.start_time.astimezone()
-    close_time = event.end_time and event.end_time.astimezone()
-    changed = (
-        cache_key not in scheduled_event_cache or
-        scheduled_event_cache[cache_key] != (open_time, close_time)
-    )
-    if not changed:
-        return  # No change, so skip everything!
-
-    scheduled_event_cache[cache_key] = (open_time, close_time)
-
-    # Cancel any previous open/close tasks for this event
-    tkey_open = (guild.id, event.id, "open")
-    tkey_close = (guild.id, event.id, "close")
-    for tkey, task in [(tkey_open, open_tasks.get(tkey_open)), (tkey_close, close_tasks.get(tkey_close))]:
-        if task and not task.done():
-            task.cancel()
-            if tkey in open_tasks: del open_tasks[tkey]
-            if tkey in close_tasks: del close_tasks[tkey]
-
-    set_schedule(guild.id, event_type, open_time.isoformat() if open_time else None)
-    channel, role = get_channel_and_role(guild, event_type)
-    now = datetime.now(ZoneInfo("UTC"))
-    # Only schedule if future
-    if channel and role and open_time and open_time > now:
-        task = asyncio.create_task(
-            schedule_channel_open(bot, guild, channel.name, role.name, open_time)
-        )
-        open_tasks[tkey_open] = task
-    if channel and role and close_time and close_time > now:
-        task = asyncio.create_task(
-            schedule_channel_close(bot, guild, channel.name, role.name, close_time)
-        )
-        close_tasks[tkey_close] = task
-
-    if log_channel:
-        close_str = f"\nClose at: <t:{int(event.end_time.timestamp())}:F>" if event.end_time else ""
-        embed_key = "schedule_edited" if is_edit else "schedule_created"
-        embed = embed_from_cfg(
-            embed_key,
-            type=event_type.capitalize(),
-            event=event.name,
-            open_ts=int(event.start_time.timestamp()),
-            close_str=close_str,
-        )
-        await log_channel.send(embed=embed)
-
-async def schedule_channel_open(bot, guild, channel_name, role_name, open_time, ping_role=True):
-    from views import update_live_embeds
-    now = datetime.now(ZoneInfo("UTC"))
-    wait_seconds = (open_time - now).total_seconds()
-    if wait_seconds > 0:
-        await asyncio.sleep(wait_seconds)
-    channel = discord.utils.get(guild.text_channels, name=channel_name)
-    role = discord.utils.get(guild.roles, name=role_name)
-    if channel and role:
-        overwrites = channel.overwrites_for(role)
-        if overwrites.view_channel:
-            print(f"[Schedule] Channel '{channel_name}' already open for role '{role_name}', skipping open and ping.")
-            return
-        overwrites.view_channel = True
-        await channel.set_permissions(role, overwrite=overwrites)
-        print(f"[Schedule] Channel '{channel_name}' opened for role '{role_name}'.")
-        await update_live_embeds(guild)
-        log_channel = get_log_channel(guild)
-        if log_channel:
-            embed = embed_from_cfg(
-                "schedule_open",
-                type=channel_name.capitalize(),
-                time=datetime.now().strftime("%Y-%m-%d %I:%M %p %Z")
-            )
-            await log_channel.send(embed=embed)
-        if ping_role:
-            await channel.send(f"{role.mention}", delete_after=3)
-        # refresh DMs
-        await update_dm_action_views(guild)
-
-async def schedule_channel_close(bot, guild, channel_name, role_name, close_time):
-    from views import update_live_embeds
-    now = datetime.now(ZoneInfo("UTC"))
-    wait_seconds = (close_time - now).total_seconds()
-    if wait_seconds > 0:
-        await asyncio.sleep(wait_seconds)
-    channel = discord.utils.get(guild.text_channels, name=channel_name)
-    role = discord.utils.get(guild.roles, name=role_name)
-    if channel and role:
-        overwrites = channel.overwrites_for(role)
-        if not overwrites.view_channel:
-            print(f"[Schedule] Channel '{channel_name}' is already closed for role '{role_name}', skipping close.")
-            return
-        overwrites.view_channel = False
-        await channel.set_permissions(role, overwrite=overwrites)
-        print(f"[Schedule] Channel '{channel_name}' closed for role '{role_name}'.")
-        await update_live_embeds(guild)
-        # refresh DMs
-        await update_dm_action_views(guild)
-        log_channel = get_log_channel(guild)
-        if log_channel:
-            embed = embed_from_cfg(
-                "schedule_close",
-                type=channel_name.capitalize(),
-                close_ts=int(datetime.now().timestamp())
-            )
-            await log_channel.send(embed=embed)
-    # Always clear the schedule when done closing
-    key = "registration" if channel_name == REGISTRATION_CHANNEL else "checkin"
-    set_schedule(guild.id, key, None)
+            await log_ch.send(embed=embed)

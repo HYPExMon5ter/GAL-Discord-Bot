@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from itertools import groupby
 
 import discord
@@ -14,7 +15,7 @@ from config import (
 from logging_utils import log_error
 from persistence import (
     get_persisted_msg, set_persisted_msg,
-    get_event_mode_for_guild,
+    get_event_mode_for_guild, get_schedule,
 )
 from sheets import (
     find_or_register_user, get_sheet_for_guild, retry_until_successful, mark_checked_in_async, unmark_checked_in_async,
@@ -853,133 +854,129 @@ async def update_live_embeds(guild):
         except Exception as e:
             await log_error(None, guild, f"Failed to update check-in embed: {e}")
 
-async def update_registration_embed(channel: discord.TextChannel, msg_id: int, guild: discord.Guild):
-    # Determine open/closed
-    reg_ch = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
-    angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
-    is_open = bool(reg_ch and angel_role and reg_ch.overwrites_for(angel_role).view_channel)
+async def update_registration_embed(
+    channel: discord.TextChannel,
+    msg_id: int,
+    guild: discord.Guild
+):
+    # 1) Is registration open?
+    reg_ch     = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+    angel_role = discord.utils.get(guild.roles,         name=ANGEL_ROLE)
+    is_open    = bool(reg_ch and angel_role and reg_ch.overwrites_for(angel_role).view_channel)
 
-    # Base embed
-    if is_open:
-        base = embed_from_cfg("registration")
-    else:
-        base = embed_from_cfg("registration_closed")
+    # 2) Base embed
+    base_key = "registration" if is_open else "registration_closed"
+    base     = embed_from_cfg(base_key)
 
-    # If closed, just show instructions
+    # 3) If closed, just swap embed & view
     if not is_open:
         msg = await channel.fetch_message(msg_id)
         return await msg.edit(embed=base, view=RegistrationView(msg_id, guild))
 
-    # Fetch cache
+    # 4) Build list of registered users
     mode = get_event_mode_for_guild(str(guild.id))
     async with cache_lock:
         users = [
             (tag, tpl[1], tpl[4] if len(tpl) > 4 else "")
             for tag, tpl in sheet_cache["users"].items()
-            if str(tpl[2]).upper() == "TRUE"
+            if tpl[2].upper() == "TRUE"
         ]
 
-    # Build lines + summary
+    # 5) Format summary & lines
     if mode == "normal":
-        lines = [f"• `{tag}` (`{ign}`)" for tag, ign, _ in users]
-        summary = f"**Registered Players:** {len(lines)}"
+        summary = f"**Registered Players:** {len(users)}"
+        lines   = [f"• `{tag}` (`{ign}`)" for tag, ign, _ in users]
     else:
-        # group by team
         users.sort(key=lambda x: x[2].lower())
-        grouped = groupby(users, key=lambda x: x[2] or "No Team")
-        lines = []
-        teams = 0
-        for team, group in grouped:
-            grp = list(group)
-            teams += 1
-            header = f"**{team}** ({len(grp)})"
-            lines.append(header)
+        grouped    = groupby(users, key=lambda x: x[2] or "No Team")
+        lines, tc  = [], 0
+        for team, grp in grouped:
+            grp = list(grp); tc += 1
+            lines.append(f"**{team}** ({len(grp)})")
             for tag, ign, _ in grp:
                 lines.append(f"    • `{tag}` (`{ign}`)")
-            lines.append("")  # blank between teams
+            lines.append("")
         if lines and lines[-1] == "":
             lines.pop()
-        summary = f"**Players:** {sum(1 for _ in users)}   **Teams:** {teams}"
+        summary = f"**Players:** {len(users)}   **Teams:** {tc}"
 
-    # Glue it all together
-    desc = base.description or ""
-    desc += f"\n\n{summary}\n"
+    # 6) Inject scheduled open & close (date + time)
+    desc      = base.description or ""
+    open_iso  = get_schedule(guild.id, "registration_open")
+    close_iso = get_schedule(guild.id, "registration_close")
+    #if open_iso:
+    #    ts = int(datetime.fromisoformat(open_iso).timestamp())
+    #    desc += f"\n\n🟢 Opens at <t:{ts}:F>"
+    if close_iso:
+        ts = int(datetime.fromisoformat(close_iso).timestamp())
+        desc += f"\n\n🔴 Closes at <t:{ts}:F>"
+
+    # 7) Append summary & lines
+    desc += f"\n\n{summary}"
     if lines:
-        desc += "\n" + "\n".join(lines)
+        desc += "\n\n" + "\n".join(lines)
 
-    # Edit the message
+    # 8) Edit message
     embed = discord.Embed(title=base.title, description=desc, color=base.color)
-    msg = await channel.fetch_message(msg_id)
+    msg   = await channel.fetch_message(msg_id)
     await msg.edit(embed=embed, view=RegistrationView(msg_id, guild))
 
-async def update_checkin_embed(channel: discord.TextChannel, msg_id: int, guild: discord.Guild):
-    # Determine if check-in is open
+async def update_checkin_embed(
+    channel: discord.TextChannel,
+    msg_id: int,
+    guild: discord.Guild
+):
+    # 1) Is check-in open?
     ci_ch    = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
-    reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    reg_role = discord.utils.get(guild.roles,         name=REGISTERED_ROLE)
     is_open  = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
 
-    # Base embed for open/closed
-    base = embed_from_cfg("checkin") if is_open else embed_from_cfg("checkin_closed")
+    # 2) Base embed
+    base_key = "checkin" if is_open else "checkin_closed"
+    base     = embed_from_cfg(base_key)
+
+    # 3) If closed, just swap embed & view
     if not is_open:
         msg = await channel.fetch_message(msg_id)
         return await msg.edit(embed=base, view=CheckInView(guild))
 
-    # Gather from cache
+    # 4) Inject scheduled close time (time only)
+    desc      = base.description or ""
+    close_iso = get_schedule(guild.id, "checkin_close")
+    if close_iso:
+        ts = int(datetime.fromisoformat(close_iso).timestamp())
+        desc += f"\n\n⏰ Check-in closes at <t:{ts}:t>"
+
+    # 5) Build checked-in summary & lines
     mode = get_event_mode_for_guild(str(guild.id))
     async with cache_lock:
-        # all registered users
-        registered = [
-            (tag, tpl[1], tpl[4] if len(tpl) > 4 else "")
-            for tag, tpl in sheet_cache["users"].items()
-            if str(tpl[2]).upper() == "TRUE"
-        ]
-        # those who have also checked in
-        checked_in = [
-            (tag, tpl[1], tpl[4] if len(tpl) > 4 else "")
-            for tag, tpl in sheet_cache["users"].items()
-            if str(tpl[2]).upper() == "TRUE" and str(tpl[3]).upper() == "TRUE"
-        ]
-
-    total_registered = len(registered)
-    total_checked    = len(checked_in)
+        regs    = [tpl for tpl in sheet_cache["users"].values() if tpl[2].upper() == "TRUE"]
+        checked = [tpl for tpl in regs                           if tpl[3].upper() == "TRUE"]
 
     if mode == "normal":
-        lines   = [f"• `{tag}` (`{ign}`)" for tag, ign, _ in checked_in]
-        summary = f"**Checked In:** {total_checked}/{total_registered}"
+        summary = f"**Checked-In:** {len(checked)}/{len(regs)}"
+        lines   = [f"• `{tpl[1]}`" for tpl in checked]
     else:
-        # group checked-in by team
-        checked_in.sort(key=lambda x: x[2].lower())
-        grouped_lines = []
-        teams_checked = 0
-        total_teams   = 0
+        checked.sort(key=lambda x: x[4].lower())
+        grouped      = groupby(checked, key=lambda x: x[4] or "No Team")
+        lines, tc    = [], 0
+        total_teams  = len({tpl[4] or "No Team" for tpl in regs})
+        for team, grp in grouped:
+            grp = list(grp); tc += 1
+            lines.append(f"**{team}** ({len(grp)})")
+            for _, ign, _ in grp:
+                lines.append(f"    • `{ign}`")
+            lines.append("")
+        if lines and lines[-1] == "":
+            lines.pop()
+        summary = f"**Checked-In:** {len(checked)}/{len(regs)}  **Teams:** {tc}/{total_teams}"
 
-        for team, group in groupby(checked_in, key=lambda x: x[2] or "No Team"):
-            grp = list(group)
-            total_teams += 1
-            if len(grp) >= 2:
-                teams_checked += 1
-
-            grouped_lines.append(f"**{team}** ({len(grp)})")
-            for tag, ign, _ in grp:
-                grouped_lines.append(f"    • `{tag}` (`{ign}`)")
-            grouped_lines.append("")
-
-        if grouped_lines and grouped_lines[-1] == "":
-            grouped_lines.pop()
-
-        lines   = grouped_lines
-        summary = (
-            f"**Checked In:** {total_checked}/{total_registered} "
-            f"  **Teams:** {teams_checked}/{total_teams}"
-        )
-
-    # Build full description
-    desc = base.description or ""
-    desc += f"\n\n{summary}\n"
+    # 6) Append summary & lines
+    desc += f"\n\n{summary}"
     if lines:
-        desc += "\n" + "\n".join(lines)
+        desc += "\n\n" + "\n".join(lines)
 
-    # Edit the embed
+    # 7) Edit message
     embed = discord.Embed(title=base.title, description=desc, color=base.color)
     msg   = await channel.fetch_message(msg_id)
     await msg.edit(embed=embed, view=CheckInView(guild))

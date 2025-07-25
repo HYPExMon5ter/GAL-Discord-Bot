@@ -8,7 +8,7 @@ from typing import Optional, Union
 
 import aiohttp
 
-from config import RIOT_API_KEY
+from persistence import get_event_mode_for_guild
 
 # === Constants ===
 RIOT_API_REGION = "na1"
@@ -16,111 +16,104 @@ TFT_REGION = "americas"
 TRACKER_API_KEY = os.getenv("TRACKER_API_KEY")
 DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-# Shared aiohttp session
-_session: Optional[aiohttp.ClientSession] = None
-
-# === Riot API Helpers ===
-def riot_headers() -> dict:
-    """Headers for Riot API calls."""
-    return {"X-Riot-Token": RIOT_API_KEY}
-
+_session: aiohttp.ClientSession | None = None
 async def _get_session() -> aiohttp.ClientSession:
-    """
-    Returns a shared aiohttp session with DEFAULT_HEADERS.
-    """
     global _session
     if _session is None or _session.closed:
-        _session = aiohttp.ClientSession(headers=DEFAULT_HEADERS)
+        _session = aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"})
     return _session
 
-# ———————————————————————————————
-# 1) Sanitizer to strip U+2066–U+2069
-# ———————————————————————————————
 def _remove_bidi_control_chars(s: str) -> str:
-    """
-    Remove Unicode isolate controls (U+2066–U+2069) from the IGN.
-    """
+    """Strip Unicode isolate controls U+2066–U+2069."""
     return re.sub(r"[\u2066-\u2069]", "", s)
 
-
-# ———————————————————————————————
-# 2) URL builder (uses sanitizer)
-# ———————————————————————————————
 def build_tactics_tools_url(ign: str) -> str:
-    """
-    Build a tactics.tools URL for a TFT profile.
-    1) Strip bidi controls
-    2) Split on '#'
-    3) URL-encode name and tag
-    """
     clean = _remove_bidi_control_chars(ign)
-    parts = clean.split("#", 1)
-    name = parts[0].strip()
-    tag  = parts[1].strip() if len(parts) > 1 else ""
-    name_enc = urllib.parse.quote(name)
+    name, _, tag = clean.partition("#")
+    name_enc = urllib.parse.quote(name.strip())
     path = f"/player/na/{name_enc}"
     if tag:
-        path += f"/{urllib.parse.quote(tag)}"
+        path += f"/{urllib.parse.quote(tag.strip())}"
     return f"https://tactics.tools{path}"
 
-
-# ———————————————————————————————
-# 3) Placement scraper (now sanitizes IGN)
-# ———————————————————————————————
-async def tactics_tools_get_latest_placement(ign: str) -> Optional[int]:
+async def tactics_tools_get_latest_placement(
+    ign: str,
+    guild_id: str
+) -> Optional[int]:
     """
-    Scrape tactics.tools for the player’s latest TFT placement.
-    BIDI controls are stripped from the IGN first.
+    Fetch the player's most recent TFT placement for the guild's mode
+    (normal vs double-up) by pulling the Next.js JSON and inspecting
+    all 'placement' arrays, then filtering by mode.
     """
-    # 1) Sanitize and build URL
-    clean_ign = _remove_bidi_control_chars(ign)
-    url = build_tactics_tools_url(clean_ign)
-    print(f"[tactics_tools_get_latest_placement] GET {url} for {clean_ign!r}")
+    mode = get_event_mode_for_guild(guild_id).lower()  # "normal" or "doubleup"
+    url  = build_tactics_tools_url(ign)
+    print(f"[get_latest_placement] mode={mode!r}, GET {url}")
 
-    # 2) Fetch HTML
     session = await _get_session()
+    # — Step 1: fetch initial HTML & __NEXT_DATA__ —
     async with session.get(url) as resp:
-        print(f"[tactics_tools_get_latest_placement] HTTP {resp.status} for {clean_ign!r}")
         if resp.status != 200:
+            print(f"[get_latest_placement] HTTP {resp.status}")
             return None
         html = await resp.text()
 
-    # 3) Extract the Next.js JSON blob
-    m = re.search(
-        r'<script\s+id="__NEXT_DATA__"[^>]*>(?P<json>.+?)</script>',
-        html,
-        flags=re.DOTALL
-    )
+    m = re.search(r'<script\s+id="__NEXT_DATA__"[^>]*>(?P<json>.+?)</script>',
+                  html, flags=re.DOTALL)
     if not m:
-        print(f"[tactics_tools_get_latest_placement] no JSON for {clean_ign!r}")
+        print("[get_latest_placement] no __NEXT_DATA__")
         return None
 
-    # 4) Parse JSON and find first 'placement'
     try:
-        data = json.loads(m.group("json"))
+        bootstrap = json.loads(m.group("json"))
     except json.JSONDecodeError as e:
-        print(f"[tactics_tools_get_latest_placement] JSON error for {clean_ign!r}: {e}")
+        print("[get_latest_placement] JSON parse error:", e)
         return None
 
-    def _extract_first_placement(obj: Union[dict, list]) -> Optional[int]:
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if k.lower() == "placement" and isinstance(v, int):
-                    return v
-                got = _extract_first_placement(v)
-                if got is not None:
-                    return got
-        elif isinstance(obj, list):
-            for item in obj:
-                got = _extract_first_placement(item)
-                if got is not None:
-                    return got
+    # — Step 2: derive and fetch the data JSON —
+    build_id = bootstrap.get("buildId")
+    if not build_id:
+        print("[get_latest_placement] no buildId in bootstrap")
         return None
 
-    page_props = data.get("props", {}).get("pageProps", {})
-    placement = _extract_first_placement(page_props)
-    print(f"[tactics_tools_get_latest_placement] placement={placement} for {clean_ign!r}")
-    return placement
+    path = urllib.parse.urlparse(url).path  # e.g. "/player/na/Echoes/TFT1"
+    data_url = f"https://tactics.tools/_next/data/{build_id}{path}.json"
+    async with session.get(data_url) as resp2:
+        if resp2.status != 200:
+            print(f"[get_latest_placement] data JSON HTTP {resp2.status}")
+            return None
+        page_json = await resp2.json()
+
+    page_props = page_json.get("pageProps", {}) or page_json.get("props", {}).get("pageProps", {})
+    if not page_props:
+        print("[get_latest_placement] no pageProps")
+        return None
+
+    # — Step 3: collect all lists of matches —
+    match_items = []
+    for v in page_props.values():
+        if isinstance(v, list) and v and isinstance(v[0], dict) and "placement" in v[0]:
+            match_items.extend(v)
+
+    if not match_items:
+        print("[get_latest_placement] no match arrays found")
+        return None
+
+    # — Step 4: filter by mode —
+    if mode == "doubleup":
+        filtered = [
+            m for m in match_items
+            if any("double" in str(x).lower() for x in m.values())
+        ]
+    else:
+        filtered = [
+            m for m in match_items
+            if not any("double" in str(x).lower() for x in m.values())
+        ]
+
+    chosen = filtered[0] if filtered else match_items[0]
+    placement = chosen.get("placement")
+    print(f"[get_latest_placement] chosen placement={placement!r}")
+    return placement if isinstance(placement, int) else None
 
 async def get_tracker_tft_rank(ign: str) -> str | None:
     """

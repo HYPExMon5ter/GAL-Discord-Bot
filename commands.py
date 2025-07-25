@@ -1,13 +1,15 @@
 # gal_discord_bot/commands.py
 
 import time
+from itertools import groupby
+from typing import Optional
 
 import discord
 from discord import app_commands
 
 from config import (
     embed_from_cfg, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
-    REGISTERED_ROLE, ANGEL_ROLE
+    REGISTERED_ROLE, ANGEL_ROLE, col_to_index
 )
 from logging_utils import log_error
 from persistence import (
@@ -15,7 +17,7 @@ from persistence import (
 )
 from riot_api import tactics_tools_get_latest_placement
 from sheets import (
-    sheet_cache, cache_lock, refresh_sheet_cache
+    sheet_cache, cache_lock, refresh_sheet_cache, ordinal_suffix, retry_until_successful, get_sheet_for_guild
 )
 from utils import (
     has_allowed_role_from_interaction,
@@ -253,7 +255,7 @@ async def validate(interaction: discord.Interaction):
                 continue
 
             try:
-                placement = await tactics_tools_get_latest_placement(ign)
+                placement = await tactics_tools_get_latest_placement(ign, str(interaction.guild.id))
             except Exception as e:
                 await log_error(
                     interaction.client, interaction.guild,
@@ -296,38 +298,114 @@ async def validate(interaction: discord.Interaction):
 
 @gal.command(
     name="placements",
-    description="Show latest TFT placements for all checked-in players."
+    description="Show latest TFT placements for checked-in players."
 )
-async def placements(interaction: discord.Interaction):
+@app_commands.describe(
+    round="(Optional) Double-up round number (1–4)."
+)
+async def placements(
+    interaction: discord.Interaction,
+    round: Optional[int] = None
+):
+    # 1) Defer
     await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    gid   = str(guild.id)
+    mode  = get_event_mode_for_guild(gid)
 
+    # 2) DOUBLE-UP MODE
+    if mode == "doubleup":
+        # If a round was given, update that column in the "Lobbies" tab
+        if round in (1,2,3,4):
+            lobby_sheet = get_sheet_for_guild(gid, "Lobbies")
+            # Map rounds → (IGN col, Placement col)
+            cols = {
+                1: ("C", "D"),
+                2: ("G", "H"),
+                3: ("K", "L"),
+                4: ("O", "P"),
+            }
+            ign_col_letter, place_col_letter = cols[round]
+            ign_idx   = col_to_index(ign_col_letter)
+            place_idx = col_to_index(place_col_letter)
+
+            # Fetch all IGN values once
+            igns = await retry_until_successful(lobby_sheet.col_values, ign_idx)
+
+            # For each IGN cell (skip header at row 1–2), scrape and write
+            for row_num, ign in enumerate(igns, start=1):
+                if row_num <= 2:
+                    continue
+                ign = ign.strip()
+                if not ign:
+                    continue
+                try:
+                    mode = get_event_mode_for_guild(gid)
+                    placement = await tactics_tools_get_latest_placement(ign, str(guild.id))
+                    val = str(placement) if isinstance(placement, int) else ""
+                    await retry_until_successful(
+                        lobby_sheet.update_acell,
+                        f"{place_col_letter}{row_num}",
+                        val
+                    )
+                except Exception:
+                    # skip errors silently
+                    continue
+
+        # Now build the embed, grouping by team
+        async with cache_lock:
+            players = [
+                {"team": tpl[4] or "No Team",
+                 "discord_tag": tag,
+                 "ign": tpl[1],
+                 "placement": await tactics_tools_get_latest_placement(tpl[1], str(guild.id))}
+                for tag, tpl in sheet_cache["users"].items()
+                if tpl[3].upper() == "TRUE"
+            ]
+
+        # Sort & group by team
+        players.sort(key=lambda p: (p["team"].lower(), p["discord_tag"].lower()))
+        embed = discord.Embed(
+            title="🗺️ Double-Up Placements",
+            color=discord.Color.blue()
+        )
+        for team, group in groupby(players, key=lambda p: p["team"]):
+            lines = []
+            for p in group:
+                pl = p["placement"]
+                if isinstance(pl, int):
+                    suffix = ordinal_suffix(pl)
+                    pl_str = f"{pl}{suffix}"
+                else:
+                    pl_str = "N/A"
+                lines.append(f"`{p['discord_tag']}` (`{p['ign']}`): **{pl_str}**")
+            embed.add_field(name=team, value="\n".join(lines), inline=False)
+
+        return await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # 3) NORMAL MODE (or no round arg)
+    # Existing behavior: list all checked-in players with their latest normal placement
     lines = []
     async with cache_lock:
-        for discord_tag, user_row in sheet_cache["users"].items():
-            ign, checked = user_row[1], user_row[3]
-            if str(checked).strip().upper() != "TRUE":
+        for discord_tag, tpl in sheet_cache["users"].items():
+            ign, checked = tpl[1], tpl[3]
+            if checked.upper() != "TRUE":
                 continue
-
             try:
-                placement = await tactics_tools_get_latest_placement(ign)
-            except Exception as e:
-                await log_error(
-                    interaction.client, interaction.guild,
-                    f"[PLACEMENTS] Error scraping `{ign}`: {e}"
-                )
+                placement = await tactics_tools_get_latest_placement(ign, str(guild.id))
+            except Exception:
                 lines.append(f"`{discord_tag}` — `{ign}`: **Error**")
                 continue
-
             if isinstance(placement, int):
-                suffix = {1: "st", 2: "nd", 3: "rd"}.get(placement, "th")
+                suffix = ordinal_suffix(placement)
                 lines.append(f"`{discord_tag}` — `{ign}`: **{placement}{suffix} place**")
             else:
-                lines.append(f"`{discord_tag}` — `{ign}`: **IGN not found or no recent matches**")
+                lines.append(f"`{discord_tag}` — `{ign}`: **No recent matches**")
 
-    description = "\n".join(lines) if lines else "No checked-in users to show placements for."
+    desc = "\n".join(lines) or "No checked-in players to show placements for."
     embed = discord.Embed(
-        title="Checked-In Players Latest TFT Placements",
-        description=description,
+        title="📈 Checked-In Players Latest TFT Placements",
+        description=desc,
         color=discord.Color.blue()
     )
     await interaction.followup.send(embed=embed, ephemeral=True)

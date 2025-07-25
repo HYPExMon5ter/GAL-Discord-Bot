@@ -10,7 +10,7 @@ from rapidfuzz import process, fuzz
 
 from config import (
     embed_from_cfg, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
-    REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE, get_sheet_settings
+    REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE, get_sheet_settings, LOG_CHANNEL_NAME
 )
 from logging_utils import log_error
 from persistence import (
@@ -53,93 +53,118 @@ async def complete_registration(
     team_name: str | None,
     alt_igns: str,
     reg_modal: "RegistrationModal"
-) -> None:
-    """
-    1) Enforce max_players cap
-    2) Register or update row in sheet & cache
-    3) Write pronouns, alt-IGNs, team
-    4) Assign Registered role and refresh live embeds
-    5) Send confirmation embed
-    6) Hyperlink lolchess.gg profile
-    """
-    # 0) Defer exactly once
+):
+    # 1) Defer once
     if not interaction.response.is_done():
         await interaction.response.defer(ephemeral=True)
 
-    # 1) Context
-    guild       = getattr(reg_modal, "guild",        interaction.guild)
-    member      = getattr(reg_modal, "member",       interaction.user)
+    # 2) Resolve context
+    guild       = getattr(reg_modal, "guild", None) or interaction.guild
+    member      = getattr(reg_modal, "member", None) or interaction.user
     discord_tag = str(member)
     gid         = str(guild.id)
-    mode        = get_event_mode_for_guild(gid)
-    settings    = get_sheet_settings(mode)
-    sheet       = get_sheet_for_guild(gid, "GAL Database")
 
-    # 2) Enforce max_players
-    maxp    = settings.get("max_players", float("inf"))
-    current = sum(1 for t in sheet_cache["users"].values() if t[2].upper() == "TRUE")
-    if current >= maxp:
-        full_embed = embed_from_cfg("registration_full", max_players=maxp)
-        return await interaction.followup.send(embed=full_embed, ephemeral=True)
+    # 3) Prepare sheet
+    mode     = get_event_mode_for_guild(gid)
+    settings = get_sheet_settings(mode)
+    sheet    = get_sheet_for_guild(gid, "GAL Database")
 
-    # 3) Register or update in sheet & in‐memory cache
-    if mode == "doubleup":
-        row = await find_or_register_user(
-            discord_tag,
-            ign,
-            guild_id=gid,
-            team_name=team_name
-        )
-    else:
-        row = await find_or_register_user(
-            discord_tag,
-            ign,
-            guild_id=gid
-        )
-
-    # 4) Write pronouns
-    await retry_until_successful(
-        sheet.update_acell,
-        f"{settings['pronouns_col']}{row}",
-        pronouns
+    # 4) Find log channel
+    log_channel = discord.utils.get(
+        guild.text_channels,
+        name=LOG_CHANNEL_NAME
     )
 
-    # 5) Write alt-IGNs
-    if alt_igns:
-        await retry_until_successful(
-            sheet.update_acell,
-            f"{settings['alt_ign_col']}{row}",
-            alt_igns
-        )
-
-    # 6) Write team name (doubleup only)
-    if mode == "doubleup" and team_name:
-        await retry_until_successful(
-            sheet.update_acell,
-            f"{settings['team_col']}{row}",
-            team_name
-        )
-
-    # 7) Assign the Registered role
-    role_name = settings.get("registered_role", "Registered")
-    reg_role  = discord.utils.get(guild.roles, name=role_name)
-    if reg_role and reg_role not in member.roles:
-        await member.add_roles(reg_role)
-
-    # 8) Refresh any live embeds in the channel
-    await update_live_embeds(guild)
-
-    # 9) Send confirmation embed
-    emb_key = "register_success_doubleup" if mode == "doubleup" else "register_success_normal"
-    embed   = embed_from_cfg(emb_key, ign=ign, pronouns=pronouns, team_name=team_name or "N/A")
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-    # 10) Hyperlink their lolchess.gg profile
     try:
-        await hyperlink_lolchess_profile(discord_tag, gid)
-    except Exception:
-        # silently ignore hyperlink failures
-        pass
+        # 5) Register/update user in sheet & cache
+        if mode == "doubleup":
+            row = await find_or_register_user(
+                discord_tag, ign, guild_id=gid, team_name=team_name
+            )
+        else:
+            row = await find_or_register_user(discord_tag, ign, guild_id=gid)
+
+        # 6) Write pronouns
+        pron_col = settings["pronouns_col"]
+        await retry_until_successful(
+            sheet.update_acell,
+            f"{pron_col}{row}",
+            pronouns
+        )
+
+        # 7) Write alt IGNs
+        if alt_igns:
+            alt_col = settings["alt_ign_col"]
+            await retry_until_successful(
+                sheet.update_acell,
+                f"{alt_col}{row}",
+                alt_igns
+            )
+
+        # 8) Write team (doubleup)
+        if mode == "doubleup" and team_name:
+            team_col = settings["team_col"]
+            await retry_until_successful(
+                sheet.update_acell,
+                f"{team_col}{row}",
+                team_name
+            )
+
+        # 9) Assign Registered role
+        reg_role = discord.utils.get(
+            guild.roles,
+            name=settings.get("registered_role", REGISTERED_ROLE)
+        )
+        if reg_role and reg_role not in member.roles:
+            await member.add_roles(reg_role)
+
+        # 10) Refresh both embeds
+        from views import update_registration_embed, update_checkin_embed
+        chan_id, msg_id = get_persisted_msg(guild.id, "registration")
+        if chan_id:
+            ch = guild.get_channel(chan_id)
+            await update_registration_embed(ch, msg_id, guild)
+        ci_chan, ci_msg = get_persisted_msg(guild.id, "checkin")
+        if ci_chan:
+            ci_ch = guild.get_channel(ci_chan)
+            await update_checkin_embed(ci_ch, ci_msg, guild)
+
+        # 11) Send success confirmation
+        embed_key = (
+            "register_success_doubleup"
+            if mode == "doubleup"
+            else "register_success_normal"
+        )
+        success_embed = embed_from_cfg(
+            embed_key,
+            ign=ign,
+            pronouns=pronouns,
+            team_name=team_name or "N/A"
+        )
+        await interaction.followup.send(embed=success_embed, ephemeral=True)
+
+        # 12) Log success
+        if log_channel:
+            await log_channel.send(
+                f"✅ **REGISTER** — Guild: **{guild.name}** (`{guild.id}`) "
+                f"— User: **{discord_tag}**"
+            )
+
+    except Exception as e:
+        # a) Log the error
+        err_msg = (
+            f"❌ **REGISTER FAILED** — Guild: **{guild.name}** (`{guild.id}`) "
+            f"— User: **{discord_tag}** — Error: {e}"
+        )
+        if log_channel:
+            await log_channel.send(err_msg)
+        else:
+            # fallback to global logger
+            await log_error(interaction.client, guild, f"[REGISTER-FAIL] {discord_tag} — {e}")
+
+        # b) Inform the user
+        fail_embed = embed_from_cfg("register_fail")
+        await interaction.followup.send(embed=fail_embed, ephemeral=True)
 
 class ChannelCheckInButton(discord.ui.Button):
     def __init__(self):
@@ -443,40 +468,44 @@ class UnregisterButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        member      = interaction.user
         guild       = interaction.guild
+        member      = interaction.user
         discord_tag = str(member)
+        guild_id    = str(guild.id)
 
-        # 1) Must be registered in cache
+        # Grab from cache
         async with cache_lock:
             tup = sheet_cache["users"].get(discord_tag)
+
+        # If not registered (now bool!) :contentReference[oaicite:6]{index=6}
         if not tup or not tup[2]:
             return await interaction.response.send_message(
                 embed=embed_from_cfg("unregister_not_registered"),
                 ephemeral=True
             )
 
-        # 2) Unregister in sheet + cache
-        ok = await unregister_user(discord_tag, guild_id=str(guild.id))
+        # Attempt to unregister
+        ok = await unregister_user(discord_tag, guild_id=guild_id)
         if not ok:
-            await log_error(interaction.client, guild, f"[UNREGISTER-FAIL] {discord_tag}")
             return await interaction.response.send_message(
                 embed=embed_from_cfg("unregister_fail"),
                 ephemeral=True
             )
 
-        # 3) Remove roles locally
+        # Remove roles, confirm, refresh embeds...
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
         ci_role  = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
         await member.remove_roles(*(r for r in (reg_role, ci_role) if r in member.roles))
 
-        # 4) Confirm
         await interaction.response.send_message(
             embed=embed_from_cfg("unregister_success"),
             ephemeral=True
         )
 
-        # 5) Refresh both embeds
+        # refresh both persisted embeds
+        from persistence import get_persisted_msg
+        from views import update_registration_embed, update_checkin_embed
+
         chan_id, msg_id = get_persisted_msg(guild.id, "registration")
         if chan_id:
             ch = guild.get_channel(chan_id)
@@ -859,30 +888,30 @@ async def update_registration_embed(
     msg_id: int,
     guild: discord.Guild
 ):
-    # 1) Check open/closed
+    # Determine open/closed
     reg_ch     = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
     angel_role = discord.utils.get(guild.roles,         name=ANGEL_ROLE)
     is_open    = bool(reg_ch and angel_role and reg_ch.overwrites_for(angel_role).view_channel)
 
-    # 2) Pick base embed
+    # Base embed
     base_key = "registration" if is_open else "registration_closed"
     base     = embed_from_cfg(base_key)
 
-    # 3) If closed, just swap embed & view
+    # If closed → swap only
     msg = await channel.fetch_message(msg_id)
     if not is_open:
         return await msg.edit(embed=base, view=RegistrationView(msg_id, guild))
 
-    # 4) Gather registered users
+    # Fetch cache (registered flag is now a bool!) :contentReference[oaicite:4]{index=4}
     mode = get_event_mode_for_guild(str(guild.id))
     async with cache_lock:
         users = [
-            (tag, tpl[1], tpl[4] or "")
+            (tag, tpl[1], tpl[4] if len(tpl) > 4 else "")
             for tag, tpl in sheet_cache["users"].items()
-            if tpl[2]  # registered==True
+            if tpl[2]        # was `str(tpl[2]).upper() == "TRUE"`
         ]
 
-    # 5) Build summary & lines
+    # Build lines & summary
     if mode == "normal":
         summary = f"**Registered Players:** {len(users)}"
         lines   = [f"• `{tag}` (`{ign}`)" for tag, ign, _ in users]
@@ -900,21 +929,22 @@ async def update_registration_embed(
             lines.pop()
         summary = f"**Players:** {len(users)}   **Teams:** {teams}"
 
-    # 6) Inject close time (date + time)
-    desc      = base.description or ""
+    # Inject close time
+    desc      = (base.description or "") + "\n"
     close_iso = get_schedule(guild.id, "registration_close")
     if close_iso:
         ts = int(datetime.fromisoformat(close_iso).timestamp())
-        desc += f"\n\n⏰ Registration closes at <t:{ts}:F>"
+        desc += f"⏰ Registration closes at <t:{ts}:F>\n\n\n"
 
-    # 7) Append summary & list
-    desc += f"\n\n{summary}"
+    # Append list
+    desc += summary
     if lines:
         desc += "\n\n" + "\n".join(lines)
 
-    # 8) Edit the message
+    # Edit
     embed = discord.Embed(title=base.title, description=desc, color=base.color)
     await msg.edit(embed=embed, view=RegistrationView(msg_id, guild))
+
 
 
 async def update_checkin_embed(
@@ -922,63 +952,65 @@ async def update_checkin_embed(
     msg_id: int,
     guild: discord.Guild
 ):
-    print(f"[update_checkin_embed] called: guild={guild.id} msg_id={msg_id}")
-    # 1) Is check-in open?
+    # Determine open/closed
     ci_ch    = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
     reg_role = discord.utils.get(guild.roles,         name=REGISTERED_ROLE)
     is_open  = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
-    print(f"[update_checkin_embed] is_open={is_open}")
 
-    # 2) Base embed
+    # Base embed
     base_key = "checkin" if is_open else "checkin_closed"
     base     = embed_from_cfg(base_key)
 
-    # 3) If closed, swap and return
+    # If closed → swap only
     msg = await channel.fetch_message(msg_id)
     if not is_open:
-        print("[update_checkin_embed] channel closed, editing closed embed")
         return await msg.edit(embed=base, view=CheckInView(guild))
 
-    # 4) Inject scheduled close time
+    # Inject close time
     desc      = base.description or ""
     close_iso = get_schedule(guild.id, "checkin_close")
-    print(f"[update_checkin_embed] close_iso={close_iso}")
     if close_iso:
         ts = int(datetime.fromisoformat(close_iso).timestamp())
-        desc += f"\n\n⏰ Check-in closes at <t:{ts}:t>"
+        desc += f"\n⏰ Check-in closes at <t:{ts}:t>"
 
-    # 5) Gather regs & checked
+    # Gather from cache :contentReference[oaicite:5]{index=5}
     mode = get_event_mode_for_guild(str(guild.id))
     async with cache_lock:
-        regs    = [t for t in sheet_cache["users"].values() if t[2]]
-        checked = [t for t in regs                             if t[3]]
-    print(f"[update_checkin_embed] regs={len(regs)} checked={len(checked)} mode={mode}")
+        registered = [(tag, tpl[1], tpl[4] if len(tpl)>4 else "")
+                      for tag, tpl in sheet_cache["users"].items()
+                      if tpl[2]]            # was checking tpl[2].upper()
+        checked_in = [(tag, tpl[1], tpl[4] if len(tpl)>4 else "")
+                      for tag, tpl in sheet_cache["users"].items()
+                      if tpl[2] and tpl[3]]  # was checking both .upper()
 
-    # 6) Build summary & lines
+    total_reg = len(registered)
+    total_ci  = len(checked_in)
+
+    # Build summary & lines
     if mode == "normal":
-        summary = f"**Checked-In:** {len(checked)}/{len(regs)}"
-        lines   = [f"• `{tpl[1]}`" for tpl in checked]
+        summary = f"**Checked In:** {total_ci}/{total_reg}"
+        lines   = [f"• `{tag}` (`{ign}`)" for tag, ign, _ in checked_in]
     else:
-        checked.sort(key=lambda x: x[4].lower())
-        grouped     = groupby(checked, key=lambda x: x[4] or "No Team")
-        lines, tc   = [], 0
-        total_teams = len({tpl[4] or "No Team" for tpl in regs})
+        checked_in.sort(key=lambda x: x[2].lower())
+        grouped = groupby(checked_in, key=lambda x: x[2] or "No Team")
+        lines, checked_teams = [], 0
+        total_teams = len({tpl[2] or "No Team" for tpl in registered})
         for team, grp in grouped:
-            grp = list(grp); tc += 1
+            grp = list(grp); checked_teams += 1
             lines.append(f"**{team}** ({len(grp)})")
-            for _, ign, *_ in grp:
-                lines.append(f"    • `{ign}`")
+            for tag, ign, _ in grp:
+                lines.append(f"    • `{tag}` (`{ign}`)")
             lines.append("")
         if lines and not lines[-1].strip():
             lines.pop()
-        summary = f"**Checked-In:** {len(checked)}/{len(regs)}  **Teams:** {tc}/{total_teams}"
-    print(f"[update_checkin_embed] summary={summary}")
+        summary = (f"**Checked In:** {total_ci}/{total_reg}  "
+                   f"**Teams:** {checked_teams}/{total_teams}")
 
-    # 7) Append and edit
-    desc += f"\n\n{summary}"
+    # Append to desc
+    desc += f"\n\n\n{summary}"
     if lines:
         desc += "\n\n" + "\n".join(lines)
-    embed = discord.Embed(title=base.title, description=desc, color=base.color)
 
-    print("[update_checkin_embed] editing message")
+    # Edit
+    embed = discord.Embed(title=base.title, description=desc, color=base.color)
     await msg.edit(embed=embed, view=CheckInView(guild))

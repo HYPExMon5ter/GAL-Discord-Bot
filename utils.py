@@ -6,9 +6,10 @@ from zoneinfo import ZoneInfo
 import aiohttp
 import discord
 
-from config import ALLOWED_ROLES, embed_from_cfg, get_sheet_settings
+from config import ALLOWED_ROLES, embed_from_cfg, get_sheet_settings, REGISTERED_ROLE, CHECKED_IN_ROLE
 from persistence import get_persisted_msg, get_event_mode_for_guild
 from sheets import sheet_cache, get_sheet_for_guild, retry_until_successful
+
 
 
 def has_allowed_role(member: discord.Member) -> bool:
@@ -146,53 +147,48 @@ async def toggle_checkin_for_member(
     interaction: discord.Interaction,
     checkin_fn,
     success_key: str,
-    *,
-    guild: discord.Guild = None,
-    member: discord.Member = None
 ):
-    """
-    Toggle a user’s checked-in state via `checkin_fn`, update cache,
-    add/remove the CHECKED_IN_ROLE, send feedback, and refresh the embed.
-    """
-    from views import update_checkin_embed  # lazy to avoid circular import
-    from config import REGISTERED_ROLE, CHECKED_IN_ROLE
-    from persistence import get_persisted_msg
-
-    # 1) Defer + resolve context
+    print(f"[toggle_checkin] start: fn={checkin_fn.__name__} user={interaction.user} guild={interaction.guild.id}")
     await interaction.response.defer(ephemeral=True)
-    guild  = guild  or interaction.guild
-    member = member or interaction.user
-    if not guild or not member:
-        return
 
-    # 2) Must be registered
+    guild  = interaction.guild
+    member = interaction.user
+
+    # 1) Registered?
     reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
     if reg_role not in member.roles:
+        print("[toggle_checkin] user not registered")
         return await interaction.followup.send(
             embed=embed_from_cfg("checkin_requires_registration"),
             ephemeral=True
         )
 
-    # 3) Sheet write & cache update
+    # 2) Sheet + cache
     discord_tag = str(member)
     ok = await checkin_fn(discord_tag, guild_id=str(guild.id))
+    print(f"[toggle_checkin] sheet fn returned ok={ok}")
 
-    # 4) Assign/unassign the actual Discord role
+    # 3) Role assign/unassign
     ci_role = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
     if ok and ci_role:
         if success_key == "checked_in":
             await member.add_roles(ci_role)
-        else:  # "checked_out"
+            print("[toggle_checkin] added check-in role")
+        else:
             await member.remove_roles(ci_role)
+            print("[toggle_checkin] removed check-in role")
 
-    # 5) Feedback embed
-    resp = embed_from_cfg(success_key) if ok else embed_from_cfg("error")
+    # 4) Feedback
+    resp = embed_from_cfg(success_key if ok else "error")
     await interaction.followup.send(embed=resp, ephemeral=True)
 
-    # 6) Refresh the shared check-in embed in the channel
+    # 5) Refresh embed
     chan_id, msg_id = get_persisted_msg(guild.id, "checkin")
+    print(f"[toggle_checkin] persisted checkin msg: chan_id={chan_id} msg_id={msg_id}")
     if chan_id and msg_id:
         ch = guild.get_channel(chan_id)
+        print("[toggle_checkin] calling update_checkin_embed")
+        from views import update_checkin_embed
         await update_checkin_embed(ch, msg_id, guild)
 
 async def update_dm_action_views(guild: discord.Guild):

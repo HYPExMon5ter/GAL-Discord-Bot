@@ -60,8 +60,6 @@ embeds:
   
       1. If you haven’t yet registered, head to <#1387614581794537652> and click **Register** first.  
       2. 🎥 Planning to stream? Drop your Twitch/YouTube link in <#717088485080694794>!
-#
-#      ⏰ Check-in closes at **5:00 PM PT**; lobbies drop shortly after!
     color: "#3498db"
 
   checkin_channel_toggled:
@@ -212,7 +210,6 @@ sheet_configuration:
     pronouns_col: "C"
     ign_col: "D"
     alt_ign_col: "E"
-    rank_col: "F"
     team_col: "I"
     registered_col: "J"
     checkin_col: "K"

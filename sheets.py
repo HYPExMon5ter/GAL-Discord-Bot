@@ -165,56 +165,35 @@ async def find_or_register_user(
     team_name: str | None = None
 ) -> int:
     """
-    Ensure a row exists for `discord_tag`. If it does, update IGN,
-    Registered=TRUE, and Team (for doubleup) as needed. Otherwise,
-    append a new row setting Registered=TRUE, Checked-In=FALSE,
-    and Team if applicable. Returns the sheet row number.
+    If user exists: update IGN, set Registered=True, update Team (doubleup).
+    Otherwise: write into first blank slot under header (or append),
+    marking Registered=True, Checked-In=False.
+    Returns the 1-based row number.
     """
-    # 1) Grab the current cache snapshot
     async with cache_lock:
-        cache = sheet_cache["users"]
+        existing = sheet_cache["users"].get(discord_tag)
 
-    # 2) Resolve config & worksheet
     gid   = str(guild_id)
     mode  = get_event_mode_for_guild(gid)
     cfg   = get_sheet_settings(mode)
     sheet = get_sheet_for_guild(gid, "GAL Database")
 
-    # 3) Try to find an existing row in cache
-    tup = cache.get(discord_tag)
-    row = tup[0] if tup else None
+    # ── UPDATE EXISTING ───────────────────────────────────────────
+    if existing:
+        row, old_ign, old_reg, old_ci, old_team, old_alt = existing
 
-    # 4) If not in cache, scan the Discord‐tag column manually
-    if not row:
-        dc   = col_to_index(cfg["discord_col"])
-        vals = await retry_until_successful(sheet.col_values, dc)
-        for i, v in enumerate(vals, start=1):
-            if v.strip() == discord_tag:
-                row = i
-                break
-
-    # 5) Update the existing row
-    if row:
-        # unpack the cached tuple
-        _, old_ign, old_reg, old_ci, old_team, old_alt = cache[discord_tag]
-
-        # 5a) IGN changed?
         if old_ign != ign:
             await retry_until_successful(
                 sheet.update_acell,
                 f"{cfg['ign_col']}{row}",
                 ign
             )
-
-        # 5b) Registered flag toggle
-        if old_reg.upper() != "TRUE":
+        if not old_reg:
             await retry_until_successful(
                 sheet.update_acell,
                 f"{cfg['registered_col']}{row}",
-                "TRUE"
+                True
             )
-
-        # 5c) Team name (doubleup) changed?
         if mode == "doubleup" and team_name and old_team != team_name:
             await retry_until_successful(
                 sheet.update_acell,
@@ -222,131 +201,165 @@ async def find_or_register_user(
                 team_name
             )
 
-        # 5d) Update in-memory cache (6-tuple)
+        # refresh cache
         sheet_cache["users"][discord_tag] = (
-            row,
-            ign,
-            "TRUE",
-            old_ci,
-            team_name or old_team,
-            old_alt
+            row, ign, True, old_ci, team_name or old_team, old_alt
         )
         return row
 
-    # 6) Append a brand-new row
-    # 6a) Determine how many columns we need
-    max_col = max(
-        col_to_index(col)
-        for col in cfg.values()
-        if isinstance(col, str)
-    )
-    # build a blank row
-    vals = [""] * max_col
-    vals[col_to_index(cfg["discord_col"]) - 1]   = discord_tag
-    vals[col_to_index(cfg["ign_col"])        - 1] = ign
-    vals[col_to_index(cfg["registered_col"]) - 1] = "TRUE"
-    vals[col_to_index(cfg["checkin_col"])    - 1] = "FALSE"
+    # ── NEW REGISTRATION ──────────────────────────────────────────
+    hline  = cfg["header_line_num"]
+    maxp   = cfg.get("max_players", 9999)
+    dc_idx = col_to_index(cfg["discord_col"])
+    discord_vals = await retry_until_successful(sheet.col_values, dc_idx)
+
+    # find first empty slot between hline+1 … hline+maxp
+    target_row = None
+    for i in range(hline, min(len(discord_vals), hline + maxp)):
+        if not discord_vals[i].strip():
+            target_row = i + 1
+            break
+
+    # prepare column→value map
+    writes = {
+        cfg["discord_col"]:   discord_tag,
+        cfg["ign_col"]:       ign,
+        cfg["registered_col"]: True,
+        cfg["checkin_col"]:   False
+    }
     if mode == "doubleup":
-        vals[col_to_index(cfg["team_col"])    - 1] = team_name or ""
+        writes[cfg["team_col"]] = team_name or ""
 
-    # 6b) Append and recompute row number
-    await retry_until_successful(sheet.append_row, vals)
-    dc_vals = await retry_until_successful(
-        sheet.col_values,
-        col_to_index(cfg["discord_col"])
-    )
-    new_row = len(dc_vals)
+    if target_row:
+        # fill pre-formatted row
+        for col, val in writes.items():
+            await retry_until_successful(
+                sheet.update_acell,
+                f"{col}{target_row}",
+                val
+            )
+        row = target_row
+    else:
+        # fallback: append
+        cols_idx = [col_to_index(c) for c in writes]
+        max_idx  = max(cols_idx)
+        row_vals = [""] * max_idx
+        for col, val in writes.items():
+            row_vals[col_to_index(col)-1] = val
+        await retry_until_successful(sheet.append_row, row_vals)
+        dc_vals = await retry_until_successful(sheet.col_values, dc_idx)
+        row     = len(dc_vals)
 
-    # 6c) Insert into cache
     sheet_cache["users"][discord_tag] = (
-        new_row,
-        ign,
-        "TRUE",
-        "FALSE",
-        team_name or "",
-        ""
+        row, ign, True, False,
+        team_name or "", ""
     )
-    return new_row
+    return row
 
 
-async def unregister_user(discord_tag: str, guild_id: str | None = None) -> bool:
+async def unregister_user(
+    discord_tag: str,
+    guild_id: str | None = None
+) -> bool:
     """
-    Un-register a user:
-      - Sets Registered & Checked-In = FALSE
-      - Updates the in-memory cache (6-tuple).
+    Set Registered=False, Checked-In=False for `discord_tag`.
     """
     async with cache_lock:
         tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return False
 
-    row, ign, _, _, team, alt = tup
-    gid    = str(guild_id)
-    mode   = get_event_mode_for_guild(gid)
-    cfg    = get_sheet_settings(mode)
-    sheet  = get_sheet_for_guild(gid, "GAL Database")
+    row, ign, old_reg, old_ci, team, alt = tup
+    gid   = str(guild_id)
+    mode  = get_event_mode_for_guild(gid)
+    cfg   = get_sheet_settings(mode)
+    sheet = get_sheet_for_guild(gid, "GAL Database")
 
-    # Sanity-check the Discord tag still matches
-    dc_cell = await retry_until_successful(sheet.acell, f"{cfg['discord_col']}{row}")
-    if dc_cell.value.strip() != discord_tag:
+    # sanity check
+    cell = await retry_until_successful(sheet.acell, f"{cfg['discord_col']}{row}")
+    if cell.value.strip() != discord_tag:
         return False
 
-    await retry_until_successful(sheet.update_acell, f"{cfg['registered_col']}{row}", "FALSE")
-    await retry_until_successful(sheet.update_acell, f"{cfg['checkin_col']}{row}",    "FALSE")
+    await retry_until_successful(
+        sheet.update_acell,
+        f"{cfg['registered_col']}{row}",
+        False
+    )
+    await retry_until_successful(
+        sheet.update_acell,
+        f"{cfg['checkin_col']}{row}",
+        False
+    )
 
-    sheet_cache["users"][discord_tag] = (row, ign, "FALSE", "FALSE", team, alt)
+    sheet_cache["users"][discord_tag] = (
+        row, ign, False, False, team, alt
+    )
     return True
 
 
-async def mark_checked_in_async(discord_tag: str, guild_id: str | None = None) -> bool:
+async def mark_checked_in_async(
+    discord_tag: str,
+    guild_id: str | None = None
+) -> bool:
     """
-    Marks a user as checked-in in both sheet & cache.
+    If Registered=True, set Checked-In=True for `discord_tag`.
     """
     async with cache_lock:
         tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return False
 
-    row, ign, reg, old_ci, team, alt = tup
-    if reg.upper() != "TRUE":
+    row, ign, reg, _, team, alt = tup
+    if not reg:
         return False
 
     gid   = str(guild_id)
-    cfg   = get_sheet_settings(get_event_mode_for_guild(gid))
+    mode  = get_event_mode_for_guild(gid)
+    cfg   = get_sheet_settings(mode)
     sheet = get_sheet_for_guild(gid, "GAL Database")
 
     await retry_until_successful(
         sheet.update_acell,
         f"{cfg['checkin_col']}{row}",
-        "TRUE"
+        True
     )
-    sheet_cache["users"][discord_tag] = (row, ign, reg, "TRUE", team, alt)
+
+    sheet_cache["users"][discord_tag] = (
+        row, ign, reg, True, team, alt
+    )
     return True
 
 
-async def unmark_checked_in_async(discord_tag: str, guild_id: str | None = None) -> bool:
+async def unmark_checked_in_async(
+    discord_tag: str,
+    guild_id: str | None = None
+) -> bool:
     """
-    Un-marks a user as checked-in in both sheet & cache.
+    If Checked-In=True, set Checked-In=False for `discord_tag`.
     """
     async with cache_lock:
         tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return False
 
-    row, ign, reg, old_ci, team, alt = tup
-    if old_ci.upper() != "TRUE":
+    row, ign, reg, ci, team, alt = tup
+    if not ci:
         return False
 
     gid   = str(guild_id)
-    cfg   = get_sheet_settings(get_event_mode_for_guild(gid))
+    mode  = get_event_mode_for_guild(gid)
+    cfg   = get_sheet_settings(mode)
     sheet = get_sheet_for_guild(gid, "GAL Database")
 
     await retry_until_successful(
         sheet.update_acell,
         f"{cfg['checkin_col']}{row}",
-        "FALSE"
+        False
     )
-    sheet_cache["users"][discord_tag] = (row, ign, reg, "FALSE", team, alt)
+
+    sheet_cache["users"][discord_tag] = (
+        row, ign, reg, False, team, alt
+    )
     return True
 
 

@@ -30,7 +30,7 @@ from views import (
 TEST_GUILD_ID = 1385739351505240074
 PROD_GUILD_ID = 716787949584515102
 
-@app_commands.guilds(discord.Object(id=PROD_GUILD_ID))
+@app_commands.guilds(discord.Object(id=TEST_GUILD_ID))
 class GalGroup(app_commands.Group):
     def __init__(self):
         super().__init__(name="gal", description="Group of GAL bot commands")

@@ -7,13 +7,13 @@ from discord import app_commands
 
 from config import (
     embed_from_cfg, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
-    REGISTERED_ROLE, ANGEL_ROLE, load_embeds_cfg
+    REGISTERED_ROLE, ANGEL_ROLE
 )
 from logging_utils import log_error
 from persistence import (
     get_event_mode_for_guild, set_event_mode_for_guild
 )
-from riot_api import get_summoner_info, get_latest_tft_placement
+from riot_api import tactics_tools_get_latest_placement
 from sheets import (
     sheet_cache, cache_lock, refresh_sheet_cache
 )
@@ -238,101 +238,159 @@ async def cache(interaction: discord.Interaction):
     except Exception as e:
         await log_error(interaction.client, interaction.guild, f"Cache command error: {e}")
 
-@gal.command(name="validate", description="Validate checked-in IGNs with Riot API.")
+@gal.command(
+    name="validate",
+    description="Validate checked-in IGNs by verifying they’ve a recent TFT placement."
+)
 async def validate(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    valid = []
-    invalid = []
+
+    valid, invalid = [], []
     async with cache_lock:
-        for discord_tag, user_tuple in sheet_cache["users"].items():
-            ign = user_tuple[1]
-            checked_in_flag = user_tuple[3]
-            if str(checked_in_flag).strip().upper() != "TRUE":
+        for discord_tag, user_row in sheet_cache["users"].items():
+            ign, checked = user_row[1], user_row[3]
+            if str(checked).strip().upper() != "TRUE":
                 continue
-            summ_info = get_summoner_info(ign)
-            if summ_info:
+
+            try:
+                placement = await tactics_tools_get_latest_placement(ign)
+            except Exception as e:
+                await log_error(
+                    interaction.client, interaction.guild,
+                    f"[VALIDATE] Error scraping `{ign}`: {e}"
+                )
+                invalid.append(f"`{discord_tag}` — `{ign}`: **Error**")
+                continue
+
+            # real player if we got an integer back
+            if isinstance(placement, int):
                 valid.append(f"`{discord_tag}` — `{ign}`")
             else:
-                invalid.append(f"`{discord_tag}` — `{ign}`")
-    description = ""
-    if valid:
-        description += "**✅ Valid IGNs:**\n" + "\n".join(valid) + "\n"
-    if invalid:
-        description += "\n**❌ Invalid IGNs:**\n" + "\n".join(invalid)
-    if not valid and not invalid:
+                invalid.append(f"`{discord_tag}` — `{ign}`: **IGN not found or no recent matches**")
+
+    # Build embed description & color
+    if not (valid or invalid):
         description = "No checked-in users to validate."
+        color = discord.Color.light_grey()
+    else:
+        parts = []
+        if valid:
+            parts.append("**✅ Valid (played recently):**")
+            parts.extend(valid)
+        if invalid:
+            parts.append("\n**❌ Invalid or no recent matches:**")
+            parts.extend(invalid)
+        description = "\n".join(parts)
+        color = (
+            discord.Color.green() if valid and not invalid else
+            discord.Color.orange() if valid else
+            discord.Color.red()
+        )
+
     embed = discord.Embed(
         title="IGN Validation Results",
         description=description,
-        color=discord.Color.green() if valid and not invalid else discord.Color.orange() if valid else discord.Color.red(),
+        color=color
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-@gal.command(name="placements", description="Show latest TFT placements for checked-in users.")
+@gal.command(
+    name="placements",
+    description="Show latest TFT placements for all checked-in players."
+)
 async def placements(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    results = []
+
+    lines = []
     async with cache_lock:
-        for discord_tag, user_tuple in sheet_cache["users"].items():
-            ign = user_tuple[1]
-            checked_in_flag = user_tuple[3]
-            if str(checked_in_flag).strip().upper() != "TRUE":
+        for discord_tag, user_row in sheet_cache["users"].items():
+            ign, checked = user_row[1], user_row[3]
+            if str(checked).strip().upper() != "TRUE":
                 continue
-            summ_info = get_summoner_info(ign)
-            if not summ_info:
-                results.append(f"`{discord_tag}` — `{ign}`: **IGN not found**")
+
+            try:
+                placement = await tactics_tools_get_latest_placement(ign)
+            except Exception as e:
+                await log_error(
+                    interaction.client, interaction.guild,
+                    f"[PLACEMENTS] Error scraping `{ign}`: {e}"
+                )
+                lines.append(f"`{discord_tag}` — `{ign}`: **Error**")
                 continue
-            puuid = summ_info.get("puuid")
-            placement = get_latest_tft_placement(puuid)
-            if placement:
-                results.append(f"`{discord_tag}` — `{ign}`: **{placement}th place**")
+
+            if isinstance(placement, int):
+                suffix = {1: "st", 2: "nd", 3: "rd"}.get(placement, "th")
+                lines.append(f"`{discord_tag}` — `{ign}`: **{placement}{suffix} place**")
             else:
-                results.append(f"`{discord_tag}` — `{ign}`: **No recent matches found**")
-    description = "\n".join(results) if results else "No checked-in users to show placements for."
+                lines.append(f"`{discord_tag}` — `{ign}`: **IGN not found or no recent matches**")
+
+    description = "\n".join(lines) if lines else "No checked-in users to show placements for."
     embed = discord.Embed(
-        title="Checked-In Player Latest Placements",
+        title="Checked-In Players Latest TFT Placements",
         description=description,
         color=discord.Color.blue()
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-@gal.command(name="reload", description="Reloads embeds config, updates live messages, and refreshes presence.")
+@gal.command(name="reload", description="Reloads config, updates live embeds, and refreshes rich presence.")
 async def reload_cmd(interaction: discord.Interaction):
-    # 1) Permission check
+    # 1) Permission guard
     if not has_allowed_role_from_interaction(interaction):
-        embed = embed_from_cfg("permission_denied")
-        return await interaction.response.send_message(embed=embed, ephemeral=True)
+        return await interaction.response.send_message(
+            embed=embed_from_cfg("permission_denied"),
+            ephemeral=True
+        )
 
-    # 2) Reload embeds & live views
-    global EMBEDS_CFG
-    EMBEDS_CFG = load_embeds_cfg()
+    # 2) Re-read the entire config.yaml into memory
+    import yaml
+    from config import _FULL_CFG, EMBEDS_CFG, SHEET_CONFIG
+
+    with open("config.yaml", "r", encoding="utf-8") as f:
+        new_cfg = yaml.safe_load(f)
+
+    # Overwrite in-place so all modules see the update
+    _FULL_CFG.clear()
+    _FULL_CFG.update(new_cfg)
+
+    EMBEDS_CFG.clear()
+    EMBEDS_CFG.update(_FULL_CFG.get("embeds", {}))
+
+    SHEET_CONFIG.clear()
+    SHEET_CONFIG.update(_FULL_CFG.get("sheet_configuration", {}))
+
+    # 3) Update all persisted/live embeds in every guild
     for guild in interaction.client.guilds:
         await update_live_embeds(guild)
 
-    # 3) Refresh Rich Presence from embeds.yaml
-    presence_cfg = EMBEDS_CFG.get("rich_presence", {})
+    # 4) Refresh rich presence from config.yaml → top‐level "rich_presence" key
+    presence_cfg = _FULL_CFG.get("rich_presence", {})
     pres_type = presence_cfg.get("type", "PLAYING").upper()
     pres_msg  = presence_cfg.get("message", "")
 
     if pres_type == "LISTENING":
-        activity = discord.Activity(type=discord.ActivityType.listening, name=pres_msg)
+        activity = discord.Activity(
+            type=discord.ActivityType.listening, name=pres_msg
+        )
     elif pres_type == "WATCHING":
-        activity = discord.Activity(type=discord.ActivityType.watching,  name=pres_msg)
+        activity = discord.Activity(
+            type=discord.ActivityType.watching, name=pres_msg
+        )
     else:
         activity = discord.Game(name=pres_msg)
 
     await interaction.client.change_presence(activity=activity)
 
-    # 4) Confirm
+    # 5) Confirm back to the invoker
     confirm = discord.Embed(
-        title="✅ Config & Presence Reloaded",
-        description="Embeds, live views, and rich presence have all been updated!",
+        title="✅ Configuration Reloaded",
+        description="All embeds, live views, and rich presence have been updated!",
         color=discord.Color.green()
     )
     await interaction.response.send_message(embed=confirm, ephemeral=True)
 
 @gal.command(name="help", description="Shows this help message.")
 async def help_cmd(interaction: discord.Interaction):
+    from config import EMBEDS_CFG
     cfg = EMBEDS_CFG.get("help", {})
     help_embed = discord.Embed(
         title=cfg.get("title", "GAL Bot Help"),

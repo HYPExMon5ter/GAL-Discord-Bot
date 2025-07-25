@@ -9,7 +9,7 @@ from rapidfuzz import process, fuzz
 
 from config import (
     embed_from_cfg, CHECK_IN_CHANNEL, REGISTRATION_CHANNEL,
-    REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE
+    REGISTERED_ROLE, CHECKED_IN_ROLE, ANGEL_ROLE, get_sheet_settings
 )
 from logging_utils import log_error
 from persistence import (
@@ -19,13 +19,12 @@ from persistence import (
 from sheets import (
     find_or_register_user, get_sheet_for_guild, retry_until_successful, mark_checked_in_async, unmark_checked_in_async,
     unregister_user, refresh_sheet_cache, reset_checked_in_roles_and_sheet, cache_lock, sheet_cache,
-    reset_registered_roles_and_sheet, hyperlink_lolchess_profiles
+    reset_registered_roles_and_sheet
 )
 from utils import (
     has_allowed_role,
     has_allowed_role_from_interaction,
-    toggle_persisted_channel, send_reminder_dms, toggle_checkin_for_member,
-)
+    toggle_persisted_channel, send_reminder_dms, toggle_checkin_for_member, hyperlink_lolchess_profile, )
 
 
 async def create_persisted_embed(guild, channel, embed, view, persist_key, pin=True, announce_pin=True):
@@ -45,6 +44,7 @@ async def create_persisted_embed(guild, channel, embed, view, persist_key, pin=T
                 pass
     return msg
 
+
 async def complete_registration(
     interaction: discord.Interaction,
     ign: str,
@@ -52,55 +52,93 @@ async def complete_registration(
     team_name: str | None,
     alt_igns: str,
     reg_modal: "RegistrationModal"
-):
+) -> None:
     """
-    Handles RegistrationModal submissions from both channel & DM.
-    Now takes alt_igns explicitly so TeamNameChoiceView and on_submit both pass it through.
+    1) Enforce max_players cap
+    2) Register or update row in sheet & cache
+    3) Write pronouns, alt-IGNs, team
+    4) Assign Registered role and refresh live embeds
+    5) Send confirmation embed
+    6) Hyperlink lolchess.gg profile
     """
-    guild = getattr(reg_modal, "guild", None) or interaction.guild
-    user  = getattr(reg_modal, "member", None) or interaction.user
-    gid   = str(guild.id)
-    tag   = str(user)
-    mode  = get_event_mode_for_guild(gid)
-    role  = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    # 0) Defer exactly once
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
 
+    # 1) Context
+    guild       = getattr(reg_modal, "guild",        interaction.guild)
+    member      = getattr(reg_modal, "member",       interaction.user)
+    discord_tag = str(member)
+    gid         = str(guild.id)
+    mode        = get_event_mode_for_guild(gid)
+    settings    = get_sheet_settings(mode)
+    sheet       = get_sheet_for_guild(gid, "GAL Database")
+
+    # 2) Enforce max_players
+    maxp    = settings.get("max_players", float("inf"))
+    current = sum(1 for t in sheet_cache["users"].values() if t[2].upper() == "TRUE")
+    if current >= maxp:
+        full_embed = embed_from_cfg("registration_full", max_players=maxp)
+        return await interaction.followup.send(embed=full_embed, ephemeral=True)
+
+    # 3) Register or update in sheet & in‐memory cache
+    if mode == "doubleup":
+        row = await find_or_register_user(
+            discord_tag,
+            ign,
+            guild_id=gid,
+            team_name=team_name
+        )
+    else:
+        row = await find_or_register_user(
+            discord_tag,
+            ign,
+            guild_id=gid
+        )
+
+    # 4) Write pronouns
+    await retry_until_successful(
+        sheet.update_acell,
+        f"{settings['pronouns_col']}{row}",
+        pronouns
+    )
+
+    # 5) Write alt-IGNs
+    if alt_igns:
+        await retry_until_successful(
+            sheet.update_acell,
+            f"{settings['alt_ign_col']}{row}",
+            alt_igns
+        )
+
+    # 6) Write team name (doubleup only)
+    if mode == "doubleup" and team_name:
+        await retry_until_successful(
+            sheet.update_acell,
+            f"{settings['team_col']}{row}",
+            team_name
+        )
+
+    # 7) Assign the Registered role
+    role_name = settings.get("registered_role", "Registered")
+    reg_role  = discord.utils.get(guild.roles, name=role_name)
+    if reg_role and reg_role not in member.roles:
+        await member.add_roles(reg_role)
+
+    # 8) Refresh any live embeds in the channel
+    await update_live_embeds(guild)
+
+    # 9) Send confirmation embed
+    emb_key = "register_success_doubleup" if mode == "doubleup" else "register_success_normal"
+    embed   = embed_from_cfg(emb_key, ign=ign, pronouns=pronouns, team_name=team_name or "N/A")
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # 10) Hyperlink their lolchess.gg profile
     try:
-        # 1) Find or append row as before
-        if mode == "doubleup":
-            row = await find_or_register_user(tag, ign, guild_id=gid, team_name=team_name)
-        else:
-            row = await find_or_register_user(tag, ign, guild_id=gid)
-
-        sheet = get_sheet_for_guild(gid, "GAL Database")
-
-        # 2) Pronouns (col C)
-        await retry_until_successful(sheet.update_acell, f"C{row}", pronouns)
-
-        # 3) Alternative IGN(s) (col E)
-        if alt_igns:
-            await retry_until_successful(sheet.update_acell, f"E{row}", alt_igns)
-
-        # 4) Team Name (col I) in doubleup
-        if mode == "doubleup" and team_name:
-            await retry_until_successful(sheet.update_acell, f"I{row}", team_name)
-
-        # 5) Role + embed refresh + confirmation (unchanged)…
-        if role and role not in user.roles:
-            await user.add_roles(role)
-        await update_live_embeds(guild)
-
-        key = "register_success_doubleup" if mode == "doubleup" else "register_success_normal"
-        embed = embed_from_cfg(key, ign=ign, team_name=team_name or "", name=user.mention)
-        title = embed.title or ""
-        embed.title = None
-        embed.set_author(name=title, icon_url=user.display_avatar.url)
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-        # 6) (NEW) Auto-generate lolchess.gg hyperlinks for main and alt IGNs
-        await hyperlink_lolchess_profiles(gid)
-
-    except Exception as e:
-        await log_error(interaction.client, guild, f"[REGISTER-MODAL-ERROR] {e}")
+        await hyperlink_lolchess_profile(discord_tag, gid)
+    except Exception:
+        # silently ignore hyperlink failures
+        pass
 
 class ChannelCheckInButton(discord.ui.Button):
     def __init__(self):
@@ -393,38 +431,56 @@ class RegisterButton(discord.ui.Button):
 
 class UnregisterButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(label="Unregister", style=discord.ButtonStyle.danger, custom_id="unregister_btn")
+        super().__init__(
+            label="Unregister",
+            style=discord.ButtonStyle.danger,
+            custom_id="unregister_btn"
+        )
 
     async def callback(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        member = interaction.user
+        guild       = interaction.guild
+        member      = interaction.user
         discord_tag = str(member)
-        guild_id = str(guild.id)
+        guild_id    = str(guild.id)
 
+        # 1) Ensure they’re registered
         async with cache_lock:
             tup = sheet_cache["users"].get(discord_tag)
-        if not tup or str(tup[2]).upper() != "TRUE":
-            return await interaction.response.send_message(embed=embed_from_cfg("unregister_not_registered"), ephemeral=True)
+        if not tup or tup[2].upper() != "TRUE":
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("unregister_not_registered"),
+                ephemeral=True
+            )
 
+        # 2) Update sheet & cache
         ok = await unregister_user(discord_tag, guild_id=guild_id)
         if not ok:
             await log_error(interaction.client, guild, f"[UNREGISTER-FAIL] {discord_tag}")
-            return
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("unregister_fail"),
+                ephemeral=True
+            )
 
-        # remove both roles
+        # 3) Remove roles only if present
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
         ci_role  = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
-        await member.remove_roles(*[r for r in (reg_role, ci_role) if r in member.roles])
+        to_remove = [r for r in (reg_role, ci_role) if r and r in member.roles]
+        if to_remove:
+            await member.remove_roles(*to_remove)
 
-        await interaction.response.send_message(embed=embed_from_cfg("unregister_success"), ephemeral=True)
+        # 4) Success confirmation
+        await interaction.response.send_message(
+            embed=embed_from_cfg("unregister_success"),
+            ephemeral=True
+        )
 
-        # refresh registration embed
+        # 5) Refresh the persisted registration embed
         chan_id, msg_id = get_persisted_msg(guild.id, "registration")
         if chan_id:
             ch = guild.get_channel(chan_id)
             await update_registration_embed(ch, msg_id, guild)
 
-        # ─── ALSO refresh the check-in embed ───────────────────────
+        # 6) Refresh the persisted check-in embed
         ci_chan_id, ci_msg_id = get_persisted_msg(guild.id, "checkin")
         if ci_chan_id:
             ci_ch = guild.get_channel(ci_chan_id)

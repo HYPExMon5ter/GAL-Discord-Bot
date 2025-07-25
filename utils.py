@@ -1,13 +1,15 @@
 # gal_discord_bot/utils.py
-
+import urllib
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import aiohttp
 import discord
 
-from config import ALLOWED_ROLES, embed_from_cfg
-from persistence import get_persisted_msg
-from sheets import sheet_cache, cache_lock
+from config import ALLOWED_ROLES, embed_from_cfg, get_sheet_settings
+from persistence import get_persisted_msg, get_event_mode_for_guild
+from sheets import sheet_cache, get_sheet_for_guild, retry_until_successful
+
 
 def has_allowed_role(member: discord.Member) -> bool:
     """Check if a member has any of the staff roles."""
@@ -37,7 +39,6 @@ async def toggle_persisted_channel(
         update_registration_embed,
         update_checkin_embed,
     )
-    from utils import update_dm_action_views  # now legal, utils is fully defined
 
     guild = interaction.guild
     channel = discord.utils.get(guild.text_channels, name=channel_name)
@@ -119,6 +120,7 @@ async def send_reminder_dms(
     DM every registered-but-not-checked-in user in `guild` with `dm_embed` and a view from `view_cls`,
     returning a list of f"{member} (`{tag}`)" for each DM successfully sent.
     """
+    from sheets import sheet_cache, cache_lock
     dmmed: list[str] = []
     async with cache_lock:
         for discord_tag, user_tuple in sheet_cache["users"].items():
@@ -199,8 +201,8 @@ async def update_dm_action_views(guild: discord.Guild):
     and re-edit it with a fresh DMActionView so buttons reflect current open/closed state.
     """
     # local import breaks circularity
+    from sheets import sheet_cache, cache_lock
     from views import DMActionView
-
     rem_embed = embed_from_cfg("reminder_dm")
     rem_title = rem_embed.title
 
@@ -221,3 +223,112 @@ async def update_dm_action_views(guild: discord.Guild):
         except Exception:
             # ignore messages we can’t access
             pass
+
+# Rank utils
+
+import re
+from typing import List
+
+# Ordered lowest → highest
+CANONICAL_RANKS: List[str] = [
+    "Bronze 4", "Bronze 3", "Bronze 2", "Bronze 1",
+    "Silver 4", "Silver 3", "Silver 2", "Silver 1",
+    "Gold 4", "Gold 3", "Gold 2", "Gold 1",
+    "Platinum 4", "Platinum 3", "Platinum 2", "Platinum 1",
+    "Emerald 4", "Emerald 3", "Emerald 2", "Emerald 1",
+    "Diamond 4", "Diamond 3", "Diamond 2", "Diamond 1",
+    "Masters", "Masters 100", "Masters 200",
+    "Grandmaster", "Grandmaster 500", "Grandmaster 600", "Grandmaster 700",
+    "Challenger 800", "Challenger 900", "Challenger 1000",
+]
+
+# Tier name → base index
+_TIER_INDEX = {
+    "bronze": 0, "silver": 1, "gold": 2, "platinum": 3,
+    "emerald": 4, "diamond": 5, "masters": 6,
+    "grandmaster": 7, "challenger": 8,
+}
+
+# Roman numerals
+_ROMAN_MAP = {"I": 1, "II": 2, "III": 3, "IV": 4}
+
+def _roman_to_int(roman: str) -> int:
+    return _ROMAN_MAP.get(roman.upper(), 0)
+
+
+def _parse_rank_value(rank_str: str) -> float:
+    """
+    Convert rank string to numeric score for comparison.
+    """
+    s = rank_str.strip()
+    m_t = re.match(r"^(Bronze|Silver|Gold|Platinum|Emerald|Diamond|Masters|Grandmaster|Challenger)", s, re.IGNORECASE)
+    if not m_t:
+        return 0.0
+    tier = m_t.group(1).lower()
+    tier = "masters" if tier == "master" else tier
+    idx = _TIER_INDEX.get(tier, 0)
+    m_lp = re.search(r"(\d+)\s*LP", s)
+    lp = int(m_lp.group(1)) if m_lp else 0
+    if tier in ("bronze","silver","gold","platinum","emerald","diamond"):
+        m_div = re.match(rf"^{tier}\s+([IV]+)", s, re.IGNORECASE)
+        div = _roman_to_int(m_div.group(1)) if m_div else 4
+        div_idx = 4 - div
+        return idx * 4 + div_idx + lp/100.0
+    return idx * 4 + lp/100.0
+
+
+def get_closest_rank(rank_str: str) -> str:
+    """
+    Return the canonical rank closest to `rank_str`.
+    """
+    score = _parse_rank_value(rank_str)
+    scores = [_parse_rank_value(r) for r in CANONICAL_RANKS]
+    best = min(range(len(scores)), key=lambda i: abs(scores[i]-score))
+    return CANONICAL_RANKS[best]
+
+async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
+    """
+    Link the main IGN (and alts) to lolchess.gg via =HYPERLINK(...)
+    whenever a user registers. Always re-writes the formula.
+    """
+    # 1) Lookup row & IGNs in cache
+    tup = sheet_cache["users"].get(discord_tag)
+    if not tup:
+        return
+    row, ign, _, _, _, alt = tup
+
+    settings = get_sheet_settings(get_event_mode_for_guild(guild_id))
+    sheet    = get_sheet_for_guild(guild_id, "GAL Database")
+
+    async with aiohttp.ClientSession() as session:
+        # Main IGN
+        slug = urllib.parse.quote(ign.replace("#", "-"), safe="-")
+        url  = f"https://lolchess.gg/profile/na/{slug}/"
+        async with session.get(url, allow_redirects=True) as resp:
+            if resp.url.path.startswith("/search"):
+                return
+        formula = f'=HYPERLINK("{url}","{ign}")'
+        await retry_until_successful(
+            sheet.update_acell,
+            f"{settings['ign_col']}{row}",
+            formula
+        )
+
+        # Alt IGNs
+        if alt:
+            parts = [p.strip() for p in re.split(r"[,\\s]+", alt) if p.strip()]
+            links = []
+            for nm in parts:
+                slug = urllib.parse.quote(nm.replace("#", "-"), safe="-")
+                url  = f"https://lolchess.gg/profile/na/{slug}/"
+                async with session.get(url, allow_redirects=True) as r:
+                    if r.url.path.startswith("/search"):
+                        continue
+                links.append(f'HYPERLINK("{url}","{nm}")')
+            if links:
+                expr = "=" + ' & ", " & '.join(links)
+                await retry_until_successful(
+                    sheet.update_acell,
+                    f"{settings['alt_ign_col']}{row}",
+                    expr
+                )

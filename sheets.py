@@ -4,23 +4,15 @@ import asyncio
 import json
 import os
 import random
-import time
 import re
-from gspread import Cell
-import aiohttp
+import time
 from urllib.parse import quote
 
+import aiohttp
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-from config import (
-    SHEET_KEY,
-    DOUBLEUP_SHEET_KEY,
-    CACHE_REFRESH_SECONDS,
-    REGISTERED_ROLE,
-    CHECKED_IN_ROLE,
-    ANGEL_ROLE,
-)
+from config import get_sheet_settings, col_to_index, CACHE_REFRESH_SECONDS
 from persistence import get_event_mode_for_guild
 
 scope = [
@@ -41,9 +33,14 @@ else:
 client = gspread.authorize(creds)
 
 
-def get_sheet_for_guild(guild_id, worksheet=None):
+def get_sheet_for_guild(guild_id: str, worksheet: str | None = None):
+    """
+    Open the correct Google Sheet by extracting its key from config.yaml.
+    """
     mode = get_event_mode_for_guild(guild_id)
-    key = DOUBLEUP_SHEET_KEY if mode == "doubleup" else SHEET_KEY
+    cfg  = get_sheet_settings(mode)
+    # config.yaml stores full sheet_url; extract the /d/<key>/ portion
+    key = cfg["sheet_url"].split("/d/")[1].split("/")[0]
     return client.open_by_key(key).worksheet(worksheet or "GAL Database")
 
 
@@ -86,76 +83,70 @@ def ordinal_suffix(n):
         return "th"
     return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
-
-async def refresh_sheet_cache(bot=None):
+async def refresh_sheet_cache(bot=None) -> tuple[int, int]:
     """
-    Pulls columns B, Ign (D), Alt-IGNs (E), Team (F, doubleup only),
-    Registered (J for doubleup, F for normal), CheckedIn (K for doubleup, G for normal),
-    builds in-memory map: discord_tag -> (row, ign, reg_flag, ci_flag, team, alt_igns).
-    Detects adds/removes/updates, updates sheet_cache, returns (num_changes, total_users).
+    Pulls rows [header_line_num+1 … header_line_num+max_players] into:
+      discord_tag → (row, ign, registered, checked_in, team, alt_igns)
+    Returns: (num_changes, total_users)
     """
-    global sheet_cache
     async with cache_lock:
-        old_data = dict(sheet_cache["users"])
-
-        # 1) Pick which guild/sheet to use
-        active_guild_id = None
-        if bot and hasattr(bot, "guilds") and bot.guilds:
-            active_guild_id = bot.guilds[0].id
-        gid = str(active_guild_id or SHEET_KEY)
-
-        mode = get_event_mode_for_guild(gid)
+        guild = getattr(bot, "guilds", [None])[0]
+        gid   = str(guild.id) if guild else None
+        mode  = get_event_mode_for_guild(gid)
+        cfg   = get_sheet_settings(mode)
+        maxp  = cfg.get("max_players", 9999)
         sheet = get_sheet_for_guild(gid, "GAL Database")
 
-        # 2) Fetch all needed columns
-        discord_vals = await retry_until_successful(sheet.col_values, 2)
-        ign_vals = await retry_until_successful(sheet.col_values, 4)
-        alt_vals = await retry_until_successful(sheet.col_values, 5)
-        team_vals = []
-        if mode == "doubleup":
-            try:
-                team_vals = await retry_until_successful(sheet.col_values, 9)
-            except:
-                team_vals = []
-        # **Registered / Checked-In columns**
-        reg_idx = 10 if mode == "doubleup" else 6  # J vs F
-        ci_idx = 11 if mode == "doubleup" else 7   # K vs G
-        reg_vals = await retry_until_successful(sheet.col_values, reg_idx)
-        ci_vals = await retry_until_successful(sheet.col_values, ci_idx)
+        # column indexes
+        hline = cfg["header_line_num"]
+        dc = col_to_index(cfg["discord_col"])
+        ic = col_to_index(cfg["ign_col"])
+        ac = col_to_index(cfg["alt_ign_col"])
+        rc = col_to_index(cfg["registered_col"])
+        cc = col_to_index(cfg["checkin_col"])
+        tc = col_to_index(cfg["team_col"]) if mode == "doubleup" else None
 
-        # 3) Trim headers
-        discord_col = discord_vals[2:]
-        ign_col = ign_vals[2:]
-        alt_col = alt_vals[2:]
-        team_col = team_vals[2:] if mode == "doubleup" else []
-        reg_col = reg_vals[2:]
-        ci_col = ci_vals[2:]
+        # fetch all
+        discord_vals = await retry_until_successful(sheet.col_values, dc)
+        ign_vals     = await retry_until_successful(sheet.col_values, ic)
+        alt_vals     = await retry_until_successful(sheet.col_values, ac)
+        reg_vals     = await retry_until_successful(sheet.col_values, rc)
+        ci_vals      = await retry_until_successful(sheet.col_values, cc)
+        team_vals    = await retry_until_successful(sheet.col_values, tc) if tc else []
 
-        # 4) Build new map
-        new_map: dict[str, tuple[int, str, str, str, str, str]] = {}
-        for i, tag in enumerate(discord_col, start=3):
+        # slice to max_players
+        start = hline
+        end   = hline + maxp
+        discord_col = discord_vals[start:end]
+        ign_col     = ign_vals[start:end]
+        alt_col     = alt_vals[start:end]
+        reg_col     = reg_vals[start:end]
+        ci_col      = ci_vals[start:end]
+        team_col    = team_vals[start:end] if tc else []
+
+        new_map = {}
+        for idx, tag in enumerate(discord_col, start=start+1):
+            off = idx - (start+1)
             tag = tag.strip()
             if not tag:
                 continue
-            ign = ign_col[i - 3].strip() if i - 3 < len(ign_col) else ""
-            alt = alt_col[i - 3].strip() if i - 3 < len(alt_col) else ""
-            team = team_col[i - 3].strip() if mode == "doubleup" and i - 3 < len(team_col) else ""
-            reg_flag = reg_col[i - 3].strip() if i - 3 < len(reg_col) else ""
-            ci_flag = ci_col[i - 3].strip() if i - 3 < len(ci_col) else ""
-            new_map[tag] = (i, ign, reg_flag, ci_flag, team, alt)
+            ign  = ign_col[off].strip() if off < len(ign_col) else ""
+            alt  = alt_col[off].strip() if off < len(alt_col) else ""
+            reg  = reg_col[off].strip() if off < len(reg_col) else ""
+            ci   = ci_col[off].strip() if off < len(ci_col) else ""
+            team = team_col[off].strip() if (tc and off < len(team_col)) else ""
+            new_map[tag] = (idx, ign, reg, ci, team, alt)
 
-        # 5) Change detection
-        old_tags = set(old_data.keys())
-        new_tags = set(new_map.keys())
-        added = new_tags - old_tags
-        removed = old_tags - new_tags
-        updated = {t for t in new_tags & old_tags if new_map[t] != old_data[t]}
+        # compute diffs (optional)
+        old = sheet_cache["users"]
+        added   = set(new_map) - set(old)
+        removed = set(old) - set(new_map)
+        changed = {t for t in set(new_map)&set(old) if new_map[t] != old[t]}
 
-        # 6) Store & return
-        sheet_cache["users"] = new_map
+        # swap in
+        sheet_cache["users"]        = new_map
         sheet_cache["last_refresh"] = time.time()
-        total_changes = len(added) + len(removed) + len(updated)
-        return total_changes, len(new_map)
+        return len(added) + len(removed) + len(changed), len(new_map)
 
 
 async def cache_refresh_loop(bot):
@@ -167,338 +158,245 @@ async def cache_refresh_loop(bot):
         await asyncio.sleep(CACHE_REFRESH_SECONDS)
 
 
-async def find_or_register_user(discord_tag, ign, guild_id=None, team_name=None):
+async def find_or_register_user(
+    discord_tag: str,
+    ign: str,
+    guild_id: str | None = None,
+    team_name: str | None = None
+) -> int:
     """
-    Finds existing row or appends a new one.
-    Updates IGN, Registered flag, Team (if doubleup), and in-memory cache.
+    Ensure a row exists for `discord_tag`. If it does, update IGN,
+    Registered=TRUE, and Team (for doubleup) as needed. Otherwise,
+    append a new row setting Registered=TRUE, Checked-In=FALSE,
+    and Team if applicable. Returns the sheet row number.
     """
-    global sheet_cache
-    gid = str(guild_id or SHEET_KEY)
-    mode = get_event_mode_for_guild(gid)
+    # 1) Grab the current cache snapshot
+    async with cache_lock:
+        cache = sheet_cache["users"]
+
+    # 2) Resolve config & worksheet
+    gid   = str(guild_id)
+    mode  = get_event_mode_for_guild(gid)
+    cfg   = get_sheet_settings(mode)
     sheet = get_sheet_for_guild(gid, "GAL Database")
 
-    user_tuple = sheet_cache["users"].get(discord_tag)
-    row = None
-    if user_tuple:
-        row = user_tuple[0]
-    else:
-        # scan column B
-        bcol = await retry_until_successful(sheet.col_values, 2)
-        for i in range(3, len(bcol) + 1):
-            if bcol[i - 1].strip() == discord_tag:
+    # 3) Try to find an existing row in cache
+    tup = cache.get(discord_tag)
+    row = tup[0] if tup else None
+
+    # 4) If not in cache, scan the Discord‐tag column manually
+    if not row:
+        dc   = col_to_index(cfg["discord_col"])
+        vals = await retry_until_successful(sheet.col_values, dc)
+        for i, v in enumerate(vals, start=1):
+            if v.strip() == discord_tag:
                 row = i
                 break
 
-    # existing
+    # 5) Update the existing row
     if row:
-        # update IGN if changed
-        ign_col = await retry_until_successful(sheet.col_values, 4)
-        if ign_col[row - 3] != ign:
-            await retry_until_successful(sheet.update_acell, f"D{row}", ign)
-        # mark registered
-        reg_col = "J" if mode == "doubleup" else "F"
-        await retry_until_successful(sheet.update_acell, f"{reg_col}{row}", "TRUE")
-        # update team if needed
-        if mode == "doubleup" and team_name:
-            await retry_until_successful(sheet.update_acell, f"I{row}", team_name)
-        # refresh cache (keep alt-IGN untouched)
-        _, old_ign, old_reg, old_ci, old_team, old_alt = sheet_cache["users"][discord_tag]
+        # unpack the cached tuple
+        _, old_ign, old_reg, old_ci, old_team, old_alt = cache[discord_tag]
+
+        # 5a) IGN changed?
+        if old_ign != ign:
+            await retry_until_successful(
+                sheet.update_acell,
+                f"{cfg['ign_col']}{row}",
+                ign
+            )
+
+        # 5b) Registered flag toggle
+        if old_reg.upper() != "TRUE":
+            await retry_until_successful(
+                sheet.update_acell,
+                f"{cfg['registered_col']}{row}",
+                "TRUE"
+            )
+
+        # 5c) Team name (doubleup) changed?
+        if mode == "doubleup" and team_name and old_team != team_name:
+            await retry_until_successful(
+                sheet.update_acell,
+                f"{cfg['team_col']}{row}",
+                team_name
+            )
+
+        # 5d) Update in-memory cache (6-tuple)
         sheet_cache["users"][discord_tag] = (
             row,
             ign,
             "TRUE",
             old_ci,
             team_name or old_team,
-            old_alt,
+            old_alt
         )
         return row
 
-    # new
-    values = [None] * 11
-    values[1] = discord_tag  # B
-    values[3] = ign          # D
-    # E alt-IGN left blank
+    # 6) Append a brand-new row
+    # 6a) Determine how many columns we need
+    max_col = max(
+        col_to_index(col)
+        for col in cfg.values()
+        if isinstance(col, str)
+    )
+    # build a blank row
+    vals = [""] * max_col
+    vals[col_to_index(cfg["discord_col"]) - 1]   = discord_tag
+    vals[col_to_index(cfg["ign_col"])        - 1] = ign
+    vals[col_to_index(cfg["registered_col"]) - 1] = "TRUE"
+    vals[col_to_index(cfg["checkin_col"])    - 1] = "FALSE"
     if mode == "doubleup":
-        values[8] = team_name or ""  # I
-        values[9] = "TRUE"           # J
-        values[10] = "FALSE"         # K
-    else:
-        values[5] = "TRUE"           # F
-        values[6] = "FALSE"          # G
-    await retry_until_successful(sheet.append_row, values)
-    bcol = await retry_until_successful(sheet.col_values, 2)
-    new_row = len(bcol)
-    sheet_cache["users"][discord_tag] = (new_row, ign, "TRUE", "FALSE", team_name or "", "")
+        vals[col_to_index(cfg["team_col"])    - 1] = team_name or ""
+
+    # 6b) Append and recompute row number
+    await retry_until_successful(sheet.append_row, vals)
+    dc_vals = await retry_until_successful(
+        sheet.col_values,
+        col_to_index(cfg["discord_col"])
+    )
+    new_row = len(dc_vals)
+
+    # 6c) Insert into cache
+    sheet_cache["users"][discord_tag] = (
+        new_row,
+        ign,
+        "TRUE",
+        "FALSE",
+        team_name or "",
+        ""
+    )
     return new_row
 
 
 async def unregister_user(discord_tag: str, guild_id: str | None = None) -> bool:
     """
-    Unregisters a user in the sheet:
-      - Sets Registered → FALSE (col J in doubleup, F otherwise)
-      - ALSO sets Checked-In → FALSE (col K in doubleup, G otherwise)
-    Updates the in-memory cache to reflect both flags = FALSE.
+    Un-register a user:
+      - Sets Registered & Checked-In = FALSE
+      - Updates the in-memory cache (6-tuple).
     """
-    global sheet_cache
-
-    # 1) Locate their cache entry
-    tup = sheet_cache["users"].get(discord_tag)
+    async with cache_lock:
+        tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return False
-    row_num, ign, _, ci_flag, team, alt = tup
 
-    # 2) Figure out which sheet & columns to touch
-    gid   = str(guild_id or SHEET_KEY)
-    mode  = get_event_mode_for_guild(gid)
-    sheet = get_sheet_for_guild(gid, "GAL Database")
+    row, ign, _, _, team, alt = tup
+    gid    = str(guild_id)
+    mode   = get_event_mode_for_guild(gid)
+    cfg    = get_sheet_settings(mode)
+    sheet  = get_sheet_for_guild(gid, "GAL Database")
 
-    reg_col = "J" if mode == "doubleup" else "F"
-    ci_col  = "K" if mode == "doubleup" else "G"
+    # Sanity-check the Discord tag still matches
+    dc_cell = await retry_until_successful(sheet.acell, f"{cfg['discord_col']}{row}")
+    if dc_cell.value.strip() != discord_tag:
+        return False
 
-    # 3) Double-check we’re on the correct row (by matching column B)
-    cell = await retry_until_successful(sheet.acell, f"B{row_num}")
-    if cell.value.strip() != discord_tag:
-        # fallback scan
-        bcol = await retry_until_successful(sheet.col_values, 2)
-        for i in range(3, len(bcol) + 1):
-            if bcol[i-1].strip() == discord_tag:
-                row_num = i
-                break
-        else:
-            return False
+    await retry_until_successful(sheet.update_acell, f"{cfg['registered_col']}{row}", "FALSE")
+    await retry_until_successful(sheet.update_acell, f"{cfg['checkin_col']}{row}",    "FALSE")
 
-    # 4) Write FALSE to both Registered and Checked-In
-    await retry_until_successful(sheet.update_acell, f"{reg_col}{row_num}", "FALSE")
-    await retry_until_successful(sheet.update_acell, f"{ci_col}{row_num}",  "FALSE")
-
-    # 5) Update the cache so both flags are cleared
-    sheet_cache["users"][discord_tag] = (
-        row_num,     # row
-        ign,         # ign stays the same
-        "FALSE",     # registered now false
-        "FALSE",     # checked-in now false
-        team,        # team unchanged
-        alt          # alt-IGN unchanged
-    )
-
+    sheet_cache["users"][discord_tag] = (row, ign, "FALSE", "FALSE", team, alt)
     return True
 
 
-async def mark_checked_in_async(discord_tag, guild_id=None):
+async def mark_checked_in_async(discord_tag: str, guild_id: str | None = None) -> bool:
     """
-    Sets CheckedIn=True (K or G) in sheet & cache.
+    Marks a user as checked-in in both sheet & cache.
     """
-    global sheet_cache
-    tup = sheet_cache["users"].get(discord_tag)
+    async with cache_lock:
+        tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return False
-    row = tup[0]
-    gid = str(guild_id or SHEET_KEY)
-    mode = get_event_mode_for_guild(gid)
-    ci_col = "K" if mode == "doubleup" else "G"
+
+    row, ign, reg, old_ci, team, alt = tup
+    if reg.upper() != "TRUE":
+        return False
+
+    gid   = str(guild_id)
+    cfg   = get_sheet_settings(get_event_mode_for_guild(gid))
     sheet = get_sheet_for_guild(gid, "GAL Database")
-    cell = await retry_until_successful(sheet.acell, f"B{row}")
-    if cell.value.strip() != discord_tag:
-        bcol = await retry_until_successful(sheet.col_values, 2)
-        for i in range(3, len(bcol) + 1):
-            if bcol[i - 1].strip() == discord_tag:
-                row = i
-                break
-        else:
-            return False
-    await retry_until_successful(sheet.update_acell, f"{ci_col}{row}", "TRUE")
-    # cache
-    row_idx, ign, reg, _, team, alt = tup
+
+    await retry_until_successful(
+        sheet.update_acell,
+        f"{cfg['checkin_col']}{row}",
+        "TRUE"
+    )
     sheet_cache["users"][discord_tag] = (row, ign, reg, "TRUE", team, alt)
     return True
 
 
-async def unmark_checked_in_async(discord_tag, guild_id=None):
+async def unmark_checked_in_async(discord_tag: str, guild_id: str | None = None) -> bool:
     """
-    Sets CheckedIn=False (K or G) in sheet & cache.
+    Un-marks a user as checked-in in both sheet & cache.
     """
-    global sheet_cache
-    tup = sheet_cache["users"].get(discord_tag)
+    async with cache_lock:
+        tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return False
-    row = tup[0]
-    gid = str(guild_id or SHEET_KEY)
-    mode = get_event_mode_for_guild(gid)
-    ci_col = "K" if mode == "doubleup" else "G"
+
+    row, ign, reg, old_ci, team, alt = tup
+    if old_ci.upper() != "TRUE":
+        return False
+
+    gid   = str(guild_id)
+    cfg   = get_sheet_settings(get_event_mode_for_guild(gid))
     sheet = get_sheet_for_guild(gid, "GAL Database")
-    cell = await retry_until_successful(sheet.acell, f"B{row}")
-    if cell.value.strip() != discord_tag:
-        bcol = await retry_until_successful(sheet.col_values, 2)
-        for i in range(3, len(bcol) + 1):
-            if bcol[i - 1].strip() == discord_tag:
-                row = i
-                break
-        else:
-            return False
-    await retry_until_successful(sheet.update_acell, f"{ci_col}{row}", "FALSE")
-    # cache
-    row_idx, ign, reg, _, team, alt = tup
+
+    await retry_until_successful(
+        sheet.update_acell,
+        f"{cfg['checkin_col']}{row}",
+        "FALSE"
+    )
     sheet_cache["users"][discord_tag] = (row, ign, reg, "FALSE", team, alt)
     return True
 
 
-async def reset_registered_roles_and_sheet(guild, channel):
+async def reset_registered_roles_and_sheet(guild, channel) -> int:
     """
-    Clears all Registered roles on Discord and hides channel, then resets sheet column.
+    Clears the Registered column in the sheet:
+      - Sets every cell in Registered col to FALSE
+      - Refreshes the cache
+    Returns the number of rows cleared (excluding header).
     """
-    registered_role = next((r for r in guild.roles if r.name == REGISTERED_ROLE), None)
-    angel_role = next((r for r in guild.roles if r.name == ANGEL_ROLE), None)
-    cleared = 0
-    if registered_role:
-        for m in guild.members:
-            if registered_role in m.roles:
-                cleared += 1
-                await m.remove_roles(registered_role)
-
-    if angel_role:
-        overwrites = channel.overwrites_for(angel_role)
-        overwrites.view_channel = False
-        await channel.set_permissions(angel_role, overwrite=overwrites)
-
-    gid = str(guild.id)
+    gid  = str(guild.id)
     mode = get_event_mode_for_guild(gid)
-    reg_col_num = 10 if mode == "doubleup" else 6
-    reg_col_letter = "J" if mode == "doubleup" else "F"
-    sheet = get_sheet_for_guild(gid, "GAL Database")
-    f_values = await retry_until_successful(sheet.col_values, reg_col_num)
-    # prepare new values array
-    new_vals = [None] * len(f_values)
-    for i in range(2, len(new_vals)):
-        new_vals[i] = "FALSE"
-    # update entire column range
-    cell_range = f"{reg_col_letter}1:{reg_col_letter}{len(new_vals)}"
-    cell_list = await retry_until_successful(sheet.range, cell_range)
-    for cell, val in zip(cell_list, new_vals):
-        cell.value = val
+    cfg  = get_sheet_settings(mode)
+    sheet= get_sheet_for_guild(gid, "GAL Database")
+
+    col  = cfg["registered_col"]
+    idx  = col_to_index(col)
+    vals = await retry_until_successful(sheet.col_values, idx)
+
+    # Build range from header to end
+    cell_list = await retry_until_successful(sheet.range, f"{col}1:{col}{len(vals)}")
+    for cell in cell_list:
+        cell.value = "FALSE"
     await retry_until_successful(sheet.update_cells, cell_list)
+
     await refresh_sheet_cache()
-    return cleared
+    # subtract header lines
+    return max(0, len(vals) - cfg["header_line_num"])
 
 
-async def reset_checked_in_roles_and_sheet(guild, channel):
+async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
     """
-    Clears all Checked-In roles on Discord and hides channel, then resets sheet column.
+    Clears the Checked-In column in the sheet:
+      - Sets every cell in Checked-In col to FALSE
+      - Refreshes the cache
+    Returns the number of rows cleared (excluding header).
     """
-    checked_in_role = next((r for r in guild.roles if r.name == CHECKED_IN_ROLE), None)
-    registered_role = next((r for r in guild.roles if r.name == REGISTERED_ROLE), None)
-    cleared = 0
-    if checked_in_role:
-        for m in guild.members:
-            if checked_in_role in m.roles:
-                cleared += 1
-                await m.remove_roles(checked_in_role)
-
-    if registered_role:
-        overwrites = channel.overwrites_for(registered_role)
-        overwrites.view_channel = False
-        await channel.set_permissions(registered_role, overwrite=overwrites)
-
-    gid = str(guild.id)
+    gid  = str(guild.id)
     mode = get_event_mode_for_guild(gid)
-    ci_col_num = 11 if mode == "doubleup" else 7
-    ci_col_letter = "K" if mode == "doubleup" else "G"
-    sheet = get_sheet_for_guild(gid, "GAL Database")
-    f_values = await retry_until_successful(sheet.col_values, ci_col_num)
-    new_vals = [None] * len(f_values)
-    for i in range(2, len(new_vals)):
-        new_vals[i] = "FALSE"
-    cell_range = f"{ci_col_letter}1:{ci_col_letter}{len(new_vals)}"
-    cell_list = await retry_until_successful(sheet.range, cell_range)
-    for cell, val in zip(cell_list, new_vals):
-        cell.value = val
+    cfg  = get_sheet_settings(mode)
+    sheet= get_sheet_for_guild(gid, "GAL Database")
+
+    col  = cfg["checkin_col"]
+    idx  = col_to_index(col)
+    vals = await retry_until_successful(sheet.col_values, idx)
+
+    cell_list = await retry_until_successful(sheet.range, f"{col}1:{col}{len(vals)}")
+    for cell in cell_list:
+        cell.value = "FALSE"
     await retry_until_successful(sheet.update_cells, cell_list)
+
     await refresh_sheet_cache()
-    return cleared
-
-
-async def hyperlink_lolchess_profiles(guild_id=None, batch_size: int = 100):
-    """
-    Batch‐update columns D (main IGN) and E (alt IGNs) with lolchess.gg links,
-    but only if the request does *not* end up redirected to /search (which means
-    “user not found”). Skips any cell already containing a hyperlink formula.
-    """
-    sheet = get_sheet_for_guild(str(guild_id or SHEET_KEY), "GAL Database")
-
-    # 1) Map row → (main_ign, alt_igns)
-    async with cache_lock:
-        row_map = {tup[0]: (tup[1], tup[5].strip()) for tup in sheet_cache["users"].values()}
-    if not row_map:
-        return
-
-    # 2) Determine last data row
-    discord_col = await retry_until_successful(sheet.col_values, 2)
-    last_row    = len(discord_col)
-
-    # 3) Bulk‐fetch the D/E ranges
-    d_cells = await retry_until_successful(sheet.range, f"D3:D{last_row}")
-    e_cells = await retry_until_successful(sheet.range, f"E3:E{last_row}")
-
-    updates: list[Cell] = []
-
-    async with aiohttp.ClientSession(raise_for_status=False) as session:
-        # MAIN IGN (col D)
-        for cell in d_cells:
-            if cell.value.startswith("=HYPERLINK("):
-                continue
-            data = row_map.get(cell.row)
-            if not data or not data[0]:
-                continue
-
-            ign  = data[0]
-            slug = quote(ign.replace("#", "-"), safe="-")
-            url  = f"https://lolchess.gg/profile/na/{slug}/"
-            try:
-                resp = await session.get(url, allow_redirects=True)
-            except:
-                continue
-
-            # if we ended up on /search, skip
-            if resp.url.path.startswith("/search"):
-                continue
-
-            # otherwise it's a valid profile
-            cell.value = f'=HYPERLINK("{url}","{ign}")'
-            updates.append(cell)
-
-        # ALT IGNs (col E)
-        for cell in e_cells:
-            if cell.value.startswith("=HYPERLINK("):
-                continue
-            data = row_map.get(cell.row)
-            if not data or not data[1]:
-                continue
-
-            parts = [p for p in re.split(r"[,\s]+", data[1]) if p]
-            exprs = []
-            for name in parts:
-                slug = quote(name.replace("#", "-"), safe="-")
-                url  = f"https://lolchess.gg/profile/na/{slug}/"
-                try:
-                    resp = await session.get(url, allow_redirects=True)
-                except:
-                    continue
-
-                if resp.url.path.startswith("/search"):
-                    continue
-
-                exprs.append(f'HYPERLINK("{url}","{name}")')
-
-            if not exprs:
-                continue
-
-            cell.value = "=" + ' & ", " & '.join(exprs)
-            updates.append(cell)
-
-    # 4) Push all updates back in batches
-    for i in range(0, len(updates), batch_size):
-        batch = updates[i : i + batch_size]
-        await retry_until_successful(
-            sheet.update_cells,
-            batch,
-            value_input_option="USER_ENTERED"
-        )
+    return max(0, len(vals) - cfg["header_line_num"])

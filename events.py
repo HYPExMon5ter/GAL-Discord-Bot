@@ -8,7 +8,7 @@ import discord
 from rapidfuzz import fuzz
 
 from config import REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE, REGISTERED_ROLE, \
-    embed_from_cfg, LOG_CHANNEL_NAME, EMBEDS_CFG
+    embed_from_cfg, LOG_CHANNEL_NAME
 from persistence import set_schedule
 from sheets import refresh_sheet_cache, cache_refresh_loop
 from utils import update_dm_action_views
@@ -48,27 +48,32 @@ def setup_events(bot):
     async def on_ready():
         print(f"We are ready to go in, {bot.user.name}")
 
-        # Sync & cache
+        # — sync slash commands & prime cache —
         for guild in bot.guilds:
             await bot.tree.sync(guild=guild)
             print(f"Synced commands to guild {guild.id}")
         await refresh_sheet_cache(bot=bot)
 
-        # Ensure persisted embeds and views
+        # — re-register views & refresh live embeds —
         for guild in bot.guilds:
-            # … your existing persisted‐embed logic …
             bot.add_view(PersistentRegisteredListView(guild))
             await update_live_embeds(guild)
 
-        # ─── Set Rich Presence from embeds.yaml ───────────────────────
-        presence_cfg = EMBEDS_CFG.get("rich_presence", {})
+        # — set rich presence from config.yaml —
+        from config import _FULL_CFG
+
+        presence_cfg = _FULL_CFG.get("rich_presence", {})
         pres_type = presence_cfg.get("type", "PLAYING").upper()
         pres_msg = presence_cfg.get("message", "")
 
         if pres_type == "LISTENING":
-            activity = discord.Activity(type=discord.ActivityType.listening, name=pres_msg)
+            activity = discord.Activity(
+                type=discord.ActivityType.listening, name=pres_msg
+            )
         elif pres_type == "WATCHING":
-            activity = discord.Activity(type=discord.ActivityType.watching, name=pres_msg)
+            activity = discord.Activity(
+                type=discord.ActivityType.watching, name=pres_msg
+            )
         else:
             activity = discord.Game(name=pres_msg)
 

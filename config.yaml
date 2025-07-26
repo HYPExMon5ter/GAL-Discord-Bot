@@ -186,6 +186,20 @@ embeds:
     description: "That mode isn’t recognized. Allowed: **{allowed}**."
     color: "#e67e22"
 
+  help:
+    title: "🆘 GAL Bot Help"
+    description: "Here’s a list of all `/gal` commands you can use:"
+    commands:
+      toggle: "🔄 Toggles the registration or check-in channel."
+      event: "🎮 View or set the event mode for this guild (normal/doubleup)."
+      placements: "📈 Update the sheet & show the latest TFT placements."
+      validate: "✅ Validate the TFT username of each registered user."
+      reload: "♻️ Reload the bot configuration, update embeds & rich presence."
+      help: "❓ Show this help message again."
+      registeredlist: "📋 Show the current registration list."
+      reminder: "✉️ Send a DM reminder to all unchecked-in users."
+      cache: "📄 Re-cache the data from the sheet."
+
 rich_presence:
   type: "PLAYING"
   message: "🛡️ TFT"
@@ -203,7 +217,9 @@ sheet_configuration:
     checkin_col: "G"
 
   doubleup:
+    #Top sheet url = prod, bottom = testing
     sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
+    #sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
     header_line_num: 2
     max_players: 32
     discord_col: "B"

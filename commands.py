@@ -27,15 +27,10 @@ from views import (
     update_live_embeds, PersistentRegisteredListView, DMActionView
 )
 
-TEST_GUILD_ID = 1385739351505240074
-PROD_GUILD_ID = 716787949584515102
-
-@app_commands.guilds(discord.Object(id=PROD_GUILD_ID))
-class GalGroup(app_commands.Group):
-    def __init__(self):
-        super().__init__(name="gal", description="Group of GAL bot commands")
-
-gal = GalGroup()
+gal = app_commands.Group(
+    name="gal",
+    description="Group of GAL bot commands"
+)
 
 @gal.command(name="toggle", description="Toggles the registration or check-in channel.")
 @app_commands.describe(channel="Which channel to toggle (registration or checkin)")
@@ -486,3 +481,7 @@ async def help_cmd(interaction: discord.Interaction):
             inline=False
         )
     await interaction.response.send_message(embed=help_embed, ephemeral=True)
+
+from discord.ext import commands
+async def setup(bot: commands.Bot):
+    bot.tree.add_command(gal)

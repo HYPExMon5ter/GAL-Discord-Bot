@@ -262,38 +262,43 @@ async def unregister_user(
     guild_id: str | None = None
 ) -> bool:
     """
-    Set Registered=False, Checked-In=False for `discord_tag`.
+    Fully wipe a user’s row (discord_col, ign_col, pronouns_col,
+    alt_ign_col, team_col if any, registered_col, checkin_col),
+    then remove from the in-memory cache.
     """
     async with cache_lock:
         tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return False
 
-    row, ign, old_reg, old_ci, team, alt = tup
+    row, _ign, _reg, _ci, _team, _alt = tup
     gid   = str(guild_id)
     mode  = get_event_mode_for_guild(gid)
     cfg   = get_sheet_settings(mode)
     sheet = get_sheet_for_guild(gid, "GAL Database")
 
-    # sanity check
+    # Sanity check
     cell = await retry_until_successful(sheet.acell, f"{cfg['discord_col']}{row}")
     if cell.value.strip() != discord_tag:
         return False
 
-    await retry_until_successful(
-        sheet.update_acell,
-        f"{cfg['registered_col']}{row}",
-        False
-    )
-    await retry_until_successful(
-        sheet.update_acell,
-        f"{cfg['checkin_col']}{row}",
-        False
-    )
+    # 1) Clear Discord tag & IGN
+    await retry_until_successful(sheet.update_acell, f"{cfg['discord_col']}{row}", "")
+    await retry_until_successful(sheet.update_acell, f"{cfg['ign_col']}{row}", "")
+    # 2) Clear pronouns & alt-ign
+    await retry_until_successful(sheet.update_acell, f"{cfg['pronouns_col']}{row}", "")
+    await retry_until_successful(sheet.update_acell, f"{cfg['alt_ign_col']}{row}", "")
+    # 3) Clear team if needed
+    if mode == "doubleup":
+        await retry_until_successful(sheet.update_acell, f"{cfg['team_col']}{row}", "")
+    # 4) Unset both checkboxes
+    await retry_until_successful(sheet.update_acell, f"{cfg['registered_col']}{row}", False)
+    await retry_until_successful(sheet.update_acell, f"{cfg['checkin_col']}{row}",   False)
 
-    sheet_cache["users"][discord_tag] = (
-        row, ign, False, False, team, alt
-    )
+    # Remove from cache
+    async with cache_lock:
+        sheet_cache["users"].pop(discord_tag, None)
+
     return True
 
 

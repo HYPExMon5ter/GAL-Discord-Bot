@@ -33,6 +33,11 @@ embeds:
     description: "😢 Sorry, we have {max_players} players registered already! Stay tuned for the next Tournament."
     color: "#e74c3c"
 
+  team_full:
+    title: "🚫 Team Full"
+    description: "😢 Team **{team_name}** already has 2 players! Please choose or create a different team."
+    color: "#e74c3c"
+
   register_success_normal:
     title: "✅ New Registration!"
     description: "**{ign}** has just registered! 🎉"
@@ -218,8 +223,8 @@ sheet_configuration:
 
   doubleup:
     #Top sheet url = prod, bottom = testing
-    sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
-    #sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
+    #sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
+    sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
     header_line_num: 2
     max_players: 32
     discord_col: "B"

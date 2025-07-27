@@ -225,6 +225,7 @@ async def cache(interaction: discord.Interaction):
         # Pass the guild id to refresh_sheet_cache so it can select correct sheet for the mode
         updated_users, total_users = await refresh_sheet_cache(bot=interaction.client)
         elapsed = time.perf_counter() - start_time
+        await update_live_embeds(interaction.guild)
         embed = embed_from_cfg(
                 "cache",
                 updated=updated_users,

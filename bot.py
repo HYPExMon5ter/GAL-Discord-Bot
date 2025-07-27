@@ -8,7 +8,7 @@ import discord
 from discord.ext import commands
 
 from config import DISCORD_TOKEN
-from commands import gal  # your /gal group
+from commands import gal
 from events import setup_events
 
 logging.basicConfig(level=logging.INFO, handlers=[
@@ -49,7 +49,7 @@ class GALBot(commands.Bot):
             await self.tree.sync()
             print("[setup_hook] • Synced /gal globally")
 
-        # 3) Wire up the rest of your event handlers/views
+        # 3) Setup events
         setup_events(self)
 
 async def main():

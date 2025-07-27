@@ -284,62 +284,34 @@ def get_closest_rank(rank_str: str) -> str:
 
 async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
     """
-    Link the main IGN (and ALL alt-IGNs) to lolchess.gg via =HYPERLINK(...)
-    whenever a user registers. Always re-writes BOTH columns.
+    Only hyperlink the main IGN in the sheet via =HYPERLINK(...).
     """
-    # 1) Lookup row & IGNs in cache
     tup = sheet_cache["users"].get(discord_tag)
     if not tup:
         return
-    row, ign, *_rest, alt = tup
+    row, ign, *_ = tup  # ignore alt
 
-    # Clean stray isolate characters
+    # Clean stray unicode isolate chars and trim
     def clean(s: str) -> str:
         return re.sub(r'[\u2066-\u2069]', '', s).strip()
 
     ign_clean = clean(ign)
-    alt_clean = clean(alt) if alt else ""
 
-    # 2) Setup sheet & settings
-    mode     = get_event_mode_for_guild(guild_id)
-    settings = get_sheet_settings(mode)
-    sheet    = get_sheet_for_guild(guild_id, "GAL Database")
+    mode      = get_event_mode_for_guild(guild_id)
+    settings  = get_sheet_settings(mode)
+    sheet     = get_sheet_for_guild(guild_id, "GAL Database")
 
     async with aiohttp.ClientSession() as session:
-        # ─── Main IGN ────────────────────────────────────────────────
-        slug = urllib.parse.quote(ign_clean.replace("#", "-"), safe="-")
-        url  = f"https://lolchess.gg/profile/na/{slug}/"
-        async with session.get(url, allow_redirects=True) as resp:
+        slug     = urllib.parse.quote(ign_clean.replace("#", "-"), safe="-")
+        profile_url = f"https://lolchess.gg/profile/na/{slug}/"
+        async with session.get(profile_url, allow_redirects=True) as resp:
+            # if not found, resp.url.path starts with "/search"
             if resp.url.path.startswith("/search"):
-                # invalid, skip hyperlinking entirely
                 return
 
-        formula = f'=HYPERLINK("{url}","{ign_clean}")'
+        formula = f'=HYPERLINK("{profile_url}","{ign_clean}")'
         await retry_until_successful(
             sheet.update_acell,
             f"{settings['ign_col']}{row}",
             formula
         )
-
-        # ─── Alt IGNs ────────────────────────────────────────────────
-        if alt_clean:
-            # split on commas or whitespace
-            parts = [p for p in re.split(r"[,\s]+", alt_clean) if p]
-            links = []
-            for nm in parts:
-                nm_c = clean(nm)
-                slug = urllib.parse.quote(nm_c.replace("#", "-"), safe="-")
-                url  = f"https://lolchess.gg/profile/na/{slug}/"
-                async with session.get(url, allow_redirects=True) as r:
-                    if r.url.path.startswith("/search"):
-                        continue
-                links.append(f'HYPERLINK("{url}","{nm_c}")')
-
-            if links:
-                # build =HYPERLINK(...) & ", " & HYPERLINK(...) & …
-                expr = "=" + ' & ", " & '.join(links)
-                await retry_until_successful(
-                    sheet.update_acell,
-                    f"{settings['alt_ign_col']}{row}",
-                    expr
-                )

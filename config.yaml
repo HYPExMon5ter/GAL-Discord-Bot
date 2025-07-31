@@ -28,10 +28,26 @@ embeds:
     description: "❌ You **cannot** register at this time. Stay tuned for the next Tournament!"
     color: "#e67e22"
 
-  registration_full:
-    title: "🔒 Registration Full"
-    description: "😢 Sorry, we have {max_players} players registered already! Stay tuned for the next Tournament."
-    color: "#e74c3c"
+  waitlist_added:
+    title: "📋 Added to Waitlist"
+    description: |
+      The tournament is currently full ({max_players} players registered).
+      
+      ✅ You've been added to the **waitlist** at position #{position}.
+      
+      If a spot opens up, you'll be automatically registered and notified via DM!
+    color: "#f39c12"
+
+  waitlist_registered:
+    title: "🎉 You're Off the Waitlist!"
+    description: |
+      Great news! A spot opened up and you've been **automatically registered** for the tournament!
+      
+      ✅ You are now registered
+      📍 Don't forget to check in when the check-in channel opens
+      
+      Use the buttons below to manage your registration.
+    color: "#27ae60"
 
   team_full:
     title: "🚫 Team Full"
@@ -151,11 +167,13 @@ embeds:
     title: "🔔 Guardian Angel League Check In Reminder"
     description: |
       👋 **Hello Angel!**  
-      You’re registered for the upcoming Guardian Angel League Tournament but **haven’t checked in** yet.
+      You're registered for the upcoming Guardian Angel League Tournament but **haven't checked in** yet.
       
       **What to do below:**
-      📝 **Register / ❌ Unregister** – Join or leave the tournament in a flash!
-      ✅ **Check In / 🔒 Check Out** – Lock in or release your spot in the Tournament.
+      ❌ **Unregister** – Leave the tournament (this will free up your spot)
+      ✅ **Check In / 🔒 Check Out** – Lock in or release your spot in the Tournament
+      
+      💡 **To re-register:** Please visit the registration channel in the GAL Discord server.
       
       Good luck, Angel! See you in the Tournament 🏆
     color: "#3498db"
@@ -191,6 +209,16 @@ embeds:
     description: "That mode isn’t recognized. Allowed: **{allowed}**."
     color: "#e67e22"
 
+  permission_denied:
+    title: "🚫 Permission Denied"
+    description: "You don't have permission to use this command. This command is restricted to staff members."
+    color: "#e74c3c"
+
+  error:
+    title: "❌ Error"
+    description: "An error occurred while processing your request. Please try again later."
+    color: "#e74c3c"
+
   help:
     title: "🆘 GAL Bot Help"
     description: "Here’s a list of all `/gal` commands you can use:"
@@ -223,8 +251,8 @@ sheet_configuration:
 
   doubleup:
     #Top sheet url = prod, bottom = testing
-    sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
-    #sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
+    #sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
+    sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
     header_line_num: 2
     max_players: 32
     discord_col: "B"

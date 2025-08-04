@@ -1,4 +1,5 @@
 # core/views.py
+
 from __future__ import annotations
 
 import logging
@@ -225,6 +226,7 @@ class ChannelCheckInButton(discord.ui.Button):
             "checked_in"
         )
 
+
 class ChannelCheckOutButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
@@ -235,7 +237,7 @@ class ChannelCheckOutButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         member = interaction.user
-        guild  = interaction.guild
+        guild = interaction.guild
 
         print(f"[CHECK-OUT] Guild={guild.name}({guild.id}) User={member}")
 
@@ -261,6 +263,7 @@ class ChannelCheckOutButton(discord.ui.Button):
             unmark_checked_in_async,
             "checked_out"
         )
+
 
 # ─── DM UNREGISTER BUTTON ──────────────────────────────
 
@@ -292,7 +295,7 @@ class DMUnregisterButton(discord.ui.Button):
                 return
 
         # Defer the response as ephemeral
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         discord_tag = str(self.member)
         guild_id = str(self.guild.id)
@@ -344,6 +347,7 @@ class DMUnregisterButton(discord.ui.Button):
                 embed=embed_from_cfg("unregister_not_registered"),
                 ephemeral=True
             )
+
 
 # ─── DM CHECK-IN/OUT TOGGLE ──────────────────────────────────────
 
@@ -402,7 +406,7 @@ class DMCheckToggleButton(discord.ui.Button):
             )
 
         # 3) Defer the response before doing async operations
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         # 4) Perform the sheet update
         discord_tag = str(self.member)
@@ -449,7 +453,7 @@ class ResetCheckInsButton(discord.ui.Button):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         # Count how many will be cleared
         checked_in_role = discord.utils.get(interaction.guild.roles, name=CHECKED_IN_ROLE)
@@ -480,6 +484,7 @@ class ResetCheckInsButton(discord.ui.Button):
         # Update embeds and refresh cache
         await update_live_embeds(interaction.guild)
         await refresh_sheet_cache(bot=interaction.client)
+
 
 class ToggleCheckInButton(discord.ui.Button):
     def __init__(self):
@@ -565,7 +570,7 @@ class UnregisterButton(discord.ui.Button):
 
     @ErrorHandler.wrap_callback("Unregister")
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         guild = interaction.guild
         member = interaction.user
@@ -734,7 +739,7 @@ class ReminderButton(discord.ui.Button):
                 ephemeral=True
             )
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         # Send reminders to unchecked-in users
         dm_embed = embed_from_cfg("reminder_dm")
@@ -795,7 +800,7 @@ class RegistrationModal(discord.ui.Modal):
                 placeholder="Your Team Name (max 20 characters)",
                 required=True,
                 default=default_team or "",
-                max_length=20  # ADD THIS LINE
+                max_length=20
             )
             self.add_item(self.team_input)
 
@@ -830,7 +835,7 @@ class RegistrationModal(discord.ui.Modal):
         angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
 
-        await interaction.response.defer(ephemeral=True)  # Show "thinking..."
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         if reg_channel and angel_role:
             overwrites = reg_channel.overwrites_for(angel_role)
@@ -844,12 +849,16 @@ class RegistrationModal(discord.ui.Modal):
                 sheet = get_sheet_for_guild(guild_id, "GAL Database")
                 team_col_raw = await retry_until_successful(sheet.col_values, 9)
                 user_team_value = team_value.strip().lower()
-                team_col = [
-                    t.strip().lower() for t in team_col_raw[2:]
-                    if t and t.strip() and t.strip().lower() != user_team_value
-                ]
-                norm_to_original = {t.strip().lower(): t.strip() for t in team_col_raw[2:] if
-                                    t and t.strip() and t.strip().lower() != user_team_value}
+
+                # Make the normalization case-insensitive
+                norm_to_original = {}
+                team_col = []
+                for t in team_col_raw[2:]:
+                    if t and t.strip():
+                        normalized = t.strip().lower()
+                        if normalized != user_team_value:
+                            team_col.append(normalized)
+                            norm_to_original[normalized] = t.strip()
 
                 result = process.extractOne(
                     user_team_value, team_col, scorer=fuzz.ratio, score_cutoff=75
@@ -869,31 +878,30 @@ class RegistrationModal(discord.ui.Modal):
                     )
                     return
 
-            # -- If not similar (or similarity already bypassed), immediately complete registration --
             await complete_registration(
                 interaction,
                 ign,
                 pronouns,
                 team_value,
-                alt_igns,  # pass alt_igns here
-                self  # reg_modal
+                alt_igns,
+                self
             )
 
         except Exception as e:
             await log_error(interaction.client, interaction.guild, f"[REGISTER-MODAL-ERROR] {e}")
 
+
 class TeamNameChoiceView(discord.ui.View):
     def __init__(self, reg_modal, ign, pronouns, suggested_team, user_team):
         super().__init__(timeout=60)
-        self.reg_modal     = reg_modal
-        self.ign           = ign
-        self.pronouns      = pronouns
-        self.suggested_team= suggested_team
-        self.user_team     = user_team
+        self.reg_modal = reg_modal
+        self.ign = ign
+        self.pronouns = pronouns
+        self.suggested_team = suggested_team
+        self.user_team = user_team
 
     @discord.ui.button(label="Use Suggested", style=discord.ButtonStyle.success)
     async def use_suggested(self, interaction, button):
-        # disable buttons…
         for item in self.children:
             item.disabled = True
         await interaction.response.edit_message(view=self)
@@ -903,7 +911,7 @@ class TeamNameChoiceView(discord.ui.View):
             self.ign,
             self.pronouns,
             self.suggested_team,
-            self.reg_modal.alt_ign_input.value.strip(),  # NEW
+            self.reg_modal.alt_ign_input.value.strip(),
             self.reg_modal
         )
 
@@ -918,7 +926,7 @@ class TeamNameChoiceView(discord.ui.View):
             self.ign,
             self.pronouns,
             self.user_team,
-            self.reg_modal.alt_ign_input.value.strip(),  # NEW
+            self.reg_modal.alt_ign_input.value.strip(),
             self.reg_modal
         )
 
@@ -928,12 +936,10 @@ class CheckInView(discord.ui.View):
         super().__init__(timeout=None)
         self.guild = guild
 
-        # Check if open
         ci_ch = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
         is_open = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
 
-        # Add buttons based on state
         if is_open:
             self.add_item(ChannelCheckInButton())
             self.add_item(ChannelCheckOutButton())
@@ -943,15 +949,15 @@ class CheckInView(discord.ui.View):
             self.add_item(ResetCheckInsButton())
             self.add_item(ToggleCheckInButton())
 
+
 class RegistrationView(discord.ui.View):
     def __init__(self, embed_message_id: int | None, guild: discord.Guild):
         super().__init__(timeout=None)
         self.guild = guild
 
-        # is open?
-        reg_ch     = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
-        angel_role = discord.utils.get(guild.roles,         name=ANGEL_ROLE)
-        is_open    = bool(reg_ch and angel_role and reg_ch.overwrites_for(angel_role).view_channel)
+        reg_ch = discord.utils.get(guild.text_channels, name=REGISTRATION_CHANNEL)
+        angel_role = discord.utils.get(guild.roles, name=ANGEL_ROLE)
+        is_open = bool(reg_ch and angel_role and reg_ch.overwrites_for(angel_role).view_channel)
 
         if is_open:
             self.add_item(RegisterButton())
@@ -961,38 +967,33 @@ class RegistrationView(discord.ui.View):
             self.add_item(ResetRegistrationButton())
             self.add_item(ToggleRegistrationButton())
 
+
 class DMActionView(discord.ui.View):
-    """
-    DM view for /gal actions: Unregister & Check In/Out only
-    """
     def __init__(self, guild: discord.Guild, member: discord.Member):
         super().__init__(timeout=None)
-        self.guild  = guild
+        self.guild = guild
         self.member = member
 
-        # ─── Is check-in open? ─────────────────────────────────────────
-        ci_ch      = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
-        reg_role   = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
-        ci_open    = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
+        ci_ch = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        ci_open = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
 
-        # ─── Is the user currently registered? ────────────────────────
         is_registered = reg_role in member.roles
 
-        # Only show buttons if user is registered
         if is_registered:
-            # ─── Unregister button ─────────────────────────────
             unreg_btn = DMUnregisterButton(guild, member)
             self.add_item(unreg_btn)
 
-            # ─── Check In / Check Out toggle ─────────────────────────────
             ci_btn = DMCheckToggleButton(guild, member)
             ci_btn.disabled = not ci_open
             self.add_item(ci_btn)
+
 
 class PersistentRegisteredListView(discord.ui.View):
     def __init__(self, guild):
         super().__init__(timeout=None)
         self.add_item(ReminderButton())
+
 
 async def update_live_embeds(guild):
     """Update all live embeds for a guild."""
@@ -1004,10 +1005,8 @@ async def update_registration_embed(
         msg_id: int,
         guild: discord.Guild
 ):
-    # 1) Determine open vs. closed using ChannelManager
     is_open = ChannelManager.get_channel_state(guild)['registration_open']
 
-    # 2) Base embed
     key = "registration" if is_open else "registration_closed"
     base = embed_from_cfg(key)
 
@@ -1018,57 +1017,48 @@ async def update_registration_embed(
         return
 
     if not is_open:
-        # When closed, just show the closed embed without user list
         return await msg.edit(embed=base, view=RegistrationView(msg_id, guild))
 
-    # 3) Get users and build lines using helpers
     mode = get_event_mode_for_guild(str(guild.id))
     users = await SheetOperations.get_all_registered_users(str(guild.id))
 
     total_players = len(users)
     total_teams = len({t for _, _, t in users if t}) if mode == "doubleup" else 0
 
-    # 4) Build description
     desc = base.description or ""
     close_iso = get_schedule(guild.id, "registration_close")
     if close_iso:
         ts = int(datetime.fromisoformat(close_iso).timestamp())
         desc += f"\n⏰ Registration closes at <t:{ts}:F>"
-    desc += "\n\n\n"
+    desc += "\n\n"
 
-    # 5) Use EmbedHelper to build lines
     lines = EmbedHelper.build_registration_list_lines(users, mode)
 
-    # 6) Create the new embed
     embed = discord.Embed(
         title=base.title,
         description=desc + ("\n".join(lines) if lines else ""),
         color=base.color
     )
 
-    # 7) Set footer
     if total_players > 0:
-        footer = f"👤 Players: {total_players}"
+        footer_parts = [f"👤 Players: {total_players}"]
         if mode == "doubleup":
-            footer += f" 👥 Teams: {total_teams}"
-        embed.set_footer(text=footer)
+            footer_parts.append(f"👥 Teams: {total_teams}")
+        embed.set_footer(text=" • ".join(footer_parts))
 
-    # 8) Render with the fresh view
     await msg.edit(embed=embed, view=RegistrationView(msg_id, guild))
 
 
 async def update_checkin_embed(
-    channel: discord.TextChannel,
-    msg_id: int,
-    guild: discord.Guild
+        channel: discord.TextChannel,
+        msg_id: int,
+        guild: discord.Guild
 ):
-    # 1) Is check-in open?
-    ci_ch    = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
-    reg_role = discord.utils.get(guild.roles,        name=REGISTERED_ROLE)
-    is_open  = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
+    ci_ch = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
+    reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+    is_open = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
 
-    # 2) Base embed
-    key  = "checkin" if is_open else "checkin_closed"
+    key = "checkin" if is_open else "checkin_closed"
     base = embed_from_cfg(key)
 
     try:
@@ -1077,9 +1067,7 @@ async def update_checkin_embed(
         logging.error(f"Could not fetch check-in message {msg_id}")
         return
 
-    # 3) If closed, don't show the player list
     if not is_open:
-        # Just show the closed message without any player list
         embed = discord.Embed(
             title=base.title,
             description=base.description or "",
@@ -1087,40 +1075,63 @@ async def update_checkin_embed(
         )
         return await msg.edit(embed=embed, view=CheckInView(guild))
 
-    # 4) When open, show the player list
     desc = base.description or ""
     close_iso = get_schedule(guild.id, "checkin_close")
     if close_iso:
         ts = int(datetime.fromisoformat(close_iso).timestamp())
         desc += f"\n⏰ Check-in closes at <t:{ts}:t>"
-    desc += "\n\n\n"  # three blank lines
+    desc += "\n\n"
 
-    # 5) Grab checked-in users
     async with cache_lock:
         entries = list(sheet_cache["users"].items())
 
-    def is_true(v): return str(v).upper() == "TRUE"
+    def is_true(v):
+        return str(v).upper() == "TRUE"
 
-    registered = [
+    all_registered = [
         (tag, tpl) for tag, tpl in entries
         if is_true(tpl[2])
     ]
+
     checked_in = [
         (tag, tpl) for tag, tpl in entries
         if is_true(tpl[2]) and is_true(tpl[3])
     ]
 
-    total_reg = len(registered)
-    total_ci  = len(checked_in)
+    total_reg = len(all_registered)
+    total_ci = len(checked_in)
 
-    mode      = get_event_mode_for_guild(str(guild.id))
-    max_teams = len({tpl[4] or "<No Team>" for _, tpl in registered}) if mode == "doubleup" else 0
-    ci_teams  = len({tpl[4] or "<No Team>" for _, tpl in checked_in})  if mode == "doubleup" else 0
+    mode = get_event_mode_for_guild(str(guild.id))
 
-    # 6) Build listing lines
-    lines = EmbedHelper.build_checkin_list_lines(checked_in, mode)
+    if mode == "doubleup":
+        teams_data = {}
+        for tag, tpl in all_registered:
+            team_name = tpl[4] if len(tpl) > 4 and tpl[4] else "No Team"
+            if team_name not in teams_data:
+                teams_data[team_name] = []
+            teams_data[team_name].append((tag, tpl))
 
-    # 7) Create the embed
+        fully_checked_teams = 0
+        total_teams = len(teams_data)  # Count ALL teams, regardless of size
+
+        for team_name, members in teams_data.items():
+            # Only teams with 2+ members can be "fully checked"
+            if len(members) >= 2:
+                team_fully_checked = True
+                for tag, member_data in members:
+                    ci_status = is_true(member_data[3]) if len(member_data) > 3 else False
+                    if not ci_status:
+                        team_fully_checked = False
+                        break
+
+                if team_fully_checked:
+                    fully_checked_teams += 1
+    else:
+        total_teams = 0
+        fully_checked_teams = 0
+
+    lines = EmbedHelper.build_checkin_list_lines(all_registered, mode)
+
     new_desc = desc + ("\n".join(lines) if lines else "")
     embed = discord.Embed(
         title=base.title,
@@ -1128,17 +1139,19 @@ async def update_checkin_embed(
         color=base.color
     )
 
-    # 8) Footer only if at least one checked-in
-    if total_ci > 0:
-        footer = f"👤 Checked-In: {total_ci}/{total_reg}"
-        if mode == "doubleup":
-            footer += f" 👥 Teams: {ci_teams}/{max_teams}"
-        embed.set_footer(text=footer)
+    footer_parts = [f"👤 Checked-In: {total_ci}/{total_reg}"]
 
-    # Create view
+    if mode == "doubleup":
+        footer_parts.append(f"👥 Teams Ready: {fully_checked_teams}/{total_teams}")
+
+    if total_reg > 0:
+        percentage = (total_ci / total_reg) * 100
+        footer_parts.append(f"📊 {percentage:.0f}%")
+
+    embed.set_footer(text=" • ".join(footer_parts))
+
     view = CheckInView(guild)
 
-    # Remove reminder button if everyone is checked in
     if total_reg > 0 and total_ci == total_reg:
         new_view = discord.ui.View(timeout=None)
         for item in view.children:

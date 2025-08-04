@@ -3,7 +3,7 @@
 import logging
 import time
 from itertools import groupby
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import discord
 from discord import app_commands
@@ -633,7 +633,6 @@ async def help_cmd(interaction: discord.Interaction):
 
     except Exception as e:
         await ErrorHandler.handle_interaction_error(interaction, e, "Help Command")
-
 
 
 # Error handlers for the command group

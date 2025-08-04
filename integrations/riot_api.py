@@ -1,6 +1,7 @@
-# gal_discord_bot/riot_api.py
+# integrations/riot_api.py
 
 import json
+import logging
 import os
 import re
 import urllib.parse
@@ -17,15 +18,19 @@ TRACKER_API_KEY = os.getenv("TRACKER_API_KEY")
 DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 _session: aiohttp.ClientSession | None = None
+
+
 async def _get_session() -> aiohttp.ClientSession:
     global _session
     if _session is None or _session.closed:
         _session = aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"})
     return _session
 
+
 def _remove_bidi_control_chars(s: str) -> str:
     """Strip Unicode isolate controls U+2066–U+2069."""
     return re.sub(r"[\u2066-\u2069]", "", s)
+
 
 def build_tactics_tools_url(ign: str) -> str:
     clean = _remove_bidi_control_chars(ign)
@@ -42,12 +47,11 @@ async def tactics_tools_get_latest_placement(
         guild_id: str
 ) -> Optional[int]:
     """
-    Fetch the player's most recent TFT placement for the guild's mode
-    (normal vs double-up) by scraping tactics.tools website.
+    Fetch the player's most recent TFT placement from any game mode
+    in the latest set by scraping tactics.tools website.
     """
-    mode = get_event_mode_for_guild(guild_id).lower()  # "normal" or "doubleup"
     url = build_tactics_tools_url(ign)
-    print(f"[get_latest_placement] mode={mode!r}, GET {url}")
+    print(f"[get_latest_placement] GET {url}")
 
     session = await _get_session()
 
@@ -73,62 +77,83 @@ async def tactics_tools_get_latest_placement(
             return None
 
         # Step 3: Navigate through the data structure
-        # The structure is typically: props -> pageProps -> player -> matches
         try:
             page_props = data.get("props", {}).get("pageProps", {})
             if not page_props:
-                # Try alternative structure
-                page_props = data.get("pageProps", {})
-
-            # Look for matches in various possible locations
-            matches = None
-
-            # Try different paths where matches might be stored
-            if "player" in page_props and "matches" in page_props["player"]:
-                matches = page_props["player"]["matches"]
-            elif "matches" in page_props:
-                matches = page_props["matches"]
-            elif "data" in page_props and "matches" in page_props["data"]:
-                matches = page_props["data"]["matches"]
-            elif "matchHistory" in page_props:
-                matches = page_props["matchHistory"]
-
-            if not matches:
-                print("[get_latest_placement] No matches found in data")
+                print("[get_latest_placement] No pageProps found")
                 return None
 
-            # Filter matches based on mode
+            # Get matches from initialData
+            initial_data = page_props.get("initialData", {})
+            matches = initial_data.get("matches", [])
+
+            if not matches:
+                print("[get_latest_placement] No matches found in initialData")
+                return None
+
+            # Filter for latest set only
+            # Set 15 started around November 2024
+            # We can check the game version or timestamp
+            latest_set_matches = []
+
             for match in matches:
-                # Check if it's a double-up match
-                is_double_up = False
+                info = match.get("info", {})
+                game_version = info.get("gameVersion", "")
 
-                # Check various fields that might indicate double-up
-                if "game_type" in match:
-                    is_double_up = "double" in str(match["game_type"]).lower()
-                elif "queueType" in match:
-                    is_double_up = "double" in str(match["queueType"]).lower()
-                elif "gameMode" in match:
-                    is_double_up = "double" in str(match["gameMode"]).lower()
-                elif "traits" in match:
-                    # Sometimes double-up is indicated by specific traits
-                    traits_str = json.dumps(match["traits"]).lower()
-                    is_double_up = "double" in traits_str
+                # TFT Set 15 versions start with "Version 14.23" or higher
+                # Format is usually "Version 14.23.xxx.xxxx"
+                if game_version:
+                    try:
+                        # Extract major and minor version
+                        version_parts = game_version.replace("Version ", "").split(".")
+                        if len(version_parts) >= 2:
+                            major = int(version_parts[0])
+                            minor = int(version_parts[1])
 
-                # Skip if mode doesn't match
-                if mode == "doubleup" and not is_double_up:
-                    continue
-                elif mode == "normal" and is_double_up:
-                    continue
+                            # Set 15 started with patch 14.23
+                            if major > 14 or (major == 14 and minor >= 23):
+                                latest_set_matches.append(match)
 
-                # Get placement
-                placement = match.get("placement")
+                    except (ValueError, IndexError):
+                        # If we can't parse version, check by timestamp
+                        # Set 15 started around November 20, 2024
+                        game_timestamp = match.get("gameCreation", 0)
+                        if game_timestamp > 1732060800000:  # Nov 20, 2024 in milliseconds
+                            latest_set_matches.append(match)
+
+            if not latest_set_matches:
+                print("[get_latest_placement] No Set 15 matches found")
+                return None
+
+            # Get the most recent Set 15 match
+            for match in latest_set_matches:
+                info = match.get("info", {})
+                placement = info.get("placement")
+
                 if placement and isinstance(placement, (int, str)):
                     try:
-                        return int(placement)
+                        placement_int = int(placement)
+
+                        # Log details for debugging
+                        queue_id = match.get("queueId")
+                        game_version = info.get("gameVersion", "unknown")
+                        queue_type = "unknown"
+                        if queue_id == 1100:
+                            queue_type = "ranked"
+                        elif queue_id == 1160:
+                            queue_type = "double-up"
+                        elif queue_id == 1090:
+                            queue_type = "normal"
+                        elif queue_id == 1130:
+                            queue_type = "hyper roll"
+
+                        print(
+                            f"[get_latest_placement] Found Set 15 placement: {placement_int} from {queue_type} game (version: {game_version})")
+                        return placement_int
                     except ValueError:
                         continue
 
-            print(f"[get_latest_placement] No {mode} matches found")
+            print(f"[get_latest_placement] No valid placements found in Set 15 matches")
             return None
 
         except Exception as e:
@@ -138,3 +163,12 @@ async def tactics_tools_get_latest_placement(
     except Exception as e:
         print(f"[get_latest_placement] Error fetching data: {e}")
         return None
+
+
+# Cleanup function for bot shutdown
+async def cleanup_sessions():
+    """Close any open sessions on bot shutdown."""
+    global _session
+    if _session and not _session.closed:
+        await _session.close()
+        _session = None

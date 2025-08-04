@@ -1,4 +1,5 @@
 # utils/utils.py
+
 import asyncio
 import urllib.parse
 import re
@@ -74,6 +75,8 @@ async def toggle_persisted_channel(
         )
         from helpers import ChannelManager, ErrorHandler, EmbedHelper
 
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         guild = interaction.guild
         if not guild:
             raise UtilsError("Command must be used in a guild")
@@ -82,7 +85,7 @@ async def toggle_persisted_channel(
         role = discord.utils.get(guild.roles, name=role_name)
 
         if not channel or not role:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"Could not find channel `{channel_name}` or role `{role_name}`.",
                 ephemeral=True
             )
@@ -143,9 +146,9 @@ async def toggle_persisted_channel(
 
         # Send feedback
         feedback = embed_from_cfg(f"{persist_key}_channel_toggled", visible=new_open)
-        await interaction.response.send_message(embed=feedback, ephemeral=True)
+        await interaction.followup.send(embed=feedback, ephemeral=True)
 
-        # Refresh DM action views
+        # Refresh DM action views - DO NOT resolve members during toggle
         await update_dm_action_views(guild)
 
     except Exception as e:
@@ -242,7 +245,8 @@ async def send_reminder_dms(
         client: discord.Client,
         guild: discord.Guild,
         dm_embed: discord.Embed,
-        view_cls: type[discord.ui.View]
+        view_cls: type[discord.ui.View],
+        skip_member_resolution: bool = False
 ) -> List[str]:
     """
     Send DM reminders to registered but not checked-in users.
@@ -253,6 +257,7 @@ async def send_reminder_dms(
         guild: Guild to send reminders for
         dm_embed: Embed to send in DMs
         view_cls: View class to attach to DMs
+        skip_member_resolution: If True, skip trying to resolve members (for channel toggles)
 
     Returns:
         List of successfully DMed user strings
@@ -282,6 +287,10 @@ async def send_reminder_dms(
                 is_ci = str(user_tuple[3]).upper() == "TRUE"
 
                 if not (is_reg and not is_ci):
+                    continue
+
+                # FIXED: Skip member resolution if requested (during channel toggles)
+                if skip_member_resolution:
                     continue
 
                 # Try to get member - if they're not in server, skip silently
@@ -346,7 +355,7 @@ async def toggle_checkin_for_member(
         logging.debug(f"Toggle check-in: fn={checkin_fn.__name__} user={interaction.user} guild={interaction.guild.id}")
 
         if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer(ephemeral=True, thinking=True)
 
         guild = interaction.guild
         member = interaction.user
@@ -400,16 +409,17 @@ async def toggle_checkin_for_member(
 async def update_dm_action_views(guild: discord.Guild) -> None:
     """
     Refresh DM action views for all users with error handling.
+    FIXED: Skip member resolution to avoid "Could not resolve member" errors during toggles.
 
     Args:
         guild: Discord guild to update views for
     """
     try:
         from helpers import EmbedHelper
+        # Skip member resolution during channel toggles
         await EmbedHelper.refresh_dm_views_for_users(guild)
     except Exception as e:
         logging.error(f"Failed to update DM action views for guild {guild.id}: {e}")
-
 
 
 async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:

@@ -702,7 +702,8 @@ async def _update_checkin_status(
 
 async def reset_registered_roles_and_sheet(guild, channel) -> int:
     """
-    Reset all registration data with comprehensive error handling.
+    Reset all registration data - clear all columns except headers.
+    FIXED: Only clears from header_line + 1 to header_line + max_players.
 
     Args:
         guild: Discord guild
@@ -720,32 +721,62 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
         cfg = get_sheet_settings(mode)
         sheet = get_sheet_for_guild(gid, "GAL Database")
 
-        col = cfg["registered_col"]
-        idx = col_to_index(col)
+        # Get header line and max players
+        header_line = cfg["header_line_num"]
+        max_players = cfg.get("max_players", 32)
 
-        # Get current values
-        vals = await retry_until_successful(sheet.col_values, idx)
+        # Calculate the range to clear: from header_line + 1 to header_line + max_players
+        start_row = header_line + 1
+        end_row = header_line + max_players
 
-        if not vals:
-            logging.warning("No data found in registered column")
-            return 0
+        # Get all columns we need to clear
+        columns_to_clear = {
+            'discord_col': "",  # Clear to empty string
+            'pronouns_col': "",
+            'ign_col': "",
+            'alt_ign_col': "",
+            'registered_col': False,  # Set to boolean False
+            'checkin_col': False,  # Set to boolean False
+        }
 
-        # Build range and update with proper FALSE boolean values
-        cell_range = f"{col}1:{col}{len(vals)}"
-        cell_list = await retry_until_successful(sheet.range, cell_range)
+        # Add team column for doubleup mode
+        if mode == "doubleup" and "team_col" in cfg:
+            columns_to_clear['team_col'] = ""
 
-        for cell in cell_list:
-            cell.value = False  # Use boolean False instead of string "FALSE"
+        # Clear each column in the specified range
+        cleared_rows = 0
+        for col_key, clear_value in columns_to_clear.items():
+            if col_key not in cfg:
+                continue
 
-        await retry_until_successful(sheet.update_cells, cell_list)
+            col_letter = cfg[col_key]
+
+            # Build range from start_row to end_row
+            if start_row <= end_row:  # Ensure valid range
+                cell_range = f"{col_letter}{start_row}:{col_letter}{end_row}"
+                cell_list = await retry_until_successful(sheet.range, cell_range)
+
+                for cell in cell_list:
+                    cell.value = clear_value
+
+                await retry_until_successful(sheet.update_cells, cell_list)
+                logging.info(f"Cleared column {col_letter} from row {start_row} to {end_row}")
+
+        # Clear waitlist for this guild
+        from helpers.waitlist_helpers import WaitlistManager
+        all_data = WaitlistManager._load_waitlist_data()
+        if gid in all_data:
+            all_data[gid]["waitlist"] = []
+            WaitlistManager._save_waitlist_data(all_data)
 
         # Refresh cache
         await refresh_sheet_cache()
 
-        cleared_count = max(0, len(vals) - cfg["header_line_num"])
-        logging.info(f"Reset registration for {cleared_count} users")
+        # Return the number of rows that were cleared
+        cleared_rows = max_players
+        logging.info(f"Reset registration for {cleared_rows} rows (max capacity)")
 
-        return cleared_count
+        return cleared_rows
 
     except Exception as e:
         if isinstance(e, SheetsError):
@@ -755,7 +786,8 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
 
 async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
     """
-    Reset all check-in data with comprehensive error handling.
+    Reset only check-in data - set checkin column to False.
+    FIXED: Only clears from header_line + 1 to header_line + max_players.
 
     Args:
         guild: Discord guild
@@ -774,29 +806,29 @@ async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
         sheet = get_sheet_for_guild(gid, "GAL Database")
 
         col = cfg["checkin_col"]
-        idx = col_to_index(col)
+        header_line = cfg["header_line_num"]
+        max_players = cfg.get("max_players", 32)
 
-        # Get current values
-        vals = await retry_until_successful(sheet.col_values, idx)
+        # Calculate the range to clear: from header_line + 1 to header_line + max_players
+        start_row = header_line + 1
+        end_row = header_line + max_players
 
-        if not vals:
-            logging.warning("No data found in check-in column")
-            return 0
+        # Build range from start_row to end_row
+        if start_row <= end_row:  # Ensure valid range
+            cell_range = f"{col}{start_row}:{col}{end_row}"
+            cell_list = await retry_until_successful(sheet.range, cell_range)
 
-        # Build range and update with proper FALSE boolean values
-        cell_range = f"{col}1:{col}{len(vals)}"
-        cell_list = await retry_until_successful(sheet.range, cell_range)
+            # Set all to boolean False
+            for cell in cell_list:
+                cell.value = False
 
-        for cell in cell_list:
-            cell.value = False  # Use boolean False instead of string "FALSE"
-
-        await retry_until_successful(sheet.update_cells, cell_list)
+            await retry_until_successful(sheet.update_cells, cell_list)
 
         # Refresh cache
         await refresh_sheet_cache()
 
-        cleared_count = max(0, len(vals) - cfg["header_line_num"])
-        logging.info(f"Reset check-in for {cleared_count} users")
+        cleared_count = max_players
+        logging.info(f"Reset check-in for {cleared_count} rows (max capacity)")
 
         return cleared_count
 

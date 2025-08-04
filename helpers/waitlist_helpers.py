@@ -5,7 +5,7 @@ import logging
 import os
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 import discord
 
@@ -406,17 +406,19 @@ class WaitlistManager:
             raise WaitlistError(f"Failed to update waitlist entry: {e}")
 
     @staticmethod
-    async def process_waitlist(guild: discord.Guild) -> Optional[Dict]:
+    async def process_waitlist(guild: discord.Guild) -> List[Dict]:
         """
-        Process the waitlist when a spot opens up with comprehensive error handling.
+        Process the waitlist when spots open up with comprehensive error handling.
+        Registers multiple users if multiple spots are available.
 
         Returns:
-            Dict with registered user info if someone was registered, None otherwise
+            List of registered user info
         """
         if not guild:
             raise ValueError("Guild is required")
 
         print(f"[WAITLIST] Starting process_waitlist for guild {guild.id}")
+        registered_users = []
 
         try:
             from helpers.sheet_helpers import SheetOperations
@@ -424,120 +426,133 @@ class WaitlistManager:
 
             guild_id = str(guild.id)
 
-            # Check if there's space
-            mode = get_event_mode_for_guild(guild_id)
-            cfg = get_sheet_settings(mode)
-            max_players = cfg.get("max_players", 0)
+            # Keep processing while there are spots and waitlist entries
+            while True:
+                # Check if there's space
+                mode = get_event_mode_for_guild(guild_id)
+                cfg = get_sheet_settings(mode)
+                max_players = cfg.get("max_players", 0)
 
-            print(f"[WAITLIST] Checking capacity: mode={mode}, max_players={max_players}")
+                print(f"[WAITLIST] Checking capacity: mode={mode}, max_players={max_players}")
 
-            current_registered = await SheetOperations.count_by_criteria(
-                guild_id, registered=True
-            )
-
-            print(f"[WAITLIST] Current registered: {current_registered}/{max_players}")
-
-            if current_registered >= max_players:
-                logging.debug(f"Guild {guild_id} is at capacity ({current_registered}/{max_players})")
-                print(f"[WAITLIST] At capacity, skipping")
-                return None
-
-            # Get waitlist
-            all_data = WaitlistManager._load_waitlist_data()
-            if guild_id not in all_data or not all_data[guild_id]["waitlist"]:
-                logging.debug(f"No waitlist entries for guild {guild_id}")
-                print(f"[WAITLIST] No entries in waitlist")
-                return None
-
-            waitlist = all_data[guild_id]["waitlist"]
-            print(f"[WAITLIST] Found {len(waitlist)} entries in waitlist")
-
-            # Process first person in waitlist
-            next_user = waitlist.pop(0)
-            WaitlistManager._save_waitlist_data(all_data)
-
-            print(f"[WAITLIST] Processing user: {next_user['discord_tag']}")
-
-            # Register the user
-            member = guild.get_member(next_user["member_id"])
-            if not member:
-                logging.warning(f"Member {next_user['discord_tag']} left server, processing next in waitlist")
-                print(f"[WAITLIST] Member not found, trying next")
-                return await WaitlistManager.process_waitlist(guild)
-
-            try:
-                # Register in sheet
-                print(f"[WAITLIST] Registering user in sheet...")
-                row = await find_or_register_user(
-                    next_user["discord_tag"],
-                    next_user["ign"],
-                    guild_id=guild_id,
-                    team_name=next_user.get("team_name")
+                current_registered = await SheetOperations.count_by_criteria(
+                    guild_id, registered=True
                 )
 
-                # Update additional fields
-                updates = {}
-                if next_user.get("pronouns"):
-                    updates[cfg['pronouns_col']] = next_user["pronouns"]
-                if next_user.get("alt_igns"):
-                    updates[cfg['alt_ign_col']] = next_user["alt_igns"]
-                if mode == "doubleup" and next_user.get("team_name"):
-                    updates[cfg['team_col']] = next_user["team_name"]
+                print(f"[WAITLIST] Current registered: {current_registered}/{max_players}")
 
-                if updates:
-                    await SheetOperations.batch_update_cells(guild_id, updates, row)
+                available_spots = max_players - current_registered
+                if available_spots <= 0:
+                    logging.debug(f"Guild {guild_id} is at capacity ({current_registered}/{max_players})")
+                    print(f"[WAITLIST] At capacity, stopping")
+                    break
 
-                # Add registered role
-                print(f"[WAITLIST] Adding registered role...")
-                await RoleManager.add_role(member, "Registered")
+                # Get waitlist
+                all_data = WaitlistManager._load_waitlist_data()
+                if guild_id not in all_data or not all_data[guild_id]["waitlist"]:
+                    logging.debug(f"No waitlist entries for guild {guild_id}")
+                    print(f"[WAITLIST] No entries in waitlist")
+                    break
 
-                # Send DM notification
-                print(f"[WAITLIST] Sending DM notification...")
+                waitlist = all_data[guild_id]["waitlist"]
+                print(f"[WAITLIST] Found {len(waitlist)} entries in waitlist, {available_spots} spots available")
+
+                # Process next person in waitlist
+                next_user = waitlist.pop(0)
+                WaitlistManager._save_waitlist_data(all_data)
+
+                print(f"[WAITLIST] Processing user: {next_user['discord_tag']}")
+
+                # Register the user
+                member = guild.get_member(next_user["member_id"])
+                if not member:
+                    logging.warning(f"Member {next_user['discord_tag']} left server, processing next in waitlist")
+                    print(f"[WAITLIST] Member not found, trying next")
+                    continue  # Continue to next iteration to try next person
+
                 try:
-                    # Clear previous DMs first
-                    from utils.utils import clear_user_dms
-                    deleted = await clear_user_dms(member, guild.me)
-                    if deleted > 0:
-                        logging.debug(f"Cleared {deleted} previous DMs for {next_user['discord_tag']}")
-
-                    # Send new DM
-                    dm_embed = embed_from_cfg("waitlist_registered")
-                    await member.send(
-                        embed=dm_embed,
-                        view=DMActionView(guild, member)
+                    # Register in sheet
+                    print(f"[WAITLIST] Registering user in sheet...")
+                    row = await find_or_register_user(
+                        next_user["discord_tag"],
+                        next_user["ign"],
+                        guild_id=guild_id,
+                        team_name=next_user.get("team_name")
                     )
-                except discord.Forbidden:
-                    logging.debug(f"Could not DM {next_user['discord_tag']} - DMs disabled")
-                except Exception as dm_error:
-                    logging.warning(f"Failed to DM {next_user['discord_tag']}: {dm_error}")
 
-                # Log to bot-log channel
-                log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
-                if log_channel:
+                    # Update additional fields
+                    updates = {}
+                    if next_user.get("pronouns"):
+                        updates[cfg['pronouns_col']] = next_user["pronouns"]
+                    if next_user.get("alt_igns"):
+                        updates[cfg['alt_ign_col']] = next_user["alt_igns"]
+                    if mode == "doubleup" and next_user.get("team_name"):
+                        updates[cfg['team_col']] = next_user["team_name"]
+
+                    if updates:
+                        await SheetOperations.batch_update_cells(guild_id, updates, row)
+
+                    # Add registered role
+                    print(f"[WAITLIST] Adding registered role...")
+                    await RoleManager.add_role(member, "Registered")
+
+                    # Send DM notification
+                    print(f"[WAITLIST] Sending DM notification...")
                     try:
-                        log_embed = discord.Embed(
-                            title="✅ Waitlist Registration",
-                            description=f"**{next_user['discord_tag']}** ({next_user['ign']}) has been automatically registered from the waitlist.",
-                            color=discord.Color.green(),
-                            timestamp=datetime.utcnow()
+                        # Clear previous DMs first
+                        from utils.utils import clear_user_dms
+                        deleted = await clear_user_dms(member, guild.me)
+                        if deleted > 0:
+                            logging.debug(f"Cleared {deleted} previous DMs for {next_user['discord_tag']}")
+
+                        # Send new DM
+                        dm_embed = embed_from_cfg("waitlist_registered")
+                        await member.send(
+                            embed=dm_embed,
+                            view=DMActionView(guild, member)
                         )
-                        await log_channel.send(embed=log_embed)
-                    except Exception as log_error:
-                        logging.warning(f"Failed to log waitlist registration: {log_error}")
+                    except discord.Forbidden:
+                        logging.debug(f"Could not DM {next_user['discord_tag']} - DMs disabled")
+                    except Exception as dm_error:
+                        logging.warning(f"Failed to DM {next_user['discord_tag']}: {dm_error}")
 
-                logging.info(f"Successfully registered {next_user['discord_tag']} from waitlist")
-                print(f"[WAITLIST] Successfully registered {next_user['discord_tag']}")
-                return next_user
+                    # Log to bot-log channel
+                    log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+                    if log_channel:
+                        try:
+                            log_embed = discord.Embed(
+                                title="✅ Waitlist Registration",
+                                description=f"**{next_user['discord_tag']}** ({next_user['ign']}) has been automatically registered from the waitlist.",
+                                color=discord.Color.green(),
+                                timestamp=datetime.utcnow()
+                            )
+                            await log_channel.send(embed=log_embed)
+                        except Exception as log_error:
+                            logging.warning(f"Failed to log waitlist registration: {log_error}")
 
-            except Exception as reg_error:
-                print(f"[WAITLIST] Registration error: {reg_error}")
-                await ErrorHandler.log_warning(
-                    guild,
-                    f"Failed to auto-register {next_user['discord_tag']} from waitlist: {reg_error}",
-                    "Waitlist Processing"
-                )
-                # Try next person
-                return await WaitlistManager.process_waitlist(guild)
+                    registered_users.append(next_user)
+                    logging.info(f"Successfully registered {next_user['discord_tag']} from waitlist")
+                    print(f"[WAITLIST] Successfully registered {next_user['discord_tag']}")
+
+                    # Continue loop to check if more spots are available
+
+                except Exception as reg_error:
+                    print(f"[WAITLIST] Registration error: {reg_error}")
+                    await ErrorHandler.log_warning(
+                        guild,
+                        f"Failed to auto-register {next_user['discord_tag']} from waitlist: {reg_error}",
+                        "Waitlist Processing"
+                    )
+                    # Continue to next iteration to try next person
+                    continue
+
+            # After loop ends
+            if registered_users:
+                print(f"[WAITLIST] Registered {len(registered_users)} users from waitlist")
+            else:
+                print(f"[WAITLIST] No users registered from waitlist")
+
+            return registered_users
 
         except Exception as e:
             print(f"[WAITLIST] ERROR: {e}")

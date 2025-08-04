@@ -174,7 +174,31 @@ class GALBot(commands.Bot):
 
         try:
             # Close any additional resources here
-            # For example, database connections, file handles, etc.
+            # Clean up aiohttp sessions from riot_api
+            try:
+                from integrations.riot_api import cleanup_sessions
+                await cleanup_sessions()
+                logging.info("Cleaned up riot API sessions")
+            except Exception as e:
+                logging.error(f"Error cleaning up riot API sessions: {e}")
+
+            # Clean up any database connections
+            try:
+                from core.persistence import connection_pool
+                if connection_pool:
+                    connection_pool.closeall()
+                    logging.info("Closed database connection pool")
+            except Exception as e:
+                logging.error(f"Error closing database connections: {e}")
+
+            # Clean up waitlist database connections
+            try:
+                from helpers.waitlist_helpers import WaitlistManager
+                if WaitlistManager._connection_pool:
+                    WaitlistManager._connection_pool.closeall()
+                    logging.info("Closed waitlist database connection pool")
+            except Exception as e:
+                logging.error(f"Error closing waitlist database connections: {e}")
 
             # Close the bot connection
             await super().close()

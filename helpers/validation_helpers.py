@@ -9,6 +9,7 @@ import discord
 
 from config import embed_from_cfg, get_sheet_settings
 from core.persistence import get_event_mode_for_guild
+from integrations.sheets import cache_lock, sheet_cache
 from .channel_helpers import ChannelManager
 from .role_helpers import RoleManager
 from .sheet_helpers import SheetOperations
@@ -67,14 +68,20 @@ class Validators:
         # Check team capacity for double-up mode
         if mode == "doubleup" and team_name:
             max_per_team = cfg.get("max_per_team", 2)
-            team_count = await SheetOperations.count_by_criteria(
-                guild_id, registered=True, team_name=team_name
-            )
+
+            # Make team comparison case-insensitive
+            team_count = 0
+            async with cache_lock:
+                for tag, tpl in sheet_cache["users"].items():
+                    if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4:
+                        if tpl[4] and tpl[4].lower() == team_name.lower():
+                            team_count += 1
 
             # Exclude current user if they're already on this team
             if exclude_discord_tag:
                 user_data = await SheetOperations.get_user_data(exclude_discord_tag, guild_id)
-                if user_data and user_data["registered"] and user_data.get("team") == team_name:
+                if user_data and user_data["registered"] and user_data.get("team") and user_data.get(
+                        "team").lower() == team_name.lower():
                     team_count -= 1
 
             if team_count >= max_per_team:

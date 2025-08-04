@@ -15,7 +15,8 @@ google-creds.json
 .vscode/
 
 # Log files
-discord.log
+gal_bot.log
 
 # Data storage
 persisted_views.json
+waitlist_data.json

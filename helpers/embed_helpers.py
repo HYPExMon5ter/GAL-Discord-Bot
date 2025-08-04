@@ -1,4 +1,5 @@
 # helpers/embed_helpers.py
+
 """
 Centralized helper functions for updating embeds across the bot.
 """
@@ -9,6 +10,7 @@ from typing import Optional, Callable, Dict, List
 from datetime import datetime, timezone
 from core.persistence import get_persisted_msg
 from config import embed_from_cfg, LOG_CHANNEL_NAME, PING_USER
+
 
 async def log_error(bot, guild, message, level="Error"):
     """Log error to bot-log channel or console."""
@@ -32,6 +34,7 @@ async def log_error(bot, guild, message, level="Error"):
             logging.error(message)
     else:
         logging.error(message)
+
 
 class EmbedHelper:
     """Helper class for managing Discord embeds."""
@@ -203,83 +206,168 @@ class EmbedHelper:
         return updated
 
     @staticmethod
-    def build_registration_list_lines(
-            users: List[tuple],
-            mode: str
-    ) -> List[str]:
-        """
-        Build formatted lines for registration list display.
-
-        Args:
-            users: List of (discord_tag, ign, team_name) tuples
-            mode: Event mode ("normal" or "doubleup")
-
-        Returns:
-            List of formatted lines
-        """
+    def build_registration_list_lines(users: List[tuple], mode: str) -> List[str]:
+        """Build formatted lines for registration list display with smart color cycling."""
         from itertools import groupby
+        import random
 
         lines = []
 
         if mode == "doubleup":
-            # Sort by team name
             users.sort(key=lambda x: (x[2] or "No Team").lower())
 
-            for team, grp in groupby(users, key=lambda x: x[2] or "No Team"):
-                members = list(grp)
-                lines.append(f"👥 **{team}** ({len(members)})")
-                for tag, ign, _ in members:
-                    lines.append(f"> 👤 {tag}  |  {ign}")
-                lines.append("")  # blank line between teams
+            team_emojis = ["🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "⚫", "🟤", "💙", "💚", "💛", "💜", "🧡", "❤️", "🤍", "🖤", "🤎"]
+            used_emojis = []
+            team_emoji_map = {}
 
-            # Remove trailing blank line
-            if lines and not lines[-1].strip():
-                lines.pop()
+            # Group teams first to get the full list
+            teams_data = {}
+            for tag, ign, team in users:
+                team_key = team or "No Team"
+                if team_key not in teams_data:
+                    teams_data[team_key] = []
+                teams_data[team_key].append((tag, ign))
+
+            # Sort teams
+            sorted_teams = sorted(teams_data.items(), key=lambda x: x[0].lower())
+
+            for i, (team, members) in enumerate(sorted_teams):
+                if team not in team_emoji_map:
+                    # If we've used all emojis, start recycling intelligently
+                    if len(used_emojis) >= len(team_emojis):
+                        # Get the emoji used by previous team to avoid
+                        avoid_emojis = []
+
+                        # Check previous team's emoji
+                        if i > 0:
+                            prev_team = sorted_teams[i - 1][0]
+                            if prev_team in team_emoji_map:
+                                avoid_emojis.append(team_emoji_map[prev_team])
+
+                        # Also avoid the next few recently used
+                        avoid_emojis.extend(used_emojis[-3:])
+
+                        # Pick a random emoji that's not in the avoid list
+                        available = [e for e in team_emojis if e not in avoid_emojis]
+                        if not available:  # Fallback if somehow all are to be avoided
+                            available = team_emojis
+
+                        emoji = random.choice(available)
+                    else:
+                        # First time through, use emojis in order
+                        emoji = team_emojis[len(used_emojis)]
+
+                    team_emoji_map[team] = emoji
+                    used_emojis.append(emoji)
+
+                emoji = team_emoji_map[team]
+                lines.append(f"{emoji} **{team}**")
+
+                lines.append("```css")
+
+                for tag, ign in members:
+                    lines.append(f"{tag} | {ign}")
+
+                lines.append("```")
+                lines.append("")
+
         else:
-            # Normal mode - flat list
-            for tag, ign, _ in users:
-                lines.append(f"👤 {tag}  |  {ign}")
+            lines.append("```css")
+            lines.append("# Registered Players")
+            lines.append("=" * 40)
+
+            for i, (tag, ign, _) in enumerate(users, 1):
+                lines.append(f"{i:2d}. {tag} | {ign}")
+
+            lines.append("```")
 
         return lines
 
     @staticmethod
-    def build_checkin_list_lines(
-            checked_in_users: List[tuple],
-            mode: str
-    ) -> List[str]:
+    def build_checkin_list_lines(checked_in_users: List[tuple], mode: str) -> List[str]:
         """
-        Build formatted lines for check-in list display.
-
-        Args:
-            checked_in_users: List of (discord_tag, (row, ign, reg, ci, team, alt)) tuples
-            mode: Event mode ("normal" or "doubleup")
-
-        Returns:
-            List of formatted lines
+        Build formatted lines showing ALL registered users with check-in status.
+        Shows ready teams first, then non-ready teams, all in a single list format.
         """
         from itertools import groupby
 
         lines = []
 
-        if mode == "doubleup" and checked_in_users:
-            # Sort by team name
-            checked_in_users.sort(key=lambda item: (item[1][4] or "").lower())
+        def is_true(v):
+            return str(v).upper() == "TRUE"
 
-            for team, grp in groupby(checked_in_users, key=lambda item: item[1][4] or "<No Team>"):
-                members = list(grp)
-                lines.append(f"👥 **{team}** ({len(members)})")
+        if mode == "doubleup":
+            # Group by team
+            teams = {}
+            for tag, user_data in checked_in_users:
+                # user_data is the full tuple (row, ign, reg, ci, team, alt)
+                team_name = user_data[4] if len(user_data) > 4 else "No Team"
+                if not team_name:
+                    team_name = "No Team"
+
+                if team_name not in teams:
+                    teams[team_name] = []
+                teams[team_name].append((tag, user_data))
+
+            # Separate teams into ready and not ready
+            ready_teams = []
+            not_ready_teams = []
+
+            for team_name, members in teams.items():
+                # Check if team has 2+ members AND all are checked in
+                has_enough_members = len(members) >= 2
+                all_checked_in = all(is_true(member[1][3]) for member in members)
+                is_ready = has_enough_members and all_checked_in
+
+                if is_ready:
+                    ready_teams.append((team_name, members))
+                else:
+                    not_ready_teams.append((team_name, members))
+
+            # Sort each group by team name
+            ready_teams.sort(key=lambda x: x[0].lower())
+            not_ready_teams.sort(key=lambda x: x[0].lower())
+
+            # Combine ready teams first, then not ready teams
+            all_teams = ready_teams + not_ready_teams
+
+            # Display all teams in order (ready first, then not ready)
+            for team_name, members in all_teams:
+                # Check if team is ready for the checkmark
+                has_enough_members = len(members) >= 2
+                all_checked_in = all(is_true(member[1][3]) for member in members)
+                is_ready = has_enough_members and all_checked_in
+
+                team_check = "✅ " if is_ready else ""
+
+                if team_name == "No Team":
+                    team_display = f"{team_check}**Unassigned Players**"
+                else:
+                    team_display = f"{team_check}**{team_name}**"
+
+                lines.append(f"{team_display}")
+                lines.append("```css")
+
                 for tag, tpl in members:
                     ign = tpl[1]
-                    lines.append(f"> 👤 {tag}  |  {ign}")
-                lines.append("")  # blank line between teams
+                    is_checked_in = is_true(tpl[3])
+                    status = "🟢" if is_checked_in else "🔴"
+                    lines.append(f"{status} {tag} | {ign}")
 
-            # Remove trailing blank line
-            if lines and not lines[-1].strip():
-                lines.pop()
-        elif checked_in_users:
-            # Normal mode - flat list
-            for tag, tpl in checked_in_users:
+                lines.append("```")
+                lines.append("")
+
+        else:
+            # Normal mode - show all registered users with check-in status
+            lines.append("**📋 Player Check-In Status**")
+            lines.append("```css")
+
+            for i, (tag, tpl) in enumerate(checked_in_users, 1):
                 ign = tpl[1]
-                lines.append(f"👤 {tag}  |  {ign}")
+                is_checked_in = is_true(tpl[3])
+                status = "🟢" if is_checked_in else "🔴"
+                lines.append(f"{status} [{i:02d}] {tag} | {ign}")
+
+            lines.append("```")
 
         return lines

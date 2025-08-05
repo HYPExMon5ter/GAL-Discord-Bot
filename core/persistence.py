@@ -19,13 +19,21 @@ if DATABASE_URL:
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-    # Create connection pool for better performance
+    # Create connection pool with better error handling
     try:
+        # Railway and other cloud providers may need different connection settings
         connection_pool = psycopg2.pool.SimpleConnectionPool(
             1, 10,  # min and max connections
             DATABASE_URL,
-            sslmode="require"
+            sslmode="require",
+            connect_timeout=10,  # Add timeout
+            options="-c statement_timeout=30000"  # 30 second statement timeout
         )
+
+        # Test the connection
+        test_conn = connection_pool.getconn()
+        test_conn.close()
+        connection_pool.putconn(test_conn)
 
         # Initialize database schema
         with connection_pool.getconn() as conn:
@@ -49,6 +57,10 @@ if DATABASE_URL:
 
         logging.info("Database connection pool initialized successfully")
 
+    except psycopg2.OperationalError as e:
+        logging.error(f"Database connection failed (likely Railway config issue): {e}")
+        logging.info("Falling back to file-based persistence")
+        connection_pool = None
     except Exception as e:
         logging.error(f"Failed to initialize database connection pool: {e}")
         connection_pool = None

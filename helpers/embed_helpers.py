@@ -4,12 +4,14 @@
 Centralized helper functions for updating embeds across the bot.
 """
 
-import discord
 import logging
-from typing import Optional, Callable, Dict, List
 from datetime import datetime, timezone
-from core.persistence import get_persisted_msg
+from typing import Optional, Callable, Dict, List
+
+import discord
+
 from config import embed_from_cfg, LOG_CHANNEL_NAME, PING_USER
+from core.persistence import get_persisted_msg
 
 
 async def log_error(bot, guild, message, level="Error"):
@@ -208,7 +210,6 @@ class EmbedHelper:
     @staticmethod
     def build_registration_list_lines(users: List[tuple], mode: str) -> List[str]:
         """Build formatted lines for registration list display with smart color cycling."""
-        from itertools import groupby
         import random
 
         lines = []
@@ -269,7 +270,7 @@ class EmbedHelper:
                     lines.append(f"{tag} | {ign}")
 
                 lines.append("```")
-                lines.append("")
+                #lines.append("")
 
         else:
             lines.append("```css")
@@ -289,7 +290,6 @@ class EmbedHelper:
         Build formatted lines showing ALL registered users with check-in status.
         Shows ready teams first, then non-ready teams, all in a single list format.
         """
-        from itertools import groupby
 
         lines = []
 
@@ -355,7 +355,7 @@ class EmbedHelper:
                     lines.append(f"{status} {tag} | {ign}")
 
                 lines.append("```")
-                lines.append("")
+                #lines.append("")
 
         else:
             # Normal mode - show all registered users with check-in status

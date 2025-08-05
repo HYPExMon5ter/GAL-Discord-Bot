@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime
-from itertools import groupby
 
 import discord
 from rapidfuzz import process, fuzz
@@ -28,7 +27,6 @@ from integrations.sheets import (
     unregister_user, refresh_sheet_cache, reset_checked_in_roles_and_sheet, cache_lock, sheet_cache,
     reset_registered_roles_and_sheet
 )
-
 from utils.utils import toggle_checkin_for_member
 
 
@@ -1029,7 +1027,7 @@ async def update_registration_embed(
     close_iso = get_schedule(guild.id, "registration_close")
     if close_iso:
         ts = int(datetime.fromisoformat(close_iso).timestamp())
-        desc += f"\n⏰ Registration closes at <t:{ts}:F>"
+        desc += f" \n⏰ Registration closes at <t:{ts}:F>"
     desc += "\n\n"
 
     lines = EmbedHelper.build_registration_list_lines(users, mode)
@@ -1079,7 +1077,7 @@ async def update_checkin_embed(
     close_iso = get_schedule(guild.id, "checkin_close")
     if close_iso:
         ts = int(datetime.fromisoformat(close_iso).timestamp())
-        desc += f"\n⏰ Check-in closes at <t:{ts}:t>"
+        desc += f" \n⏰ Check-in closes at <t:{ts}:t>"
     desc += "\n\n"
 
     async with cache_lock:
@@ -1112,10 +1110,9 @@ async def update_checkin_embed(
             teams_data[team_name].append((tag, tpl))
 
         fully_checked_teams = 0
-        total_teams = len(teams_data)  # Count ALL teams, regardless of size
+        total_teams = len(teams_data)
 
         for team_name, members in teams_data.items():
-            # Only teams with 2+ members can be "fully checked"
             if len(members) >= 2:
                 team_fully_checked = True
                 for tag, member_data in members:
@@ -1126,6 +1123,7 @@ async def update_checkin_embed(
 
                 if team_fully_checked:
                     fully_checked_teams += 1
+
     else:
         total_teams = 0
         fully_checked_teams = 0

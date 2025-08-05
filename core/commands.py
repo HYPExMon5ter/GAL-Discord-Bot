@@ -3,7 +3,7 @@
 import logging
 import time
 from itertools import groupby
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 import discord
 from discord import app_commands

@@ -1,22 +1,22 @@
 # utils/utils.py
 
 import asyncio
-import urllib.parse
-import re
 import logging
+import re
+import urllib.parse
 from datetime import datetime
+from typing import List, Optional, Callable
 from zoneinfo import ZoneInfo
-from typing import List, Optional, Callable, Tuple
 
 import aiohttp
 import discord
 
 from config import (
-    embed_from_cfg, get_sheet_settings, REGISTERED_ROLE, CHECKED_IN_ROLE, REGISTRATION_CHANNEL, CHECK_IN_CHANNEL
+    embed_from_cfg, get_sheet_settings, CHECKED_IN_ROLE, REGISTRATION_CHANNEL, CHECK_IN_CHANNEL
 )
 from core.persistence import get_persisted_msg, get_event_mode_for_guild
 from integrations.sheets import (
-    sheet_cache, get_sheet_for_guild, retry_until_successful
+    get_sheet_for_guild, retry_until_successful
 )
 
 

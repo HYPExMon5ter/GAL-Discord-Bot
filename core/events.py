@@ -1,24 +1,23 @@
 # core/events.py - Fixed with complete error handling
 
 import asyncio
-import discord
-from discord.ext import commands
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from rapidfuzz import fuzz
 import logging
 import traceback
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-from core.persistence import set_schedule, get_schedule, get_persisted_msg
+import discord
+from discord.ext import commands
+from rapidfuzz import fuzz
+
 from config import (
-    REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, ANGEL_ROLE,
-    REGISTERED_ROLE, LOG_CHANNEL_NAME, embed_from_cfg,
-    _FULL_CFG, update_gal_command_ids
+    REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, LOG_CHANNEL_NAME, embed_from_cfg,
+    update_gal_command_ids
 )
-from integrations.sheets import refresh_sheet_cache, cache_refresh_loop
-
+from core.persistence import set_schedule, get_persisted_msg
 # Import helpers
 from helpers import ChannelManager, ConfigManager, EmbedHelper
+from integrations.sheets import refresh_sheet_cache, cache_refresh_loop
 
 # In‐memory caches for events
 scheduled_event_cache: dict = {}

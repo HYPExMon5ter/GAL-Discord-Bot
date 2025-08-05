@@ -1,15 +1,13 @@
 # integrations/riot_api.py
 
 import json
-import logging
 import os
 import re
 import urllib.parse
+from datetime import datetime
 from typing import Optional
 
 import aiohttp
-
-from core.persistence import get_event_mode_for_guild
 
 # === Constants ===
 RIOT_API_REGION = "na1"
@@ -47,121 +45,142 @@ async def tactics_tools_get_latest_placement(
         guild_id: str
 ) -> Optional[int]:
     """
-    Fetch the player's most recent TFT placement from any game mode
-    in the latest set by scraping tactics.tools website.
+    Fetch the player's most recent TFT placement from metatft.com
     """
-    url = build_tactics_tools_url(ign)
+
+    # Clean and format IGN for metatft URL
+    def clean_ign(s: str) -> str:
+        return re.sub(r'[\u2066-\u2069]', '', s).strip()
+
+    ign_clean = clean_ign(ign)
+    name, _, tag = ign_clean.partition("#")
+
+    # metatft uses lowercase and hyphen between name and tag
+    formatted_name = f"{name.strip()}-{tag.strip()}" if tag else name.strip()
+    formatted_name = formatted_name.lower()
+
+    url = f"https://www.metatft.com/player/na/{formatted_name}"
     print(f"[get_latest_placement] GET {url}")
 
     session = await _get_session()
 
     try:
-        # Step 1: Fetch the page
-        async with session.get(url) as resp:
+        async with session.get(url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
             if resp.status != 200:
                 print(f"[get_latest_placement] HTTP {resp.status}")
                 return None
             html = await resp.text()
 
-        # Step 2: Look for __NEXT_DATA__ JSON
-        m = re.search(r'<script\s+id="__NEXT_DATA__"[^>]*>(?P<json>.+?)</script>',
-                      html, flags=re.DOTALL)
-        if not m:
-            print("[get_latest_placement] no __NEXT_DATA__")
-            return None
+        # Debug: Save HTML for inspection
+        with open(f"metatft_debug_{ign.replace('#', '_')}.html", "w", encoding="utf-8") as f:
+            f.write(html)
+        print(f"[get_latest_placement] Saved HTML to metatft_debug_{ign.replace('#', '_')}.html")
 
-        try:
-            data = json.loads(m.group("json"))
-        except json.JSONDecodeError as e:
-            print("[get_latest_placement] JSON parse error:", e)
-            return None
+        # Look for placement patterns in metatft HTML
+        # Common patterns for placement display
+        placement_patterns = [
+            # Look for placement in match history
+            r'placement["\s:]+(\d+)',
+            r'#(\d+)</span>',  # Often placements are shown as #1, #2, etc
+            r'rank["\s:]+(\d+)',
+            r'"place"["\s:]+(\d+)',
+            r'position["\s:]+(\d+)',
+            # MetaTFT specific patterns
+            r'<div[^>]*class="[^"]*place[^"]*"[^>]*>.*?(\d+)',
+            r'<span[^>]*class="[^"]*rank[^"]*"[^>]*>.*?(\d+)',
+            # Look in data attributes
+            r'data-placement="(\d+)"',
+            r'data-rank="(\d+)"',
+            r'data-position="(\d+)"',
+        ]
 
-        # Step 3: Navigate through the data structure
-        try:
-            page_props = data.get("props", {}).get("pageProps", {})
-            if not page_props:
-                print("[get_latest_placement] No pageProps found")
-                return None
-
-            # Get matches from initialData
-            initial_data = page_props.get("initialData", {})
-            matches = initial_data.get("matches", [])
-
-            if not matches:
-                print("[get_latest_placement] No matches found in initialData")
-                return None
-
-            # Filter for latest set only
-            # Set 15 started around November 2024
-            # We can check the game version or timestamp
-            latest_set_matches = []
-
-            for match in matches:
-                info = match.get("info", {})
-                game_version = info.get("gameVersion", "")
-
-                # TFT Set 15 versions start with "Version 14.23" or higher
-                # Format is usually "Version 14.23.xxx.xxxx"
-                if game_version:
+        for pattern in placement_patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            if matches:
+                # Get the first valid placement (most recent)
+                for match in matches:
                     try:
-                        # Extract major and minor version
-                        version_parts = game_version.replace("Version ", "").split(".")
-                        if len(version_parts) >= 2:
-                            major = int(version_parts[0])
-                            minor = int(version_parts[1])
-
-                            # Set 15 started with patch 14.23
-                            if major > 14 or (major == 14 and minor >= 23):
-                                latest_set_matches.append(match)
-
-                    except (ValueError, IndexError):
-                        # If we can't parse version, check by timestamp
-                        # Set 15 started around November 20, 2024
-                        game_timestamp = match.get("gameCreation", 0)
-                        if game_timestamp > 1732060800000:  # Nov 20, 2024 in milliseconds
-                            latest_set_matches.append(match)
-
-            if not latest_set_matches:
-                print("[get_latest_placement] No Set 15 matches found")
-                return None
-
-            # Get the most recent Set 15 match
-            for match in latest_set_matches:
-                info = match.get("info", {})
-                placement = info.get("placement")
-
-                if placement and isinstance(placement, (int, str)):
-                    try:
-                        placement_int = int(placement)
-
-                        # Log details for debugging
-                        queue_id = match.get("queueId")
-                        game_version = info.get("gameVersion", "unknown")
-                        queue_type = "unknown"
-                        if queue_id == 1100:
-                            queue_type = "ranked"
-                        elif queue_id == 1160:
-                            queue_type = "double-up"
-                        elif queue_id == 1090:
-                            queue_type = "normal"
-                        elif queue_id == 1130:
-                            queue_type = "hyper roll"
-
-                        print(
-                            f"[get_latest_placement] Found Set 15 placement: {placement_int} from {queue_type} game (version: {game_version})")
-                        return placement_int
+                        placement = int(match)
+                        if 1 <= placement <= 8:  # Valid TFT placement
+                            print(f"[get_latest_placement] Found placement: {placement}")
+                            return placement
                     except ValueError:
                         continue
 
-            print(f"[get_latest_placement] No valid placements found in Set 15 matches")
-            return None
+        # Look for JSON data in script tags
+        json_patterns = [
+            r'<script[^>]*>window\.__INITIAL_STATE__\s*=\s*({.*?})</script>',
+            r'<script[^>]*type="application/json"[^>]*>({.*?})</script>',
+            r'<script[^>]*id="__NEXT_DATA__"[^>]*>({.*?})</script>',
+        ]
 
-        except Exception as e:
-            print(f"[get_latest_placement] Error parsing match data: {e}")
-            return None
+        for json_pattern in json_patterns:
+            json_matches = re.findall(json_pattern, html, re.DOTALL)
+
+            for json_str in json_matches:
+                try:
+                    data = json.loads(json_str)
+
+                    # Navigate through possible data structures
+                    # Try to find match/game data
+                    def find_placement(obj, depth=0):
+                        if depth > 10:  # Prevent infinite recursion
+                            return None
+
+                        if isinstance(obj, dict):
+                            # Direct placement field
+                            if "placement" in obj:
+                                try:
+                                    return int(obj["placement"])
+                                except:
+                                    pass
+
+                            # Check common keys for match data
+                            for key in ["matches", "games", "matchHistory", "recentGames", "data", "props"]:
+                                if key in obj:
+                                    result = find_placement(obj[key], depth + 1)
+                                    if result:
+                                        return result
+
+                        elif isinstance(obj, list) and obj:
+                            # Check first item if it's recent match
+                            for item in obj[:5]:  # Check first 5 items
+                                result = find_placement(item, depth + 1)
+                                if result:
+                                    return result
+
+                        return None
+
+                    placement = find_placement(data)
+                    if placement and 1 <= placement <= 8:
+                        print(f"[get_latest_placement] Found placement in JSON: {placement}")
+                        return placement
+
+                except Exception as e:
+                    print(f"[get_latest_placement] Error parsing JSON: {e}")
+                    continue
+
+        # If we still haven't found anything, look for match result text
+        # MetaTFT might show results like "1st", "2nd", etc.
+        ordinal_pattern = r'(\d+)(?:st|nd|rd|th)\s*(?:place)?'
+        ordinal_matches = re.findall(ordinal_pattern, html, re.IGNORECASE)
+
+        for match in ordinal_matches:
+            try:
+                placement = int(match)
+                if 1 <= placement <= 8:
+                    print(f"[get_latest_placement] Found ordinal placement: {placement}")
+                    return placement
+            except ValueError:
+                continue
+
+        print("[get_latest_placement] No placement found in HTML")
+        return None
 
     except Exception as e:
-        print(f"[get_latest_placement] Error fetching data: {e}")
+        print(f"[get_latest_placement] Error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 

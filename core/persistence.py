@@ -19,48 +19,65 @@ if DATABASE_URL:
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-    # Create connection pool with better error handling
+    # Create connection pool for better performance
     try:
-        # Railway and other cloud providers may need different connection settings
         connection_pool = psycopg2.pool.SimpleConnectionPool(
             1, 10,  # min and max connections
             DATABASE_URL,
-            sslmode="require",
-            connect_timeout=10,  # Add timeout
-            options="-c statement_timeout=30000"  # 30 second statement timeout
+            sslmode="require"
         )
 
-        # Test the connection
-        test_conn = connection_pool.getconn()
-        test_conn.close()
-        connection_pool.putconn(test_conn)
-
-        # Initialize database schema
+        # Initialize database schema - check what columns exist first
         with connection_pool.getconn() as conn:
             with conn.cursor() as cursor:
+                # Create table if it doesn't exist
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS persisted_views (
                         key TEXT PRIMARY KEY,
-                        data JSONB,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        data JSONB
                     );
                 """)
 
-                # Add indexes for better performance
+                # Check if updated_at column exists
                 cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_persisted_views_updated_at 
-                    ON persisted_views(updated_at);
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'persisted_views' 
+                    AND column_name = 'updated_at';
                 """)
 
-                conn.commit()
+                if not cursor.fetchone():
+                    # Add updated_at column if it doesn't exist
+                    try:
+                        cursor.execute("""
+                            ALTER TABLE persisted_views 
+                            ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+                        """)
+                        cursor.execute("""
+                            ALTER TABLE persisted_views 
+                            ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+                        """)
+                        conn.commit()
+                        logging.info("Added timestamp columns to persisted_views table")
+                    except Exception as e:
+                        logging.warning(f"Could not add timestamp columns (they may already exist): {e}")
+                        conn.rollback()
+
+                # Try to add index, but don't fail if column doesn't exist
+                try:
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_persisted_views_updated_at 
+                        ON persisted_views(updated_at);
+                    """)
+                    conn.commit()
+                except Exception as e:
+                    # Index creation failed, probably because column doesn't exist
+                    # This is okay, we can work without it
+                    logging.debug(f"Could not create index on updated_at: {e}")
+                    conn.rollback()
 
         logging.info("Database connection pool initialized successfully")
 
-    except psycopg2.OperationalError as e:
-        logging.error(f"Database connection failed (likely Railway config issue): {e}")
-        logging.info("Falling back to file-based persistence")
-        connection_pool = None
     except Exception as e:
         logging.error(f"Failed to initialize database connection pool: {e}")
         connection_pool = None
@@ -120,13 +137,24 @@ def save_persisted(data: Dict[str, Any]) -> None:
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(
-                        """INSERT INTO persisted_views (key, data, updated_at) 
-                           VALUES (%s, %s, CURRENT_TIMESTAMP) 
-                           ON CONFLICT (key) 
-                           DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP""",
-                        ("default", json.dumps(data))
-                    )
+                    # Try with updated_at column first
+                    try:
+                        cursor.execute(
+                            """INSERT INTO persisted_views (key, data, updated_at) 
+                               VALUES (%s, %s, CURRENT_TIMESTAMP) 
+                               ON CONFLICT (key) 
+                               DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP""",
+                            ("default", json.dumps(data))
+                        )
+                    except psycopg2.errors.UndefinedColumn:
+                        # Fallback to without updated_at column
+                        cursor.execute(
+                            """INSERT INTO persisted_views (key, data) 
+                               VALUES (%s, %s) 
+                               ON CONFLICT (key) 
+                               DO UPDATE SET data = EXCLUDED.data""",
+                            ("default", json.dumps(data))
+                        )
                     conn.commit()
             return
         except Exception as e:
@@ -307,16 +335,27 @@ def cleanup_old_data(days: int = 30) -> None:
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute(
-                    """DELETE FROM persisted_views 
-                       WHERE updated_at < CURRENT_TIMESTAMP - INTERVAL '%s days'""",
-                    (days,)
-                )
-                deleted_rows = cursor.rowcount
-                conn.commit()
+                # Check if updated_at column exists before trying to use it
+                cursor.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'persisted_views' 
+                    AND column_name = 'updated_at';
+                """)
 
-                if deleted_rows > 0:
-                    logging.info(f"Cleaned up {deleted_rows} old persisted data entries")
+                if cursor.fetchone():
+                    cursor.execute(
+                        """DELETE FROM persisted_views 
+                           WHERE updated_at < CURRENT_TIMESTAMP - INTERVAL '%s days'""",
+                        (days,)
+                    )
+                    deleted_rows = cursor.rowcount
+                    conn.commit()
+
+                    if deleted_rows > 0:
+                        logging.info(f"Cleaned up {deleted_rows} old persisted data entries")
+                else:
+                    logging.debug("No updated_at column, skipping cleanup")
 
     except Exception as e:
         logging.error(f"Failed to cleanup old data: {e}")

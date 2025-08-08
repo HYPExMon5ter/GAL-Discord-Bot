@@ -1,342 +1,347 @@
-# core/events.py - Fixed with complete error handling
+# core/events.py
 
 import asyncio
-import logging
 import traceback
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
 
 import discord
 from discord.ext import commands
-from rapidfuzz import fuzz
 
-from config import (
-    REGISTRATION_CHANNEL, CHECK_IN_CHANNEL, LOG_CHANNEL_NAME, embed_from_cfg,
-    update_gal_command_ids
-)
-from core.persistence import set_schedule, get_persisted_msg
-# Import helpers
-from helpers import ChannelManager, ConfigManager, EmbedHelper
-from integrations.sheets import refresh_sheet_cache, cache_refresh_loop
+from config import CHECK_IN_CHANNEL, REGISTRATION_CHANNEL
+from core.persistence import get_persisted_msg
+from helpers import BotLogger, ErrorHandler, ErrorCategory, ErrorSeverity
 
-# In‐memory caches for events
-scheduled_event_cache: dict = {}
-open_tasks: dict = {}
-close_tasks: dict = {}
+# Import functions with error handling
+try:
+    from integrations.sheets import refresh_sheet_cache
+except ImportError:
+    BotLogger.warning("Sheet cache refresh not available in events", "EVENTS")
 
 
-def match_event_type(name: str) -> str | None:
-    lc = name.lower()
-    for kw in ("registration", "register", "reg"):
-        if fuzz.partial_ratio(lc, kw) >= 80:
-            return "registration"
-    for kw in ("check-in", "checkin", "check in", "check"):
-        if fuzz.partial_ratio(lc, kw) >= 80:
-            return "checkin"
-    return None
+    async def refresh_sheet_cache(*args, **kwargs):
+        pass
+
+try:
+    from helpers import EmbedHelper
+except ImportError:
+    BotLogger.warning("EmbedHelper not available in events", "EVENTS")
+    EmbedHelper = None
+
+try:
+    from config import update_gal_command_ids
+except ImportError:
+    try:
+        from utils.utils import update_gal_command_ids
+    except ImportError:
+        BotLogger.warning("Command ID updates not available in events", "EVENTS")
 
 
-def get_channel_and_role(guild: discord.Guild, etype: str):
-    if etype == "registration":
-        return ChannelManager.get_channel_and_role(guild, "registration")
-    else:
-        return ChannelManager.get_channel_and_role(guild, "checkin")
+        async def update_gal_command_ids(*args, **kwargs):
+            pass
 
 
-async def schedule_channel_open(
-        bot,
-        guild: discord.Guild,
-        channel_name: str,
-        role_name: str,
-        open_time: datetime,
-        ping_role: bool = True
-):
-    now = datetime.now(ZoneInfo("UTC"))
-    wait = (open_time - now).total_seconds()
-    if wait > 0:
-        await asyncio.sleep(wait)
+async def cache_refresh_loop(bot: commands.Bot):
+    """Background task for periodic cache refresh."""
+    while not getattr(bot, '_shutdown_requested', False):
+        try:
+            await asyncio.sleep(600)  # Wait 10 minutes
 
-    channel = ChannelManager.get_channel(guild, channel_name)
-    role = discord.utils.get(guild.roles, name=role_name)
-    if channel and role:
-        changed = await ChannelManager.set_channel_visibility(channel, role, True, ping_role)
-        if changed:
-            # Update all embeds immediately after opening
-            await EmbedHelper.update_all_guild_embeds(guild)
-            # Import locally to avoid circular import
-            from utils.utils import update_dm_action_views
-            await update_dm_action_views(guild)
+            if getattr(bot, '_shutdown_requested', False):
+                break
 
-            # Log the opening
-            logging.info(f"Opened {channel_name} channel for guild {guild.id}")
+            BotLogger.info("Starting periodic cache refresh", "CACHE_REFRESH")
+            await refresh_sheet_cache(bot=bot)
+            BotLogger.success("Periodic cache refresh completed", "CACHE_REFRESH")
 
-        # Clear persisted open time so it won't fire again
-        if channel_name == REGISTRATION_CHANNEL:
-            set_schedule(guild.id, "registration_open", None)
-        elif channel_name == CHECK_IN_CHANNEL:
-            set_schedule(guild.id, "checkin_open", None)
+        except asyncio.CancelledError:
+            BotLogger.info("Cache refresh loop cancelled", "CACHE_REFRESH")
+            break
+        except Exception as e:
+            BotLogger.error(f"Cache refresh loop error: {e}", "CACHE_REFRESH")
 
 
-async def schedule_channel_close(
-        bot,
-        guild: discord.Guild,
-        channel_name: str,
-        role_name: str,
-        close_time: datetime
-):
-    now = datetime.now(ZoneInfo("UTC"))
-    wait = (close_time - now).total_seconds()
-    if wait > 0:
-        await asyncio.sleep(wait)
+async def _startup_initialization(bot: commands.Bot):
+    """
+    Handle startup initialization that must occur after the bot is ready.
+    This runs as a separate background task after Discord connection is established.
+    """
+    BotLogger.info("Starting background initialization process", "STARTUP")
 
-    channel = ChannelManager.get_channel(guild, channel_name)
-    role = discord.utils.get(guild.roles, name=role_name)
-    if channel and role:
-        changed = await ChannelManager.set_channel_visibility(channel, role, False, False)
-        if changed:
-            # Update all embeds immediately after closing
-            await EmbedHelper.update_all_guild_embeds(guild)
-            # Import locally to avoid circular import
-            from utils.utils import update_dm_action_views
-            await update_dm_action_views(guild)
+    try:
+        # Command system setup
+        BotLogger.info("Updating Discord command IDs for help system", "STARTUP")
+        await update_gal_command_ids(bot)
+        BotLogger.success("Command IDs updated successfully", "STARTUP")
 
-            # Log the closing
-            logging.info(f"Closed {channel_name} channel for guild {guild.id}")
+        # Guild processing with enhanced error handling
+        for guild in bot.guilds:
+            guild_name = guild.name
+            BotLogger.info(f"Initializing guild: {guild_name}", "STARTUP")
 
-        # Clear persisted close time so it won't fire again
-        if channel_name == REGISTRATION_CHANNEL:
-            set_schedule(guild.id, "registration_close", None)
-        elif channel_name == CHECK_IN_CHANNEL:
-            set_schedule(guild.id, "checkin_close", None)
+            try:
+                # Import views with error handling
+                try:
+                    from core.views import RegistrationView, CheckInView, PersistentRegisteredListView
+                    BotLogger.debug(f"Successfully imported view classes for {guild_name}", "STARTUP")
+                except ImportError as e:
+                    BotLogger.error(f"Failed to import view classes for {guild_name}: {e}", "STARTUP")
+                    continue
 
+                # Add persistent registered list view (always available) - FIXED: Add custom_id and timeout=None
+                try:
+                    list_view = PersistentRegisteredListView(guild)
+                    # Make sure the view is persistent by setting timeout to None in the view itself
+                    bot.add_view(list_view)
+                    BotLogger.debug(f"Added PersistentRegisteredListView for {guild_name}", "STARTUP")
+                except Exception as e:
+                    BotLogger.error(f"Failed to add PersistentRegisteredListView for {guild_name}: {e}", "STARTUP")
 
-async def _handle_event_schedule(bot, event, is_edit: bool):
-    etype = match_event_type(event.name)
-    if not etype:
-        return
+                # Add registration view if persisted message exists
+                try:
+                    reg_channel_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
+                    if reg_channel_id and reg_msg_id:
+                        bot.add_view(RegistrationView(reg_msg_id, guild))
+                        BotLogger.debug(f"Added RegistrationView for {guild_name}", "STARTUP")
+                except Exception as e:
+                    BotLogger.error(f"Failed to add RegistrationView for {guild_name}: {e}", "STARTUP")
 
-    guild = event.guild
-    key = (guild.id, event.id)
-    open_time = event.start_time and event.start_time.astimezone(ZoneInfo("UTC"))
-    close_time = event.end_time and event.end_time.astimezone(ZoneInfo("UTC"))
+                # Add check-in view if persisted message exists
+                try:
+                    checkin_channel_id, checkin_msg_id = get_persisted_msg(guild.id, "checkin")
+                    if checkin_channel_id and checkin_msg_id:
+                        bot.add_view(CheckInView(guild))
+                        BotLogger.debug(f"Added CheckInView for {guild_name}", "STARTUP")
+                except Exception as e:
+                    BotLogger.error(f"Failed to add CheckInView for {guild_name}: {e}", "STARTUP")
 
-    # If nothing changed, skip
-    if scheduled_event_cache.get(key) == (open_time, close_time):
-        return
-    scheduled_event_cache[key] = (open_time, close_time)
+            except Exception as e:
+                BotLogger.error(f"Guild initialization failed for {guild_name}: {e}", "STARTUP")
+                continue
 
-    # Cancel any existing tasks
-    for suffix, tasks in (("open", open_tasks), ("close", close_tasks)):
-        tkey = (guild.id, event.id, suffix)
-        if tkey in tasks and not tasks[tkey].done():
-            tasks[tkey].cancel()
-            del tasks[tkey]
+        # Cache refresh loop setup
+        BotLogger.info("Setting up cache refresh background task", "STARTUP")
+        try:
+            if not hasattr(bot, '_cache_refresh_task'):
+                bot._cache_refresh_task = asyncio.create_task(cache_refresh_loop(bot))
+                BotLogger.success("Started cache refresh background task", "STARTUP")
+            else:
+                BotLogger.debug("Cache refresh task already running", "STARTUP")
+        except Exception as e:
+            BotLogger.error(f"Failed to start cache refresh loop: {e}", "STARTUP")
 
-    # Persist both times
-    set_schedule(guild.id, f"{etype}_open", open_time.isoformat() if open_time else None)
-    set_schedule(guild.id, f"{etype}_close", close_time.isoformat() if close_time else None)
+        # Initial cache refresh
+        BotLogger.info("Starting initial cache refresh (this may take a moment)", "STARTUP")
+        try:
+            await refresh_sheet_cache(bot=bot)
+            BotLogger.success("Initial cache refresh completed successfully", "STARTUP")
+        except Exception as e:
+            BotLogger.error(f"Initial cache refresh failed: {e}", "STARTUP")
 
-    # Schedule open
-    ch, role = get_channel_and_role(guild, etype)
-    now = datetime.now(ZoneInfo("UTC"))
-    if ch and role:
-        # Open
-        if open_time and open_time > now:
-            open_tasks[(guild.id, event.id, "open")] = asyncio.create_task(
-                schedule_channel_open(bot, guild, ch.name, role.name, open_time)
-            )
-        else:
-            # Fire immediately (no ping)
-            await schedule_channel_open(bot, guild, ch.name, role.name, now, ping_role=False)
+        # Embed updates
+        BotLogger.info("Updating all guild embeds with fresh data", "STARTUP")
+        try:
+            for guild in bot.guilds:
+                if EmbedHelper:
+                    embed_results = await EmbedHelper.update_all_guild_embeds(guild)
+                    successful_updates = sum(1 for success in embed_results.values() if success)
+                    total_embeds = len(embed_results)
+                    BotLogger.info(
+                        f"Updated embeds for {guild.name}: {successful_updates}/{total_embeds} successful",
+                        "STARTUP"
+                    )
+                else:
+                    BotLogger.debug(f"Skipping embed updates for {guild.name} - EmbedHelper not available", "STARTUP")
+        except Exception as e:
+            BotLogger.error(f"Failed to update embeds during startup: {e}", "STARTUP")
 
-        # Close
-        if close_time and close_time > now:
-            close_tasks[(guild.id, event.id, "close")] = asyncio.create_task(
-                schedule_channel_close(bot, guild, ch.name, role.name, close_time)
-            )
-        else:
-            # Fire immediately
-            await schedule_channel_close(bot, guild, ch.name, role.name, now)
+        # Startup completion
+        BotLogger.success("Background initialization completed successfully!", "STARTUP")
 
-    # Log creation/edit in the log channel with proper formatting
-    log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
-    if log_ch:
-        open_ts = int(event.start_time.timestamp()) if event.start_time else None
-        close_ts = int(event.end_time.timestamp()) if event.end_time else None
-        key_name = "schedule_edited" if is_edit else "schedule_created"
-
-        # Build close string for the embed
-        close_str = f"\nCloses at: <t:{close_ts}:F>" if close_ts else ""
-
-        embed = embed_from_cfg(
-            key_name,
-            type=etype.capitalize(),
-            event=event.name,
-            open_ts=open_ts,
-            close_ts=close_ts,
-            close_str=close_str
-        )
-        await log_ch.send(embed=embed)
+    except Exception as e:
+        BotLogger.error(f"Critical error during background initialization: {e}", "STARTUP")
+        BotLogger.error(f"Startup traceback: {traceback.format_exc()}", "STARTUP")
 
 
 def setup_events(bot: commands.Bot):
+    """
+    Set up all Discord event handlers for the bot with comprehensive error handling.
+    Registers event listeners for bot lifecycle and scheduled events.
+    """
+
     @bot.event
     async def on_ready():
-        print(f"[on_ready] Logged in as {bot.user}")
-        logging.info(f"Bot logged in as {bot.user} (ID: {bot.user.id})")
-
+        """
+        Called when the bot successfully connects to Discord.
+        Initiates non-blocking background initialization.
+        """
         try:
-            # Update command IDs first
-            print("[on_ready] Starting command ID update...")
-            await update_gal_command_ids(bot)
-            print("[on_ready] • GAL_COMMAND_IDs populated, help links ready")
+            BotLogger.success(f"🤖 {bot.user} has connected to Discord!", "BOT_READY")
+            BotLogger.info(f"Bot ID: {bot.user.id}", "BOT_READY")
+            BotLogger.info(f"Connected to {len(bot.guilds)} guild(s)", "BOT_READY")
 
-            # per-guild startup
+            # Log guild information
+            for guild in bot.guilds:
+                member_count = guild.member_count or len(guild.members)
+                BotLogger.info(f"  - {guild.name} (ID: {guild.id}, Members: {member_count})", "BOT_READY")
+
+            # Set bot status
+            activity = discord.Activity(type=discord.ActivityType.watching, name="for GAL tournaments")
+            await bot.change_presence(activity=activity)
+
+            # Mark as ready and start background initialization - FIXED: Use correct attribute name
+            if hasattr(bot, '_bot_is_ready'):
+                bot._bot_is_ready = True
+            if hasattr(bot, '_health_status'):
+                bot._health_status["bot_ready"] = True
+
+            # Start background initialization (non-blocking)
+            asyncio.create_task(_startup_initialization(bot))
+
+            # Send startup logs to guilds
+            startup_info = {
+                "bot_name": bot.user.name,
+                "bot_id": bot.user.id,
+                "guild_count": len(bot.guilds),
+                "startup_duration": 0.0  # Will be updated by main bot class
+            }
+
             for guild in bot.guilds:
                 try:
-                    logging.info(f"Processing guild: {guild.name} ({guild.id})")
-
-                    # Refresh cache for this guild
-                    print(f"[on_ready] Refreshing cache for guild {guild.name}...")
-                    await refresh_sheet_cache(bot=bot)
-                    print(f"[on_ready] • Cache refreshed for guild {guild.name} ({guild.id})")
-
-                    # Test import of views
-                    print("[on_ready] Testing view imports...")
-                    try:
-                        from core.views import RegistrationView, CheckInView, PersistentRegisteredListView
-                        print("[on_ready] • View imports successful")
-                    except Exception as e:
-                        print(f"[on_ready] ERROR importing views: {e}")
-                        logging.error(f"Failed to import views: {e}")
-                        traceback.print_exc()
-                        continue
-
-                    # Add persistent registered list view
-                    print("[on_ready] Adding PersistentRegisteredListView...")
-                    try:
-                        bot.add_view(PersistentRegisteredListView(guild))
-                        print(f"[on_ready] • Added PersistentRegisteredListView for guild {guild.name}")
-                    except Exception as e:
-                        print(f"[on_ready] ERROR adding PersistentRegisteredListView: {e}")
-                        logging.error(f"Failed to add PersistentRegisteredListView: {e}")
-                        traceback.print_exc()
-
-                    # Add registration view if exists
-                    print("[on_ready] Checking registration view...")
-                    try:
-                        reg_chan_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
-                        print(f"[on_ready] Registration persisted: chan_id={reg_chan_id}, msg_id={reg_msg_id}")
-                        if reg_chan_id and reg_msg_id:
-                            bot.add_view(RegistrationView(reg_msg_id, guild))
-                            print(f"[on_ready] • Added persistent RegistrationView for message {reg_msg_id}")
-                        else:
-                            print("[on_ready] • No registration message to attach view to")
-                    except Exception as e:
-                        print(f"[on_ready] ERROR with registration view: {e}")
-                        logging.error(f"Failed to add registration view: {e}")
-                        traceback.print_exc()
-
-                    # Add check-in view if exists
-                    print("[on_ready] Checking check-in view...")
-                    try:
-                        ci_chan_id, ci_msg_id = get_persisted_msg(guild.id, "checkin")
-                        print(f"[on_ready] Check-in persisted: chan_id={ci_chan_id}, msg_id={ci_msg_id}")
-                        if ci_chan_id and ci_msg_id:
-                            bot.add_view(CheckInView(guild))
-                            print(f"[on_ready] • Added persistent CheckInView for message {ci_msg_id}")
-                        else:
-                            print("[on_ready] • No check-in message to attach view to")
-                    except Exception as e:
-                        print(f"[on_ready] ERROR with check-in view: {e}")
-                        logging.error(f"Failed to add check-in view: {e}")
-                        traceback.print_exc()
-
-                    # Update all embeds - use the helper
-                    print("[on_ready] Updating embeds...")
-                    try:
-                        embed_results = await EmbedHelper.update_all_guild_embeds(guild)
-                        print(f"[on_ready] • Live embeds updated for guild {guild.name}: {embed_results}")
-                    except Exception as e:
-                        print(f"[on_ready] ERROR updating embeds: {e}")
-                        logging.error(f"Failed to update embeds: {e}")
-                        traceback.print_exc()
-
-                    print(f"[on_ready] Completed processing for guild {guild.name}")
-
+                    await BotLogger.send_startup_log(guild, startup_info)
                 except Exception as e:
-                    print(f"[on_ready] ERROR processing guild {guild.name}: {e}")
-                    logging.error(f"Failed to process guild {guild.name}: {e}")
-                    traceback.print_exc()
-
-            # Apply rich presence using ConfigManager
-            print("[on_ready] Setting rich presence...")
-            try:
-                await ConfigManager.apply_rich_presence(bot)
-                print(f"[on_ready] • Rich presence set")
-            except Exception as e:
-                print(f"[on_ready] ERROR setting rich presence: {e}")
-                logging.error(f"Failed to set rich presence: {e}")
-                traceback.print_exc()
-
-            # Start cache refresh loop if not already running
-            print("[on_ready] Starting cache refresh loop...")
-            try:
-                if not hasattr(bot, '_cache_refresh_task'):
-                    bot._cache_refresh_task = asyncio.create_task(cache_refresh_loop(bot))
-                    print("[on_ready] • Started cache refresh background task")
-                else:
-                    print("[on_ready] • Cache refresh task already running")
-            except Exception as e:
-                print(f"[on_ready] ERROR starting cache refresh: {e}")
-                logging.error(f"Failed to start cache refresh loop: {e}")
-                traceback.print_exc()
-
-            logging.info("Bot on_ready completed successfully")
-            print("[on_ready] ✅ Bot is fully ready!")
+                    BotLogger.debug(f"Could not send startup log to {guild.name}: {e}", "BOT_READY")
 
         except Exception as e:
-            print(f"[on_ready] CRITICAL ERROR: {e}")
-            logging.error(f"Critical error in on_ready: {e}")
-            traceback.print_exc()
+            if ErrorHandler:
+                await ErrorHandler.handle_interaction_error(
+                    None, e, "on_ready",
+                    severity=ErrorSeverity.HIGH,
+                    category=ErrorCategory.DISCORD_API
+                )
+            else:
+                BotLogger.error(f"Error in on_ready event: {e}", "BOT_READY")
 
     @bot.event
-    async def on_scheduled_event_create(event):
-        await _handle_event_schedule(bot, event, is_edit=False)
+    async def on_guild_scheduled_event_create(event):
+        """Handle creation of scheduled events with intelligent channel management."""
+        try:
+            BotLogger.info(f"Scheduled event created: '{event.name}' in {event.guild.name}", "SCHEDULED_EVENT")
+
+            # Import channel helpers with error handling
+            try:
+                from helpers import ChannelManager, open_channel_immediate
+
+                # Auto-open registration for tournament events
+                if any(keyword in event.name.lower() for keyword in ['tournament', 'gal', 'tft']):
+                    await open_channel_immediate(event.guild, "registration", ping_role=True)
+                    BotLogger.info(f"Auto-opened registration for tournament event: {event.name}", "SCHEDULED_EVENT")
+
+            except ImportError:
+                BotLogger.debug("Channel management not available for scheduled events", "SCHEDULED_EVENT")
+
+        except Exception as e:
+            BotLogger.error(f"Error handling scheduled event creation: {e}", "SCHEDULED_EVENT")
 
     @bot.event
-    async def on_scheduled_event_update(_, event):
-        await _handle_event_schedule(bot, event, is_edit=True)
+    async def on_guild_scheduled_event_update(before, after):
+        """Handle updates to scheduled events with status-based channel management."""
+        try:
+            if before.status != after.status:
+                BotLogger.info(
+                    f"Event '{after.name}' status changed: {before.status.name} → {after.status.name}",
+                    "SCHEDULED_EVENT"
+                )
+
+                # Import channel helpers with error handling
+                try:
+                    from helpers import ChannelManager, open_channel_immediate, close_channel_immediate
+
+                    # Handle tournament events
+                    if any(keyword in after.name.lower() for keyword in ['tournament', 'gal', 'tft']):
+                        if after.status == discord.EventStatus.active:
+                            # Event started - open check-in
+                            await open_channel_immediate(after.guild, "checkin", ping_role=True)
+                            BotLogger.info(f"Auto-opened check-in for active tournament: {after.name}",
+                                           "SCHEDULED_EVENT")
+                        elif after.status in [discord.EventStatus.completed, discord.EventStatus.cancelled]:
+                            # Event ended - close channels
+                            await close_channel_immediate(after.guild, "registration")
+                            await close_channel_immediate(after.guild, "checkin")
+                            BotLogger.info(f"Auto-closed channels for ended tournament: {after.name}",
+                                           "SCHEDULED_EVENT")
+
+                except ImportError:
+                    BotLogger.debug("Channel management not available for event updates", "SCHEDULED_EVENT")
+
+        except Exception as e:
+            BotLogger.error(f"Error handling scheduled event update: {e}", "SCHEDULED_EVENT")
 
     @bot.event
-    async def on_scheduled_event_delete(event):
-        etype = match_event_type(event.name)
-        if not etype:
-            return
+    async def on_member_join(member):
+        """Handle new member joins with DM action view updates."""
+        try:
+            BotLogger.info(f"New member joined {member.guild.name}: {member.name}", "MEMBER_JOIN")
 
-        guild = event.guild
-        # Cancel tasks
-        for suffix, tasks in (("open", open_tasks), ("close", close_tasks)):
-            key = (guild.id, event.id, suffix)
-            if key in tasks and not tasks[key].done():
-                tasks[key].cancel()
-                del tasks[key]
-        scheduled_event_cache.pop((guild.id, event.id), None)
+            # Update DM action views if available
+            try:
+                from utils.utils import update_dm_action_views
+                await update_dm_action_views(member.guild, [member])
+                BotLogger.debug(f"Updated DM action views for new member: {member.name}", "MEMBER_JOIN")
+            except ImportError:
+                BotLogger.debug("DM action view updates not available", "MEMBER_JOIN")
 
-        # Clear persisted schedules
-        set_schedule(guild.id, f"{etype}_open", None)
-        set_schedule(guild.id, f"{etype}_close", None)
+        except Exception as e:
+            BotLogger.error(f"Error handling member join: {e}", "MEMBER_JOIN")
 
-        # Send deletion embed
-        log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
-        if log_ch:
-            open_ts = int(event.start_time.timestamp()) if event.start_time else None
-            close_ts = int(event.end_time.timestamp()) if event.end_time else None
-            embed = embed_from_cfg(
-                "schedule_deleted",
-                type=etype.capitalize(),
-                event=event.name,
-                open_ts=open_ts,
-                close_ts=close_ts
-            )
-            await log_ch.send(embed=embed)
+    @bot.event
+    async def on_member_remove(member):
+        """Handle member leaves with cleanup."""
+        try:
+            BotLogger.info(f"Member left {member.guild.name}: {member.name}", "MEMBER_LEAVE")
+
+            # Could add cleanup logic here if needed
+            # e.g., remove from tournaments, update sheets, etc.
+
+        except Exception as e:
+            BotLogger.error(f"Error handling member leave: {e}", "MEMBER_LEAVE")
+
+    @bot.event
+    async def on_application_command_error(interaction: discord.Interaction, error: Exception):
+        """Handle slash command errors with comprehensive logging and user feedback."""
+        try:
+            if ErrorHandler:
+                await ErrorHandler.handle_interaction_error(
+                    interaction, error, "slash_command",
+                    severity=ErrorSeverity.MEDIUM,
+                    category=ErrorCategory.USER_INPUT
+                )
+            else:
+                BotLogger.error(f"Slash command error: {error}", "COMMAND_ERROR")
+
+                # Send basic error response if not already responded
+                if not interaction.response.is_done():
+                    try:
+                        await interaction.response.send_message(
+                            "❌ An error occurred while processing your command. Please try again.",
+                            ephemeral=True
+                        )
+                    except Exception:
+                        pass  # Interaction might have expired
+
+        except Exception as e:
+            BotLogger.error(f"Error in command error handler: {e}", "COMMAND_ERROR")
+
+    @bot.event
+    async def on_error(event, *args, **kwargs):
+        """Handle general bot errors."""
+        try:
+            BotLogger.error(f"Bot event error in '{event}': {args}, {kwargs}", "BOT_ERROR")
+        except Exception as e:
+            BotLogger.error(f"Error in error handler: {e}", "BOT_ERROR")
+
+    BotLogger.info("Event handlers registered successfully", "EVENTS")
+
+
+# Export the setup function
+__all__ = ['setup_events']

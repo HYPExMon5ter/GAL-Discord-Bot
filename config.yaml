@@ -1,5 +1,5 @@
 # GAL Bot Embed Message Configuration
-# Available variables:
+# Available variables for dynamic content:
 #   {count}    - Number of members cleared/reset
 #   {role}     - The name of the role or reset operation
 #   {elapsed}  - Seconds the operation took
@@ -8,6 +8,7 @@
 #   {users}    - List of user mentions in reminder_public
 
 embeds:
+  # Registration Channel Embeds
   registration:
     title: "🎉 Registration Is Now **OPEN**! 🎉"
     description: |
@@ -28,6 +29,7 @@ embeds:
     description: "❌ You **cannot** register at this time. Stay tuned for the next Tournament!"
     color: "#e67e22"
 
+  # Waitlist System Embeds
   waitlist_added:
     title: "📋 Added to Waitlist"
     description: |
@@ -49,11 +51,29 @@ embeds:
       Use the buttons below to manage your registration.
     color: "#27ae60"
 
+  # Team Management Embeds
   team_full:
     title: "🚫 Team Full"
     description: "😢 Team **{team_name}** already has 2 players! Please choose or create a different team."
     color: "#e74c3c"
 
+  max_teams_reached:
+    title: "🚫 Maximum Teams Reached"
+    description: |
+      Cannot create team **{team_name}** - we've reached the maximum of **{max_teams}** teams.
+      
+      **Teams with space available:**
+      {suggestions}
+    color: "#e74c3c"
+
+  team_suggestion:
+    title: "💡 Team Suggestions"
+    description: |
+      Your team **{team_name}** cannot be created right now.
+      **Available teams with space:** {suggestions}
+    color: "#f39c12"
+
+  # Registration Success Embeds
   register_success_normal:
     title: "✅ New Registration!"
     description: "**{ign}** has just registered! 🎉"
@@ -64,6 +84,7 @@ embeds:
     description: "**{ign}** registered for team **{team_name}**! 🤜🤛"
     color: "#27ae60"
 
+  # Unregistration Embeds
   unregister_success:
     title: "❌ Unregistered"
     description: "You have been successfully unregistered. Keep your eye out for future Tournaments!"
@@ -71,15 +92,16 @@ embeds:
 
   unregister_not_registered:
     title: "ℹ️ Not Registered"
-    description: "You’re not currently registered. 👉 Click the **Register** button."
+    description: "You're not currently registered. 👉 Click the **Register** button."
     color: "#e74c3c"
 
+  # Check-in Channel Embeds
   checkin:
     title: "✅ Check In Is Now **OPEN**!"
     description: |
       🔒 To lock in your spot, click the **Check In** button below.
   
-      1. If you haven’t yet registered, head to <#1387614581794537652> and click **Register** first.  
+      1. If you haven't yet registered, head to <#1387614581794537652> and click **Register** first.  
       2. 🎥 Planning to stream? Drop your Twitch/YouTube link in <#717088485080694794>!
     color: "#3498db"
 
@@ -100,14 +122,15 @@ embeds:
     description: "You must register before checking in! 👉 Click the **Register** button."
     color: "#e74c3c"
 
+  # Check-in Status Embeds
   checked_in:
     title: "✅ Checked In"
-    description: "You’re now checked in. Good luck in the Tournament! 🍀"
+    description: "You're now checked in. Good luck in the Tournament! 🍀"
     color: "#2ecc71"
 
   already_checked_in:
     title: "⚠️ Already Checked In"
-    description: "You’ve already confirmed your spot! If you need to cancel, click **Check Out**."
+    description: "You've already confirmed your spot! If you need to cancel, click **Check Out**."
     color: "#f1c40f"
 
   checked_out:
@@ -117,9 +140,10 @@ embeds:
 
   already_checked_out:
     title: "⚠️ Already Checked Out"
-    description: "You’re not currently checked in. Use **Check In** to confirm your spot."
+    description: "You're not currently checked in. Use **Check In** to confirm your spot."
     color: "#f1c40f"
 
+  # System Operation Embeds
   resetting:
     title: "🔄 Resetting..."
     description: |
@@ -134,6 +158,7 @@ embeds:
       ⏱️ Finished in **{elapsed:.2f} seconds**.
     color: "#2ecc71"
 
+  # Event Scheduling Embeds
   schedule_created:
     title: "📆 {type} Event Scheduled"
     description: |
@@ -163,6 +188,7 @@ embeds:
     description: "{type} was auto-closed at <t:{close_ts}:F>."
     color: "#e74c3c"
 
+  # Notification and Reminder Embeds
   reminder_dm:
     title: "🔔 Guardian Angel League Check In Reminder"
     description: |
@@ -185,6 +211,7 @@ embeds:
       {users}
     color: "#f1c40f"
 
+  # Cache and System Management Embeds
   cache:
     title: "🔄 Cache Refreshed"
     description: |
@@ -192,6 +219,7 @@ embeds:
       ⏱️ Completed in **{elapsed:.2f}** seconds.
     color: "#2ecc71"
 
+  # Event Mode Configuration Embeds
   event_mode_current:
     title: "🎮 Current Event Mode"
     description: "The bot is running in **{mode}** mode right now."
@@ -206,9 +234,10 @@ embeds:
 
   event_mode_invalid:
     title: "⚠️ Invalid Event Mode"
-    description: "That mode isn’t recognized. Allowed: **{allowed}**."
+    description: "That mode isn't recognized. Allowed: **{allowed}**."
     color: "#e67e22"
 
+  # Error and Permission Embeds
   permission_denied:
     title: "🚫 Permission Denied"
     description: "You don't have permission to use this command. This command is restricted to staff members."
@@ -219,9 +248,10 @@ embeds:
     description: "An error occurred while processing your request. Please try again later."
     color: "#e74c3c"
 
+  # Help System Embed
   help:
     title: "🆘 GAL Bot Help"
-    description: "Here’s a list of all `/gal` commands you can use:"
+    description: "Here's a list of all `/gal` commands you can use:"
     commands:
       toggle: "🔄 Toggles the registration or check-in channel."
       event: "🎮 View or set the event mode for this guild (normal/doubleup)."
@@ -233,32 +263,52 @@ embeds:
       reminder: "✉️ Send a DM reminder to all unchecked-in users."
       cache: "📄 Re-cache the data from the sheet."
 
+# Bot Rich Presence Configuration
 rich_presence:
   type: "PLAYING"
   message: "🛡️ TFT"
 
+# Google Sheets Configuration
+# Supports both production and test environments
 sheet_configuration:
+  # Normal Mode Configuration (Single Player)
   normal:
-    sheet_url: "https://docs.google.com/spreadsheets/d/1Y_NBCYSJvYs3j_xD8IivMU5EdAbTMNAtsU40g7bCQzg/edit"
-    header_line_num: 2
-    max_players: 32
-    discord_col: "B"
-    pronouns_col: "C"
-    ign_col: "D"
-    alt_ign_col: "E"
-    registered_col: "F"
-    checkin_col: "G"
+    # Production sheet URL (used for all guilds except test guild)
+    prod_sheet_url: "https://docs.google.com/spreadsheets/d/1Y_NBCYSJvYs3j_xD8IivMU5EdAbTMNAtsU40g7bCQzg/edit"
 
+    # Test sheet URL (used only for test guild: 1385739351505240074)
+    test_sheet_url: "https://docs.google.com/spreadsheets/d/1Y_NBCYSJvYs3j_xD8IivMU5EdAbTMNAtsU40g7bCQzg/edit"
+
+    # Sheet structure configuration
+    header_line_num: 2        # Row where headers are located (1-based)
+    max_players: 32           # Maximum number of players allowed
+
+    # Column mappings (Excel-style column letters)
+    discord_col: "B"          # Discord username column
+    pronouns_col: "C"         # User pronouns column
+    ign_col: "D"              # In-game name column
+    alt_ign_col: "E"          # Alternative IGN column
+    registered_col: "F"       # Registration status column (TRUE/FALSE)
+    checkin_col: "G"          # Check-in status column (TRUE/FALSE)
+
+  # Double-Up Mode Configuration (Team-based)
   doubleup:
-    #Top sheet url = prod, bottom = testing
-    sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
-    #sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
-    header_line_num: 2
-    max_players: 32
-    discord_col: "B"
-    pronouns_col: "C"
-    ign_col: "D"
-    alt_ign_col: "E"
-    team_col: "I"
-    registered_col: "J"
-    checkin_col: "K"
+    # Production sheet URL (used for all guilds except test guild)
+    prod_sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
+
+    # Test sheet URL (used only for test guild: 1385739351505240074)
+    test_sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
+
+    # Sheet structure configuration
+    header_line_num: 2        # Row where headers are located (1-based)
+    max_players: 32           # Maximum number of players allowed
+    max_per_team: 2           # Maximum players per team
+
+    # Column mappings (Excel-style column letters)
+    discord_col: "B"          # Discord username column
+    pronouns_col: "C"         # User pronouns column
+    ign_col: "D"              # In-game name column
+    alt_ign_col: "E"          # Alternative IGN column
+    team_col: "I"             # Team name column
+    registered_col: "J"       # Registration status column (TRUE/FALSE)
+    checkin_col: "K"          # Check-in status column (TRUE/FALSE)

@@ -382,10 +382,10 @@ def get_guild_statistics() -> Dict[str, int]:
 
 
 # Run migration on import if needed
-try:
-    migrate_legacy_format()
-except Exception as e:
-    logging.error(f"Failed to run migration: {e}")
+#try:
+#    migrate_legacy_format()
+#except Exception as e:
+#    logging.error(f"Failed to run migration: {e}")
 
 # Log initialization
 logging.info(f"Persistence system initialized. Stats: {get_guild_statistics()}")

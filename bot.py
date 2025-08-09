@@ -76,8 +76,7 @@ class GALBot(commands.Bot):
                 member_cache_flags=discord.MemberCacheFlags.all(),  # Cache all members
             )
 
-            # Initialize bot state tracking - FIXED: Don't override discord.py's _ready
-            # The parent class sets _ready as an asyncio.Event, so we use a different name
+            # Initialize bot state tracking
             self._bot_is_ready = False
             self._shutdown_requested = False
             self._background_tasks: List[asyncio.Task] = []

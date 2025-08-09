@@ -1,12 +1,8 @@
-# GAL Bot Embed Message Configuration
-# Available variables for dynamic content:
-#   {count}    - Number of members cleared/reset
-#   {role}     - The name of the role or reset operation
-#   {elapsed}  - Seconds the operation took
-#   {name}, {ign}, {team_name} - User details in registration embeds
-#   {type}, {event}, {open_ts}, {close_str}, {close_ts} - Scheduling embeds
-#   {users}    - List of user mentions in reminder_public
+# Discord Bot Configuration File
+# This file contains all embed messages and sheet configuration for the bot
 
+# Discord Embed Configurations
+# Each embed has a title, description, and color (in hex format)
 embeds:
   # Registration Channel Embeds
   registration:
@@ -17,6 +13,11 @@ embeds:
       > *💡 Tip:* You can update your info at any time by clicking **Register** again.
     color: "#43b581"
 
+  registration_closed:
+    title: "🔒 Registration Closed"
+    description: "Registration is currently **CLOSED**. Keep an eye out for future tournaments! 👀"
+    color: "#e74c3c"
+
   registration_channel_toggled:
     title: "🔄 Registration Channel Toggled"
     description_visible: "👁️  Registration channel is now **visible** to Angels."
@@ -24,44 +25,38 @@ embeds:
     color_visible: "#2ecc71"
     color_hidden:  "#e67e22"
 
-  registration_closed:
-    title: "⛔ Registration Closed"
-    description: "❌ You **cannot** register at this time. Stay tuned for the next Tournament!"
-    color: "#e67e22"
-
-  # Waitlist System Embeds
-  waitlist_added:
-    title: "📋 Added to Waitlist"
-    description: |
-      The tournament is currently full ({max_players} players registered).
-      
-      ✅ You've been added to the **waitlist** at position #{position}.
-      
-      If a spot opens up, you'll be automatically registered and notified via DM!
-    color: "#f39c12"
-
-  waitlist_registered:
-    title: "🎉 You're Off the Waitlist!"
-    description: |
-      Great news! A spot opened up and you've been **automatically registered** for the tournament!
-      
-      ✅ You are now registered
-      📍 Don't forget to check in when the check-in channel opens
-      
-      Use the buttons below to manage your registration.
-    color: "#27ae60"
-
-  # Team Management Embeds
-  team_full:
-    title: "🚫 Team Full"
-    description: "😢 Team **{team_name}** already has 2 players! Please choose or create a different team."
+  # Permission & Error Embeds
+  permission_denied:
+    title: "🚫 Permission Denied"
+    description: "You don't have permission to use this command."
     color: "#e74c3c"
 
+  error:
+    title: "❌ Error"
+    description: "{message}"
+    color: "#e74c3c"
+
+  validation_failed:
+    title: "⚠️ Validation Failed"
+    description: "The requested action could not be completed. Please check your status and try again."
+    color: "#e74c3c"
+
+  # Team Management Embeds (Double-Up Mode)
   max_teams_reached:
     title: "🚫 Maximum Teams Reached"
     description: |
-      Cannot create team **{team_name}** - we've reached the maximum of **{max_teams}** teams.
-      
+      **{team_name}** cannot be created - tournament is at max capacity!
+      ({current_teams}/{max_teams} teams)
+  
+      **Try joining an existing team with space:**
+      {suggestions}
+    color: "#e74c3c"
+
+  team_full:
+    title: "👥 Team Full"
+    description: |
+      **{team_name}** is already at capacity ({current}/{max} players).
+  
       **Teams with space available:**
       {suggestions}
     color: "#e74c3c"
@@ -72,6 +67,21 @@ embeds:
       Your team **{team_name}** cannot be created right now.
       **Available teams with space:** {suggestions}
     color: "#f39c12"
+
+  # Waitlist Embeds
+  waitlist_added:
+    title: "📋 Added to Waitlist"
+    description: |
+      You've been added to the waitlist for **{team_name}**.
+      Position: **#{position}**
+      
+      We'll notify you if a spot opens up!
+    color: "#f39c12"
+
+  waitlist_registered:
+    title: "🎉 Registered from Waitlist!"
+    description: "Good news! A spot opened up and you've been registered for **{team_name}**!"
+    color: "#27ae60"
 
   # Registration Success Embeds
   register_success_normal:
@@ -100,8 +110,8 @@ embeds:
     title: "✅ Check In Is Now **OPEN**!"
     description: |
       🔒 To lock in your spot, click the **Check In** button below.
-  
-      1. If you haven't yet registered, head to <#1387614581794537652> and click **Register** first.  
+      
+      1. If you haven’t yet registered, head to <#1387614581794537652> and click **Register** first.  
       2. 🎥 Planning to stream? Drop your Twitch/YouTube link in <#717088485080694794>!
     color: "#3498db"
 
@@ -119,7 +129,7 @@ embeds:
 
   checkin_requires_registration:
     title: "⚠️ Registration Required"
-    description: "You must register before checking in! 👉 Click the **Register** button."
+    description: "You must register before checking in! 👉 Head to registration and click the **Register** button."
     color: "#e74c3c"
 
   # Check-in Status Embeds
@@ -139,7 +149,7 @@ embeds:
     color: "#e67e22"
 
   already_checked_out:
-    title: "⚠️ Already Checked Out"
+    title: "⚠️ Not Checked In"
     description: "You're not currently checked in. Use **Check In** to confirm your spot."
     color: "#f1c40f"
 
@@ -147,121 +157,128 @@ embeds:
   resetting:
     title: "🔄 Resetting..."
     description: |
-      Removed **{role}** from **{count}** Angel(s).  
-      🔄 Please wait while the Google Sheet refreshes…
-    color: "#e67e22"
-
-  reset_complete:
-    title: "✅ {role} Reset Complete"
-    description: |
-      Google Sheet updated successfully!  
-      ⏱️ Finished in **{elapsed:.2f} seconds**.
-    color: "#2ecc71"
-
-  # Event Scheduling Embeds
-  schedule_created:
-    title: "📆 {type} Event Scheduled"
-    description: |
-      ✨ **{event}** is now on the calendar!  
-      Opens at: <t:{open_ts}:F>{close_str}
-    color: "#2ecc71"
-
-  schedule_edited:
-    title: "🛠️ {type} Event Edited"
-    description: |
-      🔄 **{event}** has been rescheduled.  
-      New open time: <t:{open_ts}:F>{close_str}
-    color: "#f1c40f"
-
-  schedule_deleted:
-    title: "❌ {type} Event Deleted"
-    description: "🗑️ **{event}** was removed. {type} schedule cleared."
-    color: "#e67e22"
-
-  schedule_open:
-    title: "🚪 {type} Channel Opened"
-    description: "{type} channel is now **open**! ({time})"
-    color: "#2ecc71"
-
-  schedule_close:
-    title: "🔒 {type} Channel Closed"
-    description: "{type} was auto-closed at <t:{close_ts}:F>."
-    color: "#e74c3c"
-
-  # Notification and Reminder Embeds
-  reminder_dm:
-    title: "🔔 Guardian Angel League Check In Reminder"
-    description: |
-      👋 **Hello Angel!**  
-      You're registered for the upcoming Guardian Angel League Tournament but **haven't checked in** yet.
-      
-      **What to do below:**
-      ❌ **Unregister** – Leave the tournament (this will free up your spot)
-      ✅ **Check In / 🔒 Check Out** – Lock in or release your spot in the Tournament
-      
-      💡 **To re-register:** Please visit the registration channel in the GAL Discord server.
-      
-      Good luck, Angel! See you in the Tournament 🏆
+      Removed **{role}** from **{count}** Angel(s).
+      Process completed successfully!
     color: "#3498db"
 
-  reminder_public:
-    title: "🔔 Reminder Results"
-    description: |
-      Sent reminders to **{count}** user(s):  
-      {users}
-    color: "#f1c40f"
-
-  # Cache and System Management Embeds
-  cache:
-    title: "🔄 Cache Refreshed"
-    description: |
-      ✅ Updated **{updated}** of **{count}** users from the Google Sheet!  
-      ⏱️ Completed in **{elapsed:.2f}** seconds.
+  reset_complete:
+    title: "✅ Reset Complete"
+    description: "{message}"
     color: "#2ecc71"
 
-  # Event Mode Configuration Embeds
+  # Event Mode Embeds
   event_mode_current:
     title: "🎮 Current Event Mode"
-    description: "The bot is running in **{mode}** mode right now."
-    color: "#7289da"
+    description: "This guild is currently in **{mode}** mode."
+    color: "#3498db"
 
   event_mode_set:
     title: "✅ Event Mode Updated"
-    description: |
-      The mode is now set to **{mode}**.  
-      All registration and check-in logic will follow this setting.
+    description: "Event mode has been set to **{mode}**."
     color: "#2ecc71"
 
-  event_mode_invalid:
-    title: "⚠️ Invalid Event Mode"
-    description: "That mode isn't recognized. Allowed: **{allowed}**."
-    color: "#e67e22"
+  # Admin Command Embeds
+  cache_refreshed:
+    title: "📄 Cache Refreshed"
+    description: "Sheet data has been successfully re-cached!"
+    color: "#2ecc71"
 
-  # Error and Permission Embeds
-  permission_denied:
-    title: "🚫 Permission Denied"
-    description: "You don't have permission to use this command. This command is restricted to staff members."
+  config_reloaded:
+    title: "♻️ Configuration Reloaded"
+    description: "Bot configuration has been successfully reloaded!"
+    color: "#2ecc71"
+
+  reminder_sent:
+    title: "✉️ Reminders Sent"
+    description: "Sent check-in reminders to **{count}** unchecked-in Angel(s)!"
+    color: "#2ecc71"
+
+  reminder_none:
+    title: "ℹ️ No Reminders Needed"
+    description: "All registered Angels are already checked in! 🎉"
+    color: "#3498db"
+
+  # Status Check Embeds
+  invalid_status_registered:
+    title: "⚠️ Already Registered"
+    description: "{user} is already registered for the tournament."
+    color: "#f1c40f"
+
+  invalid_status_unregistered:
+    title: "⚠️ Not Registered"
+    description: "{user} must register first before performing this action."
     color: "#e74c3c"
 
-  error:
-    title: "❌ Error"
-    description: "An error occurred while processing your request. Please try again later."
+  invalid_status_checked_in:
+    title: "⚠️ Already Checked In"
+    description: "{user} is already checked in."
+    color: "#f1c40f"
+
+  invalid_status_checked_out:
+    title: "⚠️ Not Checked In"
+    description: "{user} must be checked in first."
     color: "#e74c3c"
 
-  # Help System Embed
-  help:
-    title: "🆘 GAL Bot Help"
-    description: "Here's a list of all `/gal` commands you can use:"
-    commands:
-      toggle: "🔄 Toggles the registration or check-in channel."
-      event: "🎮 View or set the event mode for this guild (normal/doubleup)."
-      placements: "📈 Update the sheet & show the latest TFT placements."
-      validate: "✅ Validate the TFT username of each registered user."
-      reload: "♻️ Reload the bot configuration, update embeds & rich presence."
-      help: "❓ Show this help message again."
-      registeredlist: "📋 Show the current registration list."
-      reminder: "✉️ Send a DM reminder to all unchecked-in users."
-      cache: "📄 Re-cache the data from the sheet."
+  # Capacity Embeds
+  registration_full:
+    title: "🚫 Registration Full"
+    description: |
+      Sorry, registration is at capacity! ({current}/{max} players)
+      Keep an eye out for future tournaments!
+    color: "#e74c3c"
+
+  capacity_check_failed:
+    title: "❌ Capacity Check Failed"
+    description: "Unable to verify registration capacity. Please try again later."
+    color: "#e74c3c"
+
+  status_check_failed:
+    title: "❌ Status Check Failed"
+    description: "Unable to verify user status. Please try again later."
+    color: "#e74c3c"
+
+  sheets_unavailable:
+    title: "⚠️ Sheets Unavailable"
+    description: "Google Sheets service is currently unavailable. Please try again later."
+    color: "#e74c3c"
+
+  # DM Interaction Embeds
+  dm_not_allowed:
+    title: "🚫 DM Commands Not Allowed"
+    description: "This command must be used in a server channel, not in DMs."
+    color: "#e74c3c"
+
+  member_not_found:
+    title: "❌ Member Not Found"
+    description: "Could not find the specified member in this server."
+    color: "#e74c3c"
+
+  insufficient_permissions:
+    title: "🚫 Insufficient Permissions"
+    description: "You don't have the required permissions to perform this action."
+    color: "#e74c3c"
+
+  # Channel State Embeds
+  channel_not_found:
+    title: "❌ Channel Not Found"
+    description: "The {channel} channel could not be found in this server."
+    color: "#e74c3c"
+
+  channel_not_accessible:
+    title: "🔒 Channel Not Accessible"
+    description: "The {channel} channel is currently not accessible."
+    color: "#e74c3c"
+
+# Command Help Descriptions
+command_help:
+  event: "🎮 View or set the event mode for this guild (normal/doubleup)."
+  placements: "📈 Update the sheet & show the latest TFT placements."
+  validate: "✅ Validate the TFT username of each registered user."
+  reload: "♻️ Reload the bot configuration, update embeds & rich presence."
+  help: "❓ Show this help message again."
+  registeredlist: "📋 Show the current registration list."
+  reminder: "✉️ Send a DM reminder to all unchecked-in users."
+  cache: "📄 Re-cache the data from the sheet."
 
 # Bot Rich Presence Configuration
 rich_presence:

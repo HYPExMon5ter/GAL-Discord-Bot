@@ -1,61 +1,146 @@
 # helpers/validation_helpers.py
 
-from typing import Optional, List, Dict, Any, Tuple
+"""
+Validation helpers for Discord bot operations.
+
+This module provides comprehensive validation functionality for all bot operations
+including permissions, capacity, team management, and data integrity checks.
+"""
+
+import asyncio
+from typing import Dict, Any, List, Optional, Union, Tuple
+from datetime import datetime, timezone
+from enum import Enum
+
 import discord
-from config import embed_from_cfg, get_sheet_settings
-from core.persistence import get_event_mode_for_guild
+
+# Import configuration and utilities
+from config import (
+    REGISTERED_ROLE,
+    CHECKED_IN_ROLE,
+    CHECK_IN_CHANNEL,
+    REGISTRATION_CHANNEL,
+    ANGEL_ROLE,
+    get_sheet_settings
+)
+
+# Import logging helper
 from .logging_helper import BotLogger
-from .error_handler import ErrorHandler, ErrorCategory, ErrorContext, ErrorSeverity
+
+# Import necessary utilities
+try:
+    from utils.utils import (
+        get_event_mode_for_guild,
+        has_allowed_role
+    )
+except ImportError:
+    BotLogger.warning("Some utilities not available for validation", "VALIDATION")
+
+
+    def get_event_mode_for_guild(guild_id: str) -> str:
+        return "normal"
+
+
+    def has_allowed_role(member: discord.Member, required_permissions: List[str] = None) -> bool:
+        return False
+
+
+class ValidationErrorType(Enum):
+    """Enumeration of validation error types for consistent handling."""
+
+    # Permission errors
+    INSUFFICIENT_PERMISSIONS = "insufficient_permissions"
+    DM_NOT_ALLOWED = "dm_not_allowed"
+    MEMBER_NOT_FOUND = "member_not_found"
+
+    # Capacity errors
+    REGISTRATION_FULL = "registration_full"
+    TEAM_FULL = "team_full"
+    REGISTRATION_CLOSED = "registration_closed"
+    CHECKIN_CLOSED = "checkin_closed"
+
+    # Status errors
+    ALREADY_REGISTERED = "already_registered"
+    NOT_REGISTERED = "not_registered"
+    ALREADY_CHECKED_IN = "already_checked_in"
+    NOT_CHECKED_IN = "not_checked_in"
+
+    # Channel errors
+    CHANNEL_NOT_FOUND = "channel_not_found"
+    CHANNEL_NOT_ACCESSIBLE = "channel_not_accessible"
+
+    # Data errors
+    INVALID_DATA = "invalid_data"
+    SHEETS_UNAVAILABLE = "sheets_unavailable"
+
+    # System errors
+    VALIDATION_ERROR = "validation_error"
+    CAPACITY_CHECK_FAILED = "capacity_check_failed"
+    STATUS_CHECK_FAILED = "status_check_failed"
 
 
 class ValidationError:
     """
-    Represents a validation error with an associated Discord embed.
-
-    This class encapsulates validation failures and provides a consistent
-    way to generate user-friendly error messages.
+    Structured validation error with context and formatting support.
     """
 
-    def __init__(self, embed_key: str, **kwargs):
-        """Initialize validation error with embed configuration."""
-        self.embed_key = embed_key
-        self.kwargs = kwargs
+    def __init__(self, error_type: str, **kwargs):
+        """
+        Initialize validation error with type and context.
 
-    def to_embed(self) -> discord.Embed:
-        """Convert validation error to Discord embed."""
+        Args:
+            error_type: Type of validation error
+            **kwargs: Additional context for error formatting
+        """
+        self.error_type = error_type
+        self.context = kwargs
+        self.timestamp = datetime.now(timezone.utc)
+
+        # Generate user-friendly message
+        self.message = self._generate_message()
+
+    def _generate_message(self) -> str:
+        """Generate user-friendly error message based on type and context."""
+        messages = {
+            "insufficient_permissions": "You don't have permission to use this command.",
+            "dm_not_allowed": "This command cannot be used in DMs.",
+            "member_not_found": "Member not found in this server.",
+            "registration_full": "Registration is full ({current}/{max} players).",
+            "team_full": "Team '{team}' is full.",
+            "registration_closed": "Registration is currently closed.",
+            "checkin_closed": "Check-in is currently closed.",
+            "already_registered": "{user} is already registered.",
+            "not_registered": "{user} is not registered.",
+            "already_checked_in": "{user} is already checked in.",
+            "not_checked_in": "{user} is not checked in.",
+            "channel_not_found": "Channel '{channel}' not found.",
+            "channel_not_accessible": "Channel '{channel}' is not accessible.",
+            "invalid_data": "Invalid data provided: {reason}",
+            "sheets_unavailable": "Google Sheets is currently unavailable.",
+            "validation_error": "Validation failed: {reason}",
+            "capacity_check_failed": "Failed to check capacity.",
+            "status_check_failed": "Failed to check user status.",
+            "invalid_interaction": "Invalid interaction.",
+            "invalid_status_registered": "{user} must be registered first.",
+            "invalid_status_unregistered": "{user} is already registered.",
+            "invalid_status_checked_in": "{user} is already checked in.",
+            "invalid_status_checked_out": "{user} must be checked in first."
+        }
+
+        template = messages.get(self.error_type, "An error occurred: {error_type}")
+
         try:
-            return embed_from_cfg(self.embed_key, **self.kwargs)
-        except Exception as e:
-            error_context = ErrorContext(
-                error=e,
-                operation="create_validation_embed",
-                category=ErrorCategory.CONFIGURATION,
-                severity=ErrorSeverity.MEDIUM,
-                additional_context={
-                    "embed_key": self.embed_key,
-                    "kwargs": self.kwargs
-                }
-            )
-            BotLogger.error(f"Failed to create embed for {self.embed_key}: {e}", "VALIDATION")
-
-            # Fallback embed
-            return discord.Embed(
-                title="❌ Validation Error",
-                description=f"An error occurred during validation (embed key: {self.embed_key})",
-                color=discord.Color.red()
-            )
+            return template.format(error_type=self.error_type, **self.context)
+        except KeyError:
+            return f"Validation error: {self.error_type}"
 
     def __str__(self) -> str:
-        """String representation for logging."""
-        return f"ValidationError({self.embed_key}, {self.kwargs})"
+        return self.message
 
 
 class ValidationResult:
     """
-    Enhanced result of validation with context and metadata.
-
-    Provides detailed information about validation outcomes including
-    success/failure status, error details, context data, and warnings.
+    Result of a validation operation with status and context.
     """
 
     def __init__(
@@ -65,7 +150,15 @@ class ValidationResult:
             context: Optional[Dict[str, Any]] = None,
             warnings: Optional[List[str]] = None
     ):
-        """Initialize validation result."""
+        """
+        Initialize validation result.
+
+        Args:
+            is_valid: Whether validation passed
+            error: Validation error if failed
+            context: Additional context data
+            warnings: Non-critical warnings
+        """
         self.is_valid = is_valid
         self.error = error
         self.context = context or {}
@@ -227,6 +320,14 @@ class Validators:
     ) -> ValidationResult:
         """
         Validate user's current registration status.
+
+        Args:
+            guild: Discord guild
+            user: Discord user to validate
+            expected_status: Expected status ("any", "registered", "unregistered", "checked_in", "checked_out")
+
+        Returns:
+            ValidationResult with status information
         """
         try:
             # Get user's current status from sheets
@@ -299,6 +400,113 @@ class Validators:
             )
 
     @staticmethod
+    def validate_registration_status(member: discord.Member, require_registered: bool = False) -> bool:
+        """
+        Simple validation for registration status using Discord roles.
+
+        This is a convenience method that checks Discord roles for quick validation.
+        For comprehensive validation with sheet data, use validate_user_registration_status.
+
+        Args:
+            member: Discord member to check
+            require_registered: If True, validates that user IS registered; if False, validates they are NOT registered
+
+        Returns:
+            True if validation passes, False otherwise
+        """
+        try:
+            reg_role = discord.utils.get(member.guild.roles, name=REGISTERED_ROLE)
+            if not reg_role:
+                BotLogger.warning(f"Registered role not found in guild {member.guild.name}", "VALIDATION")
+                return not require_registered  # If role doesn't exist, consider unregistered
+
+            is_registered = reg_role in member.roles
+
+            if require_registered:
+                # User should be registered
+                return is_registered
+            else:
+                # User should NOT be registered
+                return not is_registered
+
+        except Exception as e:
+            BotLogger.error(f"Error in validate_registration_status: {e}", "VALIDATION")
+            return False
+
+    @staticmethod
+    def validate_checkin_status(member: discord.Member, require_not_checked_in: bool = False) -> bool:
+        """
+        Simple validation for check-in status using Discord roles.
+
+        This is a convenience method that checks Discord roles for quick validation.
+
+        Args:
+            member: Discord member to check
+            require_not_checked_in: If True, validates user is NOT checked in; if False, validates they ARE checked in
+
+        Returns:
+            True if validation passes, False otherwise
+        """
+        try:
+            ci_role = discord.utils.get(member.guild.roles, name=CHECKED_IN_ROLE)
+            if not ci_role:
+                BotLogger.warning(f"Checked-in role not found in guild {member.guild.name}", "VALIDATION")
+                return require_not_checked_in  # If role doesn't exist, consider not checked in
+
+            is_checked_in = ci_role in member.roles
+
+            if require_not_checked_in:
+                # User should NOT be checked in
+                return not is_checked_in
+            else:
+                # User should be checked in
+                return is_checked_in
+
+        except Exception as e:
+            BotLogger.error(f"Error in validate_checkin_status: {e}", "VALIDATION")
+            return False
+
+    @staticmethod
+    async def validate_and_respond(interaction: discord.Interaction, *validations: bool) -> bool:
+        """
+        Validate multiple conditions and respond with appropriate error if any fail.
+
+        This is a convenience method for simple boolean validations.
+
+        Args:
+            interaction: Discord interaction for response
+            *validations: Boolean validation results
+
+        Returns:
+            True if all validations pass, False otherwise
+        """
+        try:
+            # Check if all validations passed
+            if all(validations):
+                return True
+
+            # Find which validation failed (for logging)
+            for i, validation in enumerate(validations):
+                if not validation:
+                    BotLogger.debug(f"Validation {i + 1} failed", "VALIDATION")
+                    break
+
+            # Send generic error response
+            from config import embed_from_cfg
+            embed = embed_from_cfg("validation_failed")
+
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+            return False
+
+        except Exception as e:
+            BotLogger.error(f"Error in validate_and_respond: {e}", "VALIDATION")
+            return False
+
+    @staticmethod
     def validate_channel_state(
             guild: discord.Guild,
             channel_name: str,
@@ -306,60 +514,67 @@ class Validators:
     ) -> ValidationResult:
         """
         Validate channel state and accessibility.
+
+        Args:
+            guild: Discord guild
+            channel_name: Name of channel to validate
+            required_state: Required state ("exists", "open", "closed")
+
+        Returns:
+            ValidationResult with channel state information
         """
         try:
-            # Find the channel
+            # Find channel
             channel = discord.utils.get(guild.text_channels, name=channel_name)
 
-            if required_state == "exists" and not channel:
+            if not channel:
                 return ValidationResult(
                     False,
                     ValidationError("channel_not_found", channel=channel_name),
-                    {"channel_name": channel_name, "guild_id": guild.id}
+                    {"channel_name": channel_name}
                 )
 
-            if required_state == "not_exists" and channel:
+            # Check channel state
+            if required_state == "exists":
+                # Just needs to exist
+                return ValidationResult(
+                    True,
+                    context={"channel_id": channel.id, "channel_name": channel.name}
+                )
+
+            # Check if channel is open/closed (based on role permissions)
+            role_name = REGISTERED_ROLE if channel_name == CHECK_IN_CHANNEL else ANGEL_ROLE
+            role = discord.utils.get(guild.roles, name=role_name)
+
+            if not role:
                 return ValidationResult(
                     False,
-                    ValidationError("channel_already_exists", channel=channel_name),
-                    {"channel_name": channel_name, "channel_id": channel.id}
+                    ValidationError("validation_error", reason=f"Role {role_name} not found"),
+                    {"role_name": role_name}
                 )
 
-            # Check bot permissions if channel exists
-            if channel and guild.me:
-                permissions = channel.permissions_for(guild.me)
+            overwrites = channel.overwrites_for(role)
+            is_open = overwrites.view_channel
 
-                missing_permissions = []
-                required_perms = {
-                    "send_messages": permissions.send_messages,
-                    "embed_links": permissions.embed_links,
-                    "manage_messages": permissions.manage_messages
-                }
-
-                for perm_name, has_perm in required_perms.items():
-                    if not has_perm:
-                        missing_permissions.append(perm_name)
-
-                if missing_permissions:
-                    return ValidationResult(
-                        False,
-                        ValidationError(
-                            "insufficient_channel_permissions",
-                            channel=channel_name,
-                            permissions=", ".join(missing_permissions)
-                        ),
-                        {
-                            "channel_id": channel.id,
-                            "missing_permissions": missing_permissions
-                        }
-                    )
+            if required_state == "open" and not is_open:
+                return ValidationResult(
+                    False,
+                    ValidationError("channel_not_accessible", channel=channel_name),
+                    {"channel_name": channel_name, "is_open": is_open}
+                )
+            elif required_state == "closed" and is_open:
+                return ValidationResult(
+                    False,
+                    ValidationError("validation_error", reason=f"Channel {channel_name} is open"),
+                    {"channel_name": channel_name, "is_open": is_open}
+                )
 
             return ValidationResult(
                 True,
                 context={
-                    "channel_name": channel_name,
-                    "channel_id": channel.id if channel else None,
-                    "channel_exists": channel is not None
+                    "channel_id": channel.id,
+                    "channel_name": channel.name,
+                    "is_open": is_open
                 }
             )
 
@@ -367,143 +582,188 @@ class Validators:
             BotLogger.error(f"Error validating channel state: {e}", "VALIDATION")
             return ValidationResult(
                 False,
-                ValidationError("channel_validation_error", channel=channel_name),
+                ValidationError("validation_error"),
                 {"error": str(e)}
             )
 
     @staticmethod
     async def validate_and_respond_batch(
             interaction: discord.Interaction,
-            validation_results: List[ValidationResult]
+            validations: List[ValidationResult]
     ) -> bool:
         """
-        Validate a batch of results and respond with errors if needed.
+        Process multiple ValidationResult objects and respond appropriately.
+
+        Args:
+            interaction: Discord interaction for response
+            validations: List of ValidationResult objects
+
+        Returns:
+            True if all validations passed, False otherwise
         """
         try:
-            # Find first failed validation
-            failed_validation = None
-            for result in validation_results:
-                if not result.is_valid:
-                    failed_validation = result
-                    break
+            # Check if all validations passed
+            all_valid = all(v.is_valid for v in validations)
 
-            # If all validations passed
-            if not failed_validation:
+            if all_valid:
                 return True
 
-            # Send error response
-            if failed_validation.error:
-                embed = failed_validation.error.to_embed()
+            # Find first error
+            first_error = None
+            for validation in validations:
+                if not validation.is_valid and validation.error:
+                    first_error = validation.error
+                    break
 
+            # Send error response
+            from config import embed_from_cfg
+
+            if first_error:
+                # Try to use specific error embed
+                embed_key = first_error.error_type
                 try:
-                    if not interaction.response.is_done():
-                        await interaction.response.send_message(embed=embed, ephemeral=True)
-                    else:
-                        await interaction.followup.send(embed=embed, ephemeral=True)
-                except Exception as e:
-                    BotLogger.error(f"Error sending validation error response: {e}", "VALIDATION")
+                    embed = embed_from_cfg(embed_key, **first_error.context)
+                except:
+                    # Fall back to generic error
+                    embed = embed_from_cfg("error", message=str(first_error))
+            else:
+                embed = embed_from_cfg("validation_failed")
+
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
             return False
 
         except Exception as e:
             BotLogger.error(f"Error in validate_and_respond_batch: {e}", "VALIDATION")
-
-            # Try to send generic error
-            try:
-                error_embed = discord.Embed(
-                    title="❌ Validation Error",
-                    description="An error occurred during validation. Please try again.",
-                    color=discord.Color.red()
-                )
-
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(embed=error_embed, ephemeral=True)
-                else:
-                    await interaction.followup.send(embed=error_embed, ephemeral=True)
-            except:
-                pass
-
-            return False
-
-    @staticmethod
-    def validate_team_capacity(
-            guild_id: str,
-            team_name: str = None,
-            operation: str = "join"
-    ) -> ValidationResult:
-        """
-        Validate team capacity and availability for team-based events.
-        """
-        try:
-            # Get event mode
-            event_mode = get_event_mode_for_guild(guild_id)
-
-            # Only validate for team-based modes
-            if event_mode not in ["double_up", "team_based"]:
-                return ValidationResult(True, context={"event_mode": event_mode})
-
-            # Get team settings
-            sheet_settings = get_sheet_settings()
-            max_team_size = sheet_settings.get("max_team_size", 2)
-
-            # If no specific team, just return capacity info
-            if not team_name:
-                return ValidationResult(
-                    True,
-                    context={
-                        "max_team_size": max_team_size,
-                        "event_mode": event_mode
-                    }
-                )
-
-            # For specific team validation, would need to check current team members
-            # This would require integration with sheet operations
-
-            return ValidationResult(
-                True,
-                context={
-                    "team_name": team_name,
-                    "max_team_size": max_team_size,
-                    "event_mode": event_mode
-                }
-            )
-
-        except Exception as e:
-            BotLogger.error(f"Error validating team capacity: {e}", "VALIDATION")
-            return ValidationResult(
-                False,
-                ValidationError("team_validation_error"),
-                {"error": str(e)}
-            )
-
-    @staticmethod
-    def health_check() -> bool:
-        """Perform health check on validation system."""
-        try:
-            # Test basic validation functionality
-            test_embed_key = "test_validation"
-            test_error = ValidationError(test_embed_key, test="value")
-
-            # Test result creation
-            test_result = ValidationResult(True, context={"test": True})
-
-            return True
-
-        except Exception as e:
-            BotLogger.error(f"Validation health check failed: {e}", "VALIDATION")
             return False
 
 
-# Convenience function for single validation
-async def validate_and_respond(interaction: discord.Interaction, validation_result: ValidationResult) -> bool:
-    """Validate a single result and respond with errors if needed."""
-    return await Validators.validate_and_respond_batch(interaction, [validation_result])
+# Validation utility functions
+async def validate_registration_prerequisites(
+        interaction: discord.Interaction,
+        member: discord.Member = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate all prerequisites for registration.
+
+    Returns:
+        Tuple of (success, error_message)
+    """
+    try:
+        member = member or interaction.user
+        guild = interaction.guild
+
+        # Check if registration is open
+        channel_validation = Validators.validate_channel_state(
+            guild,
+            REGISTRATION_CHANNEL,
+            "open"
+        )
+
+        if not channel_validation.is_valid:
+            return False, "Registration is currently closed."
+
+        # Check if user is already registered
+        if not Validators.validate_registration_status(member, require_registered=False):
+            return False, "You are already registered."
+
+        # Check capacity
+        capacity_validation = await Validators.validate_registration_capacity(guild)
+        if not capacity_validation.is_valid:
+            return False, capacity_validation.error.message
+
+        return True, None
+
+    except Exception as e:
+        BotLogger.error(f"Error validating registration prerequisites: {e}", "VALIDATION")
+        return False, "Failed to validate registration requirements."
 
 
-# Export all important classes and functions
+async def validate_checkin_prerequisites(
+        interaction: discord.Interaction,
+        member: discord.Member = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    Validate all prerequisites for check-in.
+
+    Returns:
+        Tuple of (success, error_message)
+    """
+    try:
+        member = member or interaction.user
+        guild = interaction.guild
+
+        # Check if check-in is open
+        channel_validation = Validators.validate_channel_state(
+            guild,
+            CHECK_IN_CHANNEL,
+            "open"
+        )
+
+        if not channel_validation.is_valid:
+            return False, "Check-in is currently closed."
+
+        # Check if user is registered
+        if not Validators.validate_registration_status(member, require_registered=True):
+            return False, "You must be registered before checking in."
+
+        # Check if user is already checked in
+        if not Validators.validate_checkin_status(member, require_not_checked_in=True):
+            return False, "You are already checked in."
+
+        return True, None
+
+    except Exception as e:
+        BotLogger.error(f"Error validating check-in prerequisites: {e}", "VALIDATION")
+        return False, "Failed to validate check-in requirements."
+
+
+# Module health check
+def validate_validators_health() -> Dict[str, Any]:
+    """
+    Validate the health of the validators module.
+
+    Returns:
+        Dictionary with health status information
+    """
+    health = {
+        "status": True,
+        "validators_available": True,
+        "error_types": len(ValidationErrorType.__members__),
+        "methods": []
+    }
+
+    # Check available validator methods
+    validator_methods = [
+        "validate_member_permissions",
+        "validate_registration_capacity",
+        "validate_user_registration_status",
+        "validate_registration_status",
+        "validate_checkin_status",
+        "validate_and_respond",
+        "validate_channel_state",
+        "validate_and_respond_batch"
+    ]
+
+    for method in validator_methods:
+        if hasattr(Validators, method):
+            health["methods"].append(method)
+
+    health["method_count"] = len(health["methods"])
+
+    return health
+
+
+# Export important classes and functions
 __all__ = [
-    'Validators',
-    'ValidationError',
-    'ValidationResult',
-    'validate_and_respond'
+    "Validators",
+    "ValidationResult",
+    "ValidationError",
+    "ValidationErrorType",
+    "validate_registration_prerequisites",
+    "validate_checkin_prerequisites",
+    "validate_validators_health"
 ]

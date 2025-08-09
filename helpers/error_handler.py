@@ -28,6 +28,7 @@ class ErrorCategory(Enum):
     """Error categories for targeted handling and analysis."""
     DISCORD_API = "discord_api"
     PERMISSIONS = "permissions"
+    CHANNEL_MANAGEMENT = "channel_management"
     VALIDATION = "validation"
     DATABASE = "database"
     SHEETS = "sheets"

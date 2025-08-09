@@ -21,7 +21,7 @@ while maintaining core functionality.
 import logging
 import random
 from datetime import datetime, timezone
-from typing import Optional, Callable, Dict, List, Any, Union
+from typing import Optional, Callable, Dict, List, Any, Union, Tuple
 
 import discord
 
@@ -616,114 +616,61 @@ class EmbedHelper:
     def build_checkin_list_lines(checked_in_users: List[tuple], mode: str) -> List[str]:
         """
         Build formatted lines showing ALL registered users with check-in status.
-
-        This method creates a comprehensive view of registration status, showing
-        ready teams first, then non-ready teams, all in a unified list format.
-
-        Args:
-            checked_in_users: List of tuples with (tag, user_data) where user_data
-                             contains (row, ign, reg, ci, team, alt)
-            mode: Event mode ("normal" or "doubleup")
-
-        Returns:
-            List of formatted strings ready for embed display
+        Ready teams first, then not ready teams.
         """
         lines = []
 
+        # Always use the same robust parser everywhere
+        def is_true(v):
+            s = str(v).strip().upper()
+            return s in ("TRUE", "YES", "Y", "1")
+
         if not checked_in_users:
-            return ["```\nNo registered users found.\n```"]
+            return lines  # caller will show schedule / no filler
 
-        def is_true(v) -> bool:
-            """Helper to check if a value represents True (case-insensitive)."""
-            return str(v).upper() == "TRUE"
+        if mode == "doubleup":
+            # Group by team
+            teams: Dict[str, List[Tuple[str, tuple]]] = {}
+            for tag, user_data in checked_in_users:
+                team_name = user_data[4] if len(user_data) > 4 else "No Team"
+                team_name = team_name or "No Team"
+                teams.setdefault(team_name, []).append((tag, user_data))
 
-        try:
-            if mode == "doubleup":
-                # Group users by team
-                teams = {}
-                for tag, user_data in checked_in_users:
-                    # user_data is the full tuple (row, ign, reg, ci, team, alt)
-                    team_name = user_data[4] if len(user_data) > 4 and user_data[4] else "No Team"
+            # Ready vs not ready
+            ready_teams, not_ready_teams = [], []
+            for team_name, members in teams.items():
+                has_enough = len(members) >= 2
+                all_ci = all(is_true(member[1][3]) for member in members)
+                (ready_teams if (has_enough and all_ci) else not_ready_teams).append((team_name, members))
 
-                    if team_name not in teams:
-                        teams[team_name] = []
-                    teams[team_name].append((tag, user_data))
+            ready_teams.sort(key=lambda x: x[0].lower())
+            not_ready_teams.sort(key=lambda x: x[0].lower())
+            all_teams = ready_teams + not_ready_teams
 
-                # Separate teams into ready and not ready for better organization
-                ready_teams = []
-                not_ready_teams = []
-
-                for team_name, members in teams.items():
-                    # Check team readiness (2+ members AND all checked in)
-                    has_enough_members = len(members) >= 2
-                    all_checked_in = all(
-                        len(member[1]) > 3 and is_true(member[1][3])
-                        for member in members
-                    )
-                    is_ready = has_enough_members and all_checked_in
-
-                    if is_ready:
-                        ready_teams.append((team_name, members))
-                    else:
-                        not_ready_teams.append((team_name, members))
-
-                # Sort each group by team name for consistency
-                ready_teams.sort(key=lambda x: x[0].lower())
-                not_ready_teams.sort(key=lambda x: x[0].lower())
-
-                # Display ready teams first, then not ready teams
-                all_teams = ready_teams + not_ready_teams
-
-                for team_name, members in all_teams:
-                    # Determine team readiness status
-                    has_enough_members = len(members) >= 2
-                    all_checked_in = all(
-                        len(member[1]) > 3 and is_true(member[1][3])
-                        for member in members
-                    )
-                    is_ready = has_enough_members and all_checked_in
-
-                    # Format team header with status indicator
-                    team_check = "✅ " if is_ready else ""
-
-                    if team_name == "No Team":
-                        team_display = f"{team_check}**Unassigned Players**"
-                    else:
-                        team_display = f"{team_check}**{team_name}**"
-
-                    lines.append(team_display)
-                    lines.append("```css")
-
-                    # Add team members with check-in status
-                    for tag, tpl in sorted(members, key=lambda x: x[0].lower()):
-                        ign = tpl[1] if len(tpl) > 1 else "Unknown"
-                        is_checked_in = len(tpl) > 3 and is_true(tpl[3])
-                        status = "🟢" if is_checked_in else "🔴"
-                        lines.append(f"{status} {tag} | {ign}")
-
-                    lines.append("```")
-
-            else:
-                # Normal mode - show all registered users with check-in status
-                lines.append("**📋 Player Check-In Status**")
+            for team_name, members in all_teams:
+                has_enough = len(members) >= 2
+                all_ci = all(is_true(member[1][3]) for member in members)
+                prefix = "✅ " if (has_enough and all_ci) else ""
+                title = f"{prefix}**{'Unassigned Players' if team_name == 'No Team' else team_name}**"
+                lines.append(title)
                 lines.append("```css")
-
-                for i, (tag, tpl) in enumerate(checked_in_users, 1):
-                    ign = tpl[1] if len(tpl) > 1 else "Unknown"
-                    is_checked_in = len(tpl) > 3 and is_true(tpl[3])
-                    status = "🟢" if is_checked_in else "🔴"
-                    lines.append(f"{status} [{i:02d}] {tag} | {ign}")
-
+                # no numbers in team mode
+                for tag, tpl in sorted(members, key=lambda x: ((x[1][1] or '').lower(), x[0].lower())):
+                    ign = tpl[1]
+                    status = "🟢" if (len(tpl) > 3 and is_true(tpl[3])) else "🔴"
+                    lines.append(f"{status} {tag} | {ign}")
                 lines.append("```")
-
-        except Exception as e:
-            if BotLogger:
-                BotLogger.error(f"Error building check-in list lines: {e}", "EMBED_HELPER")
-            else:
-                logging.error(f"Error building check-in list lines: {e}")
-
-            # Return fallback content on error
-            return ["```\nError displaying check-in list.\n```"]
+        else:
+            # Normal mode: single numbered block
+            lines.append("**📋 Player Check-In Status**")
+            lines.append("```css")
+            # stable sort by IGN then tag
+            users_sorted = sorted(checked_in_users, key=lambda x: ((x[1][1] or '').lower(), x[0].lower()))
+            for i, (tag, tpl) in enumerate(users_sorted, 1):
+                ign = tpl[1]
+                status = "🟢" if (len(tpl) > 3 and is_true(tpl[3])) else "🔴"
+                lines.append(f"{status} [{i:02d}] {tag} | {ign}")
+            lines.append("```")
 
         return lines
 

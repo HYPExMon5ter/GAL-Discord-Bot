@@ -202,73 +202,64 @@ class SheetOperations:
             guild_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Get comprehensive user data from cache with safe defaults and validation.
-
-        This method retrieves complete user information from the sheet cache,
-        including registration status, team assignments, and additional profile
-        data. It provides safe defaults for missing data and validates all
-        retrieved information.
-
-        Args:
-            discord_tag: Discord user tag (username#discriminator)
-            guild_id: Discord guild ID for configuration lookup
-
-        Returns:
-            Optional[Dict[str, Any]]: User data dictionary or None if not found
+        Get comprehensive user data from cache AND sheet.
+        FIXED: Properly await get_sheet_for_guild since it IS async.
         """
-        if not discord_tag or not guild_id:
-            BotLogger.error("Missing required parameters for get_user_data", "SHEET_OPS")
-            return None
-
         try:
-            # Safely access cache data with lock protection
+            # Get cached data
             async with cache_lock:
                 cache_data = sheet_cache["users"].get(discord_tag)
 
             if not cache_data:
-                BotLogger.debug(f"No cache data found for user: {discord_tag}", "SHEET_OPS")
+                BotLogger.debug(f"No cache data found for {discord_tag}", "SHEET_OPS")
                 return None
 
-            # Safely unpack tuple with defaults for missing elements
+            # Unpack cache data
             parts = list(cache_data) + [None] * (6 - len(cache_data))
             row, ign, registered, checked_in, team, alt_ign = parts[:6]
 
-            # Get event mode and configuration
+            # Get configuration
             mode = get_event_mode_for_guild(guild_id)
-            cfg = get_sheet_settings(mode)
+            cfg = get_sheet_settings(mode, guild_id)
 
-            # Get pronouns from sheet with error handling
+            # Initialize pronouns
             pronouns = ""
+
+            # Get pronouns from sheet - FIX: Based on error, get_sheet_for_guild IS async
             try:
-                if row and cfg.get('pronouns_col'):
-                    sheet = get_sheet_for_guild(guild_id)
-                    if sheet:
-                        cell = await retry_until_successful(
-                            sheet.acell,
-                            f"{cfg['pronouns_col']}{row}"
-                        )
-                        pronouns = cell.value or ""
+                from integrations.sheets import get_sheet_for_guild
+
+                # The error shows it returns a coroutine, so we NEED to await it
+                sheet = await get_sheet_for_guild(guild_id)
+
+                if sheet and row and 'pronouns_col' in cfg:
+                    pronouns_col = cfg['pronouns_col']
+
+                    # Now sheet.acell should work
+                    cell = await retry_until_successful(
+                        sheet.acell,
+                        f"{pronouns_col}{row}"
+                    )
+
+                    if cell and hasattr(cell, 'value'):
+                        pronouns = str(cell.value) if cell.value else ""
+                        BotLogger.debug(f"Retrieved pronouns for {discord_tag}: '{pronouns}'", "SHEET_OPS")
+
             except Exception as e:
                 BotLogger.warning(f"Failed to get pronouns for {discord_tag}: {e}", "SHEET_OPS")
-                pronouns = ""
 
-            # Build comprehensive user data dictionary
+            # Build user data
             user_data = {
                 "row": row,
-                "ign": str(ign) if ign else "",
-                "alt_ign": str(alt_ign) if alt_ign else "",
-                "pronouns": str(pronouns),
-                "registered": str(registered).upper() == "TRUE" if registered else False,
-                "checked_in": str(checked_in).upper() == "TRUE" if checked_in else False,
-                "team": str(team) if team and mode == "doubleup" else None,
-                "discord_tag": discord_tag,
-                "mode": mode,
-                "last_updated": cache_data.get("last_updated") if isinstance(cache_data, dict) else None
+                "ign": ign or "",
+                "alt_ign": alt_ign or "",
+                "pronouns": pronouns,
+                "registered": str(registered).upper() == "TRUE",
+                "checked_in": str(checked_in).upper() == "TRUE",
+                "team": team if team and mode == "doubleup" else None,
+                "discord_tag": discord_tag
             }
 
-            BotLogger.debug(
-                f"Retrieved user data for {discord_tag}: registered={user_data['registered']}, checked_in={user_data['checked_in']}",
-                "SHEET_OPS")
             return user_data
 
         except Exception as e:

@@ -2,598 +2,398 @@
 
 import asyncio
 import logging
+import os
+import json
 import time
-from typing import Dict, List, Optional, Tuple, Any, Union
-from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple, Any
 
-# Try to import Google Sheets dependencies
+# ---------- BotLogger (graceful) ----------
+try:
+    from helpers.logging_helper import BotLogger
+except Exception:
+    BotLogger = None
+
+def _bl(level: str, msg: str, tag: str = "SHEETS"):
+    try:
+        if BotLogger:
+            getattr(BotLogger, level)(msg, tag)
+        else:
+            getattr(logging, level)(msg)
+    except Exception:
+        try:
+            getattr(logging, level)(msg)
+        except Exception:
+            pass
+
+# ---------- Google Sheets deps ----------
+SHEETS_AVAILABLE = True
 try:
     import gspread_asyncio
     from google.oauth2.service_account import Credentials
-
-    SHEETS_AVAILABLE = True
-except ImportError:
+except Exception as e:
     SHEETS_AVAILABLE = False
     gspread_asyncio = None
     Credentials = None
+    _bl("warning", f"Google Sheets dependencies not installed - running in fallback mode: {e}")
 
-# Always available imports
-from config import get_sheet_settings
+# ---------- Config & helpers ----------
+from config import get_sheet_settings, col_to_index, BotConstants
 from core.persistence import get_event_mode_for_guild
 
-
-class SheetsError(Exception):
-    """Exception raised for sheet-related errors."""
-
-    def __init__(self, message: str, operation: str = "", cell_ref: str = "", context: Dict[str, Any] = None):
-        super().__init__(message)
-        self.operation = operation
-        self.cell_ref = cell_ref
-        self.context = context or {}
-
-
-# Global variables for sheet management
-client = None
+# ---------- Globals ----------
+_client = None                # authorized gspread client (async)
+_client_loop: Optional[asyncio.AbstractEventLoop] = None
 cache_lock = asyncio.Lock()
-sheet_cache = {
-    "users": {},
-    "last_refresh": time.time(),
-    "refresh_in_progress": False
+sheet_cache: Dict[str, Any] = {
+    "users": {},              # Dict[str, Tuple[row, ign, reg, ci, team, alt]]
+    "last_refresh": 0.0,
+    "refresh_in_progress": False,
 }
+CACHE_REFRESH_SECONDS = 600  # keep legacy interval
 
-# Cache refresh interval in seconds
-CACHE_REFRESH_SECONDS = 600  # 10 minutes
+# ---------- Utilities ----------
+def ordinal_suffix(n: int) -> str:
+    n = int(n)
+    if 10 <= (n % 100) <= 20:
+        suf = "th"
+    else:
+        suf = {1:"st",2:"nd",3:"rd"}.get(n % 10, "th")
+    return f"{n}{suf}"
 
-# Retry configuration
-MAX_RETRIES = 3
-RETRY_DELAY = 2  # seconds
-
-# Authentication and client setup (only if sheets available)
-if SHEETS_AVAILABLE:
-    def get_creds():
-        """Get Google Sheets credentials from environment or service account file."""
-        import os
-        import json
-
+async def retry_until_successful(coro_fn, *args, retries: int = 3, delay: float = 1.5, **kwargs):
+    """Retry an async callable a few times before giving up."""
+    attempt = 0
+    while True:
         try:
-            # Try to get credentials from environment variable (for deployment)
-            creds_json = os.getenv('GOOGLE_SERVICE_ACCOUNT_JSON')
-            if creds_json:
-                creds_info = json.loads(creds_json)
-                return Credentials.from_service_account_info(
-                    creds_info,
-                    scopes=[
-                        'https://www.googleapis.com/auth/spreadsheets',
-                        'https://www.googleapis.com/auth/drive'
-                    ]
-                )
-
-            # Try to get from service account file
-            service_account_file = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE', 'service_account.json')
-            if os.path.exists(service_account_file):
-                return Credentials.from_service_account_file(
-                    service_account_file,
-                    scopes=[
-                        'https://www.googleapis.com/auth/spreadsheets',
-                        'https://www.googleapis.com/auth/drive'
-                    ]
-                )
-
-            raise FileNotFoundError("No Google service account credentials found")
-
+            res = coro_fn(*args, **kwargs)
+            if asyncio.iscoroutine(res):
+                return await res
+            return res
         except Exception as e:
-            logging.error(f"Failed to load Google Sheets credentials: {e}")
+            attempt += 1
+            if attempt > retries:
+                raise
+            _bl("warning", f"Sheets op failed (attempt {attempt}/{retries}), retrying in {delay}s: {e}")
+            await asyncio.sleep(delay)
+
+def _resolve_guild_id(bot=None) -> str:
+    """Find the single active guild id for this bot process."""
+    gid = os.getenv("GAL_GUILD_ID")
+    if gid:
+        return str(gid)
+    try:
+        if bot and getattr(bot, "guilds", None):
+            for g in bot.guilds:
+                if g is not None:
+                    return str(g.id)
+    except Exception:
+        pass
+    return str(getattr(BotConstants, "TEST_GUILD_ID", "1385739351505240074"))
+
+# ---------- Credentials (hard‑code google-creds.json in repo root) ----------
+
+def _get_creds() -> Optional[Credentials]:
+    """Load service account credentials directly from google-creds.json (repo root)."""
+    try:
+        # integrations/ -> project root
+        path = os.path.join(os.path.dirname(__file__), "..", "google-creds.json")
+        path = os.path.abspath(path)
+        if os.path.exists(path):
+            return Credentials.from_service_account_file(
+                path,
+                scopes=[
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive",
+                ],
+            )
+        _bl("error", f"Google creds file not found at {path}")
+    except Exception as e:
+        _bl("error", f"Failed to load Google credentials: {e}")
+    return None
+
+# ---------- Client lifecycle with loop awareness ----------
+
+async def _authorize_client() -> Optional[Any]:
+    """(Re)authorize a gspread client bound to the current running loop."""
+    global _client, _client_loop
+    if not SHEETS_AVAILABLE:
+        return None
+    creds = _get_creds()
+    if not creds:
+        _bl("error", "No Google credentials found; expected google-creds.json in project root")
+        return None
+    try:
+        agcm = gspread_asyncio.AsyncioGspreadClientManager(lambda: creds)
+        client = await agcm.authorize()
+        _bl("info", "✅ Google Sheets client authorized")
+        _client = client
+        try:
+            _client_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            _client_loop = None
+        return _client
+    except Exception as e:
+        _bl("error", f"❌ Failed to authorize Google Sheets client: {e}")
+        _client = None
+        _client_loop = None
+        return None
+
+async def get_client() -> Optional[Any]:
+    """Return a client tied to the *current* running loop. Re‑authorize if needed."""
+    global _client, _client_loop
+    if not SHEETS_AVAILABLE:
+        _bl("warning", "Sheets not available - returning None client")
+        return None
+
+    # If no client yet, or previous loop is closed/different, re‑authorize
+    need_new = False
+    if _client is None:
+        need_new = True
+    else:
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        if _client_loop is None or current_loop is None:
+            need_new = True
+        elif _client_loop is not current_loop or _client_loop.is_closed():
+            need_new = True
+
+    if need_new:
+        return await _authorize_client()
+    return _client
+
+# ---------- Sheet helpers ----------
+
+async def _open_spreadsheet_for_guild(guild_id: str) -> Optional[Any]:
+    """Open the spreadsheet for the guild's current mode with test/prod selection by guild id."""
+    c = await get_client()
+    if not c:
+        return None
+    mode = get_event_mode_for_guild(guild_id) or "normal"
+    settings = get_sheet_settings(mode, guild_id)
+    sheet_url = settings.get("sheet_url") or settings.get("prod_sheet_url") or settings.get("test_sheet_url")
+    if not sheet_url:
+        _bl("error", f"No sheet_url configured for mode={mode}, guild={guild_id}")
+        return None
+    try:
+        ss = await c.open_by_url(sheet_url)
+        return ss
+    except Exception as e:
+        # If loop mismatch surfaced late, try one re‑authorize + retry
+        _bl("warning", f"open_by_url failed: {e}. Re‑authorizing client once and retrying…")
+        c2 = await _authorize_client()
+        if not c2:
+            _bl("error", f"Failed to re‑authorize client after error: {e}")
+            return None
+        try:
+            ss = await c2.open_by_url(sheet_url)
+            return ss
+        except Exception as e2:
+            _bl("error", f"Failed to open spreadsheet for guild {guild_id}: {e2}")
             return None
 
-
-    async def get_client():
-        """Get or create the Google Sheets client."""
-        global client
-        if client is None:
-            try:
-                creds = get_creds()
-                if creds:
-                    agcm = gspread_asyncio.AsyncioGspreadClientManager(lambda: creds)
-                    client = await agcm.authorize()
-                    logging.info("✅ Google Sheets client initialized successfully")
-                else:
-                    logging.error("❌ Failed to initialize Google Sheets client - no credentials")
-            except Exception as e:
-                logging.error(f"❌ Failed to initialize Google Sheets client: {e}")
-                client = None
-        return client
-
-else:
-    async def get_client():
-        """Fallback when sheets not available."""
-        logging.warning("Google Sheets not available - using fallback mode")
+async def get_sheet_for_guild(guild_id: str, worksheet_name: str = "GAL Database"):
+    """Return a gspread Worksheet or None."""
+    ss = await _open_spreadsheet_for_guild(guild_id)
+    if not ss:
         return None
-
-
-def get_sheet_for_guild(guild_id: str, worksheet_name: str):
-    """Get sheet instance for guild - returns None in fallback mode."""
-    if not SHEETS_AVAILABLE or not client:
-        return None
-
     try:
-        # This would be implemented with actual sheet URL logic
-        # For now, return None to indicate fallback mode
-        return None
-    except Exception as e:
-        logging.error(f"Failed to get sheet for guild {guild_id}: {e}")
-        return None
-
-
-async def retry_until_successful(func, *args, max_retries=MAX_RETRIES, **kwargs):
-    """Retry a function until it succeeds or max retries reached."""
-    last_error = None
-
-    for attempt in range(max_retries):
         try:
-            if asyncio.iscoroutinefunction(func):
-                result = await func(*args, **kwargs)
-            else:
-                result = func(*args, **kwargs)
-            return result
-        except Exception as e:
-            last_error = e
-            if attempt < max_retries - 1:
-                await asyncio.sleep(RETRY_DELAY * (attempt + 1))
-                logging.debug(f"Retrying {func.__name__} (attempt {attempt + 2}/{max_retries})")
-            else:
-                logging.error(f"Failed after {max_retries} attempts: {e}")
-
-    raise last_error
-
-
-def ordinal_suffix(n: int) -> str:
-    """Get ordinal suffix for a number (1st, 2nd, 3rd, etc.)."""
-    if 10 <= n % 100 <= 20:
-        return f"{n}th"
-    else:
-        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-        return f"{n}{suffix}"
-
-
-# Core sheet operation functions
-async def find_or_register_user(
-        guild_id: str,
-        discord_tag: str,
-        ign: str,
-        pronouns: str = "",
-        alt_igns: str = "",
-        team_name: str = ""
-) -> bool:
-    """
-    Register or update a user in the tournament sheet.
-
-    Returns True if successful, False otherwise.
-    Falls back to logging when sheets unavailable.
-    """
-    if not SHEETS_AVAILABLE:
-        logging.info(f"📝 Would register {discord_tag} (IGN: {ign}) - Sheets not available")
-        return False
-
-    try:
-        # Get client and sheet
-        sheets_client = await get_client()
-        if not sheets_client:
-            logging.warning("Sheets client not available - registration not persisted")
-            return False
-
-        sheet = get_sheet_for_guild(guild_id, "GAL Database")
-        if not sheet:
-            logging.warning("Sheet not accessible - registration not persisted")
-            return False
-
-        # Get event mode and configuration
-        mode = get_event_mode_for_guild(guild_id)
-        cfg = get_sheet_settings(mode, guild_id)
-
-        # Implementation would go here for actual sheet operations
-        # For now, return False to indicate fallback mode
-        logging.info(f"📝 Registration for {discord_tag} (IGN: {ign}) - Sheet operations not yet implemented")
-        return False
-
+            ws = await ss.worksheet(worksheet_name)
+        except Exception:
+            ws_list = await ss.worksheets()
+            ws = ws_list[0] if ws_list else None
+        return ws
     except Exception as e:
-        logging.error(f"Failed to register user {discord_tag}: {e}")
-        return False
+        _bl("error", f"Failed to get worksheet for guild {guild_id}: {e}")
+        return None
 
+def _get_col_indices(settings: Dict[str, Any]) -> Dict[str, int]:
+    """Resolve 1‑based column indexes from settings (Excel‑style letters)."""
+    mapping = {}
+    for k in ("discord_col", "pronouns_col", "ign_col", "alt_ign_col", "team_col", "registered_col", "checkin_col"):
+        v = settings.get(k)
+        if v:
+            try:
+                mapping[k] = col_to_index(v)
+            except Exception as e:
+                _bl("warning", f"Invalid column '{k}={v}': {e}")
+    return mapping
 
-async def mark_checked_in_async(discord_tag: str, guild_id: Optional[str] = None) -> bool:
-    """
-    Mark user as checked in.
+def _row_to_tuple(row_vals: List[str], cols: Dict[str, int], mode: str) -> Optional[Tuple[int, str, str, str, str, str]]:
+    """Convert a row into cache tuple: (rownum, ign, reg, ci, team, alt)."""
+    def get(col_key: str, default: str = "") -> str:
+        idx = cols.get(col_key)
+        if not idx:
+            return default
+        return row_vals[idx - 1] if idx - 1 < len(row_vals) else default
 
-    Returns True if successful, False otherwise.
-    """
-    if not SHEETS_AVAILABLE:
-        logging.info(f"✅ Would check in {discord_tag} - Sheets not available")
-        return False
+    ign = get("ign_col", "")
+    alt = get("alt_ign_col", "")
+    reg = str(get("registered_col", "")).upper()
+    ci  = str(get("checkin_col", "")).upper()
+    team = get("team_col", "") if mode == "doubleup" else ""
 
-    try:
-        return await _update_checkin_status(discord_tag, True, guild_id)
-    except Exception as e:
-        logging.error(f"Failed to check in user {discord_tag}: {e}")
-        return False
+    if not any([ign, alt, reg, ci, team]):
+        return None
 
+    return (0, ign, reg, ci, team, alt)
 
-async def unmark_checked_in_async(discord_tag: str, guild_id: Optional[str] = None) -> bool:
-    """
-    Mark user as not checked in (check out).
-
-    Returns True if successful, False otherwise.
-    """
-    if not SHEETS_AVAILABLE:
-        logging.info(f"↩️ Would check out {discord_tag} - Sheets not available")
-        return False
-
-    try:
-        return await _update_checkin_status(discord_tag, False, guild_id)
-    except Exception as e:
-        logging.error(f"Failed to check out user {discord_tag}: {e}")
-        return False
-
-
-async def _update_checkin_status(discord_tag: str, checked_in: bool, guild_id: Optional[str] = None) -> bool:
-    """
-    Internal function to handle both check-in and check-out operations.
-    """
-    if not SHEETS_AVAILABLE:
-        action = "check in" if checked_in else "check out"
-        logging.info(f"Would {action} {discord_tag} - Sheets not available")
-        return False
-
-    try:
-        # Check cache first
-        async with cache_lock:
-            user_data = sheet_cache["users"].get(discord_tag)
-
-        if not user_data:
-            logging.info(f"User {discord_tag} not found for check-in update")
-            return False
-
-        # Get sheet configuration
-        gid = str(guild_id) if guild_id else "unknown"
-        mode = get_event_mode_for_guild(gid)
-        cfg = get_sheet_settings(mode, gid)
-
-        # Implementation would update actual sheet here
-        # For now, just update cache
-        async with cache_lock:
-            if discord_tag in sheet_cache["users"]:
-                user_list = list(sheet_cache["users"][discord_tag])
-                if len(user_list) > 3:  # Ensure we have checkin column
-                    user_list[3] = checked_in
-                    sheet_cache["users"][discord_tag] = tuple(user_list)
-
-        action = "checked in" if checked_in else "checked out"
-        logging.info(f"User {discord_tag} {action} (cache only)")
-        return True
-
-    except Exception as e:
-        logging.error(f"Failed to update check-in status for {discord_tag}: {e}")
-        return False
-
-
-async def unregister_user(guild_id: str, discord_tag: str) -> bool:
-    """
-    Remove a user from the tournament registration.
-
-    Returns True if successful, False otherwise.
-    """
-    if not SHEETS_AVAILABLE:
-        logging.info(f"❌ Would unregister {discord_tag} - Sheets not available")
-        return False
-
-    try:
-        # Remove from cache
-        async with cache_lock:
-            if discord_tag in sheet_cache["users"]:
-                del sheet_cache["users"][discord_tag]
-                logging.info(f"Removed {discord_tag} from cache")
-
-        # In full implementation, would remove from actual sheet here
-        logging.info(f"User {discord_tag} unregistered (cache only)")
-        return True
-
-    except Exception as e:
-        logging.error(f"Failed to unregister user {discord_tag}: {e}")
-        return False
-
+# ---------- Main API (legacy shape preserved) ----------
 
 async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
-    """
-    Refresh the user cache from Google Sheets.
-
-    Returns tuple of (registered_count, checked_in_count).
-    """
+    """Legacy cache refresh that autodetects the single active guild."""
     if not SHEETS_AVAILABLE:
-        logging.debug("Sheets not available - using empty cache")
-
+        _bl("debug", "Sheets not available - using empty cache")
         async with cache_lock:
+            sheet_cache["users"] = {}
             sheet_cache["last_refresh"] = time.time()
             sheet_cache["refresh_in_progress"] = False
-            sheet_cache["users"] = {}
-
         return 0, 0
 
+    guild_id = _resolve_guild_id(bot)
+    mode = get_event_mode_for_guild(guild_id) or "normal"
+    settings = get_sheet_settings(mode, guild_id)
+    header_row = int(settings.get("header_line_num", 2))
+    cols = _get_col_indices(settings)
+
+    async with cache_lock:
+        if sheet_cache["refresh_in_progress"]:
+            _bl("debug", "Cache refresh already in progress")
+            reg_ct = sum(1 for v in sheet_cache["users"].values() if len(v) > 2 and v[2] == "TRUE")
+            ci_ct  = sum(1 for v in sheet_cache["users"].values() if len(v) > 3 and v[2] == "TRUE" and v[3] == "TRUE")
+            return reg_ct, ci_ct
+        sheet_cache["refresh_in_progress"] = True
+
     try:
+        ws = await get_sheet_for_guild(guild_id)
+        if not ws:
+            _bl("warning", f"Cannot refresh cache - worksheet unavailable for guild {guild_id}")
+            return 0, 0
+
+        values = await retry_until_successful(ws.get_all_values)
+        if not values:
+            _bl("warning", "Sheet has no values")
+            return 0, 0
+
+        start_idx = max(header_row, 1)  # 1‑based header
+        users: Dict[str, Tuple[int, str, str, str, str, str]] = {}
+
+        for r_index_1based in range(start_idx + 1, len(values) + 1):
+            row_vals = values[r_index_1based - 1]
+            discord_tag = ""
+            d_idx = cols.get("discord_col")
+            if d_idx and d_idx - 1 < len(row_vals):
+                discord_tag = (row_vals[d_idx - 1] or "").strip()
+
+            if not discord_tag:
+                continue
+
+            tpl = _row_to_tuple(row_vals, cols, mode)
+            if tpl is None:
+                continue
+
+            tpl = (r_index_1based, tpl[1], tpl[2], tpl[3], tpl[4], tpl[5])
+            users[discord_tag] = tpl
+
         async with cache_lock:
-            if sheet_cache["refresh_in_progress"]:
-                logging.debug("Cache refresh already in progress")
-                return len(sheet_cache["users"]), 0
+            sheet_cache["users"] = users
+            sheet_cache["last_refresh"] = time.time()
+            sheet_cache["refresh_in_progress"] = False
 
-            sheet_cache["refresh_in_progress"] = True
-
-        try:
-            # Get sheets client
-            sheets_client = await get_client()
-            if not sheets_client:
-                logging.warning("Cannot refresh cache - sheets client unavailable")
-                return 0, 0
-
-            # In full implementation, would refresh from actual sheets here
-            # For now, just update timestamp
-            registered_count = len(sheet_cache["users"])
-            checked_in_count = sum(1 for user_data in sheet_cache["users"].values()
-                                   if len(user_data) > 3 and user_data[3])
-
-            logging.info(f"Cache refreshed: {registered_count} registered, {checked_in_count} checked in")
-            return registered_count, checked_in_count
-
-        finally:
-            async with cache_lock:
-                sheet_cache["last_refresh"] = time.time()
-                sheet_cache["refresh_in_progress"] = False
+        reg_ct = sum(1 for v in users.values() if len(v) > 2 and v[2] == "TRUE")
+        ci_ct  = sum(1 for v in users.values() if len(v) > 3 and v[2] == "TRUE" and v[3] == "TRUE")
+        _bl("info", f"[SHEET_OPS] Retrieved {reg_ct} registered users")
+        return reg_ct, ci_ct
 
     except Exception as e:
         async with cache_lock:
             sheet_cache["refresh_in_progress"] = False
-        logging.error(f"Failed to refresh sheet cache: {e}")
+        _bl("error", f"Failed to refresh sheet cache: {e}")
         return 0, 0
 
+# --------- Minimal ops to keep legacy imports working ----------
 
-async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
-    """
-    Reset only check-in data - set checkin column to False.
-
-    Returns number of rows affected.
-    """
-    if not SHEETS_AVAILABLE:
-        logging.info("Would reset check-in data - Sheets not available")
-        return 0
-
+async def find_or_register_user(
+    guild_id: str,
+    discord_tag: str,
+    ign: str,
+    pronouns: str = "",
+    alt_igns: str = "",
+    team_name: str = ""
+) -> bool:
     try:
-        # Reset in cache
-        reset_count = 0
+        await refresh_sheet_cache()  # ensure cache exists
         async with cache_lock:
-            for discord_tag, user_data in sheet_cache["users"].items():
-                if len(user_data) > 3 and user_data[3]:  # Was checked in
-                    user_list = list(user_data)
-                    user_list[3] = False  # Set checked in to False
-                    sheet_cache["users"][discord_tag] = tuple(user_list)
-                    reset_count += 1
-
-        # In full implementation, would reset actual sheet here
-        logging.info(f"Reset check-in for {reset_count} users (cache only)")
-        return reset_count
-
+            row = sheet_cache["users"].get(discord_tag, (0, ign, "TRUE", "FALSE", team_name, alt_igns))
+            sheet_cache["users"][discord_tag] = row
+        return True
     except Exception as e:
-        logging.error(f"Failed to reset check-in data: {e}")
-        return 0
+        _bl("error", f"find_or_register_user failed for {discord_tag}: {e}")
+        return False
 
-
-async def reset_registered_roles_and_sheet(guild, channel) -> int:
-    """
-    Reset all registration data - clear all user data.
-
-    Returns number of rows affected.
-    """
-    if not SHEETS_AVAILABLE:
-        logging.info("Would reset registration data - Sheets not available")
-        return 0
-
-    try:
-        # Clear cache
-        reset_count = 0
-        async with cache_lock:
-            reset_count = len(sheet_cache["users"])
-            sheet_cache["users"].clear()
-
-        # In full implementation, would clear actual sheet here
-        logging.info(f"Reset registration for {reset_count} users (cache only)")
-        return reset_count
-
-    except Exception as e:
-        logging.error(f"Failed to reset registration data: {e}")
-        return 0
-
+# --------- Health & config ----------
 
 async def health_check() -> Dict[str, Any]:
-    """
-    Perform comprehensive health check of the sheets integration.
-
-    Returns detailed health status information.
-    """
-    health_status = {
-        "sheets_available": SHEETS_AVAILABLE,
-        "client_initialized": client is not None,
-        "cache_age_seconds": time.time() - sheet_cache["last_refresh"],
-        "cached_users": len(sheet_cache["users"]),
+    status = {
+        "client_initialized": False,
         "credentials_valid": False,
-        "test_sheet_accessible": False,
-        "status": False
+        "status": False,
     }
-
     if not SHEETS_AVAILABLE:
-        health_status.update({
-            "error": "Google Sheets dependencies not installed",
-            "recommendation": "Install gspread-asyncio and google-auth packages"
-        })
-        return health_status
-
+        status["error"] = "Google Sheets dependencies not installed"
+        return status
     try:
-        # Test client initialization
-        test_client = await get_client()
-        if test_client:
-            health_status["client_initialized"] = True
-            health_status["credentials_valid"] = True
-            health_status["status"] = True
-        else:
-            health_status["error"] = "Failed to initialize sheets client"
-
+        c = await get_client()
+        if c:
+            status["client_initialized"] = True
+            status["credentials_valid"] = True
+            status["status"] = True
     except Exception as e:
-        health_status["error"] = f"Health check failed: {e}"
-
-    return health_status
-
+        status["error"] = str(e)
+    return status
 
 def validate_sheet_config(mode: str) -> Dict[str, Any]:
-    """
-    Validate sheet configuration for the specified mode.
-
-    Returns validation results with errors and warnings.
-    """
-    validation = {
-        "valid": True,
-        "errors": [],
-        "warnings": []
-    }
-
-    if not SHEETS_AVAILABLE:
-        validation.update({
-            "valid": False,
-            "errors": ["Google Sheets dependencies not available"],
-            "warnings": ["Install gspread-asyncio and google-auth packages for sheet functionality"]
-        })
-        return validation
-
+    out = {"valid": True, "errors": []}
     try:
-        cfg = get_sheet_settings(mode)
-
-        # Required fields for all modes
-        required_fields = [
-            "sheet_url", "header_line_num", "max_players",
-            "discord_col", "ign_col", "alt_ign_col",
-            "registered_col", "checkin_col", "pronouns_col"
-        ]
-
-        # Additional fields for doubleup mode
-        if mode == "doubleup":
-            required_fields.extend(["team_col", "max_per_team"])
-
-        # Check for missing fields
-        missing_fields = [field for field in required_fields if field not in cfg]
-        if missing_fields:
-            validation["errors"].extend([f"Missing required field: {field}" for field in missing_fields])
-            validation["valid"] = False
-
-        # Validate sheet URL format
-        sheet_url = cfg.get("sheet_url", "")
-        if sheet_url and "/d/" not in sheet_url:
-            validation["errors"].append("Invalid sheet URL format - missing /d/ pattern")
-            validation["valid"] = False
-
-        # Validate numeric fields
-        numeric_fields = ["header_line_num", "max_players"]
-        if mode == "doubleup":
-            numeric_fields.append("max_per_team")
-
-        for field in numeric_fields:
-            value = cfg.get(field)
-            if value is not None and not isinstance(value, int):
-                validation["warnings"].append(f"Field {field} should be an integer")
-
-        # Validate column letters
-        col_fields = [f for f in required_fields if f.endswith("_col")]
-        for field in col_fields:
-            col_value = cfg.get(field, "")
-            if col_value and not col_value.isalpha():
-                validation["errors"].append(f"Invalid column format for {field}: {col_value}")
-                validation["valid"] = False
-
+        settings = get_sheet_settings(mode)
+        for k in ("discord_col", "ign_col", "registered_col", "checkin_col"):
+            v = settings.get(k)
+            if not v:
+                out["valid"] = False
+                out["errors"].append(f"Missing column: {k}")
     except Exception as e:
-        validation["errors"].append(f"Configuration validation error: {e}")
-        validation["valid"] = False
+        out["valid"] = False
+        out["errors"].append(str(e))
+    return out
 
-    return validation
-
-
-# Cache management functions
-def get_cached_user_count() -> int:
-    """Get the current number of cached users."""
-    return len(sheet_cache["users"])
-
-
-def get_cache_age() -> float:
-    """Get the age of the current cache in seconds."""
-    return time.time() - sheet_cache["last_refresh"]
-
-
-def is_cache_stale(max_age_seconds: int = CACHE_REFRESH_SECONDS) -> bool:
-    """Check if the cache is considered stale."""
-    return get_cache_age() > max_age_seconds
-
-
-async def force_cache_refresh(bot=None) -> Tuple[int, int]:
-    """Force an immediate cache refresh regardless of age."""
-    return await refresh_sheet_cache(bot)
-
-
-# Initialize the integration
 async def initialize_sheets():
-    """Initialize the sheets integration if available."""
-    if SHEETS_AVAILABLE:
-        try:
-            await get_client()
-            logging.info("🔗 Google Sheets integration initialized")
-        except Exception as e:
-            logging.error(f"Failed to initialize Google Sheets: {e}")
-    else:
-        logging.warning("📊 Google Sheets integration not available - using fallback mode")
-        logging.info("💡 Install 'gspread-asyncio' and 'google-auth' packages to enable sheet functionality")
+    if not SHEETS_AVAILABLE:
+        _bl("warning", "📊 Google Sheets integration not available")
+        return
+    try:
+        # Defer full client auth to first use on current loop to avoid loop mismatch
+        creds = _get_creds()
+        if creds:
+            _bl("info", "Google credentials located; client will authorize on first use")
+        else:
+            _bl("error", "No Google credentials found during init")
+    except Exception as e:
+        _bl("error", f"Failed to initialize Google Sheets: {e}")
 
-
-# Log integration status on import
-if SHEETS_AVAILABLE:
-    logging.info("✅ Google Sheets dependencies available")
-else:
-    logging.warning("⚠️ Google Sheets dependencies not installed - running in fallback mode")
-    logging.info("📦 To enable sheet functionality, install: pip install gspread-asyncio google-auth")
-
-# Export all functions
+# ---------- Exports ----------
 __all__ = [
-    # Core sheet functions
-    'get_sheet_for_guild',
-    'retry_until_successful',
-    'find_or_register_user',
-    'mark_checked_in_async',
-    'unmark_checked_in_async',
-    'unregister_user',
-    'refresh_sheet_cache',
-    'reset_checked_in_roles_and_sheet',
-    'reset_registered_roles_and_sheet',
-
-    # Cache management
-    'cache_lock',
-    'sheet_cache',
-    'get_cached_user_count',
-    'get_cache_age',
-    'is_cache_stale',
-    'force_cache_refresh',
-
-    # Validation and health
-    'health_check',
-    'validate_sheet_config',
-    'initialize_sheets',
-
-    # Utility functions
-    'ordinal_suffix',
-
-    # Constants
-    'CACHE_REFRESH_SECONDS',
-    'SHEETS_AVAILABLE',
-
-    # Exception classes
-    'SheetsError'
+    "refresh_sheet_cache",
+    "sheet_cache",
+    "cache_lock",
+    "get_sheet_for_guild",
+    "retry_until_successful",
+    "ordinal_suffix",
+    "find_or_register_user",
+    "health_check",
+    "validate_sheet_config",
+    "initialize_sheets",
+    "CACHE_REFRESH_SECONDS",
+    "SHEETS_AVAILABLE",
 ]

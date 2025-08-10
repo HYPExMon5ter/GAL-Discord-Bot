@@ -1,4 +1,5 @@
 # config.py
+
 import asyncio
 import logging
 import os
@@ -100,14 +101,7 @@ def hex_to_color(s: str) -> discord.Color:
 
 def embed_from_cfg(key: str, **kwargs) -> discord.Embed:
     """
-    Create Discord embed from configuration with error handling.
-
-    Args:
-        key: Configuration key for the embed
-        **kwargs: Variables to format in the embed text
-
-    Returns:
-        discord.Embed: Configured embed object
+    Create Discord embed from configuration.
     """
     data = EMBEDS_CFG.get(key, {})
 
@@ -146,12 +140,6 @@ def embed_from_cfg(key: str, **kwargs) -> discord.Embed:
 def get_sheet_settings(mode: str) -> Dict[str, Any]:
     """
     Get sheet configuration for specified mode.
-
-    Args:
-        mode: Configuration mode ("normal" or "doubleup")
-
-    Returns:
-        Dict containing sheet settings
     """
     if mode not in SHEET_CONFIG:
         logging.warning(f"Unknown sheet mode '{mode}', falling back to 'normal'")
@@ -163,12 +151,6 @@ def get_sheet_settings(mode: str) -> Dict[str, Any]:
 def col_to_index(col: str) -> int:
     """
     Convert Excel column letter(s) to 1-based index.
-
-    Args:
-        col: Column letter(s) (e.g., "A", "B", "AA")
-
-    Returns:
-        int: 1-based column index
     """
     if not col or not isinstance(col, str):
         raise ValueError(f"Invalid column identifier: {col}")
@@ -193,16 +175,7 @@ class APIError(Exception):
 
 async def fetch_application_commands(bot) -> list:
     """
-    Fetch application commands with proper error handling.
-
-    Args:
-        bot: Discord bot instance
-
-    Returns:
-        List of command dictionaries
-
-    Raises:
-        APIError: If API request fails
+    Fetch application commands.
     """
     if not bot.application_id:
         raise APIError("Bot application ID not available")
@@ -230,10 +203,7 @@ async def fetch_application_commands(bot) -> list:
 
 async def update_gal_command_ids(bot) -> None:
     """
-    Update GAL command IDs for help system with comprehensive error handling.
-
-    Args:
-        bot: Discord bot instance
+    Update GAL command IDs for the help command.
     """
     GAL_COMMAND_IDS.clear()
 
@@ -291,12 +261,6 @@ async def update_gal_command_ids(bot) -> None:
 def get_cmd_id(name: str) -> int:
     """
     Get command ID for help system.
-
-    Args:
-        name: Command name
-
-    Returns:
-        Command ID or 0 if not found
     """
     return GAL_COMMAND_IDS.get(name, 0)
 

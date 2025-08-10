@@ -1,7 +1,4 @@
 # helpers/error_handler.py
-"""
-Centralized error handling with context-aware logging and user feedback.
-"""
 
 import traceback
 from datetime import datetime, timezone
@@ -14,7 +11,6 @@ from config import embed_from_cfg, LOG_CHANNEL_NAME, PING_USER
 
 class ErrorHandler:
     """Centralized error handling for the bot."""
-
     @staticmethod
     async def handle_interaction_error(
             interaction: discord.Interaction,
@@ -25,13 +21,6 @@ class ErrorHandler:
     ) -> None:
         """
         Handle errors from Discord interactions with logging and user feedback.
-
-        Args:
-            interaction: Discord interaction that caused the error
-            error: The exception that was raised
-            context: Context string for logging (e.g., "Registration", "Check-in")
-            user_message: Custom message to show user, or None for default
-            log_full_trace: Whether to log full traceback
         """
         # Prepare error details
         error_id = f"{context}_{datetime.now().timestamp():.0f}"
@@ -120,11 +109,6 @@ class ErrorHandler:
     def wrap_callback(context: str):
         """
         Decorator to wrap interaction callbacks with error handling.
-
-        Usage:
-            @ErrorHandler.wrap_callback("Registration")
-            async def callback(self, interaction: discord.Interaction):
-                # callback code
         """
 
         def decorator(func):

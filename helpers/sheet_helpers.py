@@ -1,7 +1,4 @@
 # helpers/sheet_helpers.py
-"""
-Enhanced sheet operations to reduce duplication and improve error handling.
-"""
 
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -12,7 +9,6 @@ from integrations.sheets import retry_until_successful, get_sheet_for_guild, cac
 
 class SheetOperations:
     """Centralized sheet operations with better error handling."""
-
     @staticmethod
     async def update_cell(
             guild_id: str,
@@ -23,9 +19,6 @@ class SheetOperations:
     ) -> bool:
         """
         Update a single cell in the sheet.
-
-        Returns:
-            True if successful, False otherwise
         """
         try:
             sheet = get_sheet_for_guild(guild_id, worksheet)
@@ -48,15 +41,6 @@ class SheetOperations:
     ) -> int:
         """
         Batch update multiple cells in the same row.
-
-        Args:
-            guild_id: Guild ID
-            updates: Dict mapping column letters to values
-            row: Row number to update
-            worksheet: Sheet name
-
-        Returns:
-            Number of successful updates
         """
         success_count = 0
 
@@ -73,9 +57,6 @@ class SheetOperations:
     ) -> Optional[Dict[str, Any]]:
         """
         Get comprehensive user data from cache and sheet.
-
-        Returns:
-            Dict with user data or None if not found
         """
         async with cache_lock:
             cache_data = sheet_cache["users"].get(discord_tag)
@@ -119,21 +100,8 @@ class SheetOperations:
     ) -> int:
         """
         Count users matching specific criteria.
-
-        Args:
-            guild_id: Guild ID
-            registered: Filter by registration status
-            checked_in: Filter by check-in status
-            team_name: Filter by team name (double-up mode only)
-
-        Returns:
-            Count of matching users
         """
         count = 0
-
-        # Don't use async with cache_lock here if we're already in a cache refresh
-        # Instead, directly access the cache assuming we already have the lock
-        # or make a copy of the data we need
 
         try:
             # Make a snapshot of the cache data to avoid holding the lock
@@ -168,9 +136,6 @@ class SheetOperations:
     async def get_teams_summary(guild_id: str) -> Dict[str, List[str]]:
         """
         Get a summary of all teams and their members.
-
-        Returns:
-            Dict mapping team names to list of member discord tags
         """
         teams = {}
         mode = get_event_mode_for_guild(guild_id)
@@ -197,9 +162,6 @@ class SheetOperations:
     ) -> int:
         """
         Clear an entire column to a specific value.
-
-        Returns:
-            Number of cells updated
         """
         sheet = get_sheet_for_guild(guild_id, worksheet)
         col_idx = col_to_index(column)
@@ -231,15 +193,6 @@ class SheetOperations:
     ) -> Optional[int]:
         """
         Find the first empty row within a range.
-
-        Args:
-            guild_id: Guild ID
-            start_row: Starting row number (inclusive)
-            max_row: Maximum row number (inclusive)
-            check_column: Column to check for emptiness (defaults to discord_col)
-
-        Returns:
-            Row number of first empty row, or None if all full
         """
         mode = get_event_mode_for_guild(guild_id)
         cfg = get_sheet_settings(mode)
@@ -262,9 +215,6 @@ class SheetOperations:
     async def get_all_registered_users(guild_id: str) -> List[Tuple[str, str, str]]:
         """
         Get all registered users with their info.
-
-        Returns:
-            List of (discord_tag, ign, team_name) tuples
         """
         users = []
         mode = get_event_mode_for_guild(guild_id)
@@ -282,9 +232,6 @@ class SheetOperations:
     async def get_all_checked_in_users(guild_id: str) -> List[Tuple[str, tuple]]:
         """
         Get all checked-in users with their full cache data.
-
-        Returns:
-            List of (discord_tag, cache_tuple) tuples
         """
         users = []
 
@@ -304,9 +251,6 @@ class SheetOperations:
     async def get_user_by_ign(guild_id: str, ign: str) -> Optional[Dict[str, Any]]:
         """
         Find a user by their IGN.
-
-        Returns:
-            User data dict or None if not found
         """
         async with cache_lock:
             for discord_tag, tpl in sheet_cache["users"].items():

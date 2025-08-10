@@ -1,7 +1,4 @@
 # helpers/role_helpers.py
-"""
-Centralized role management helpers to reduce duplication.
-"""
 
 from typing import Optional, List
 
@@ -12,7 +9,6 @@ from config import REGISTERED_ROLE, CHECKED_IN_ROLE, ALLOWED_ROLES
 
 class RoleManager:
     """Manages role operations for the GAL bot."""
-
     @staticmethod
     def get_role(guild: discord.Guild, role_name: str) -> Optional[discord.Role]:
         """Get a role by name from guild."""
@@ -39,9 +35,6 @@ class RoleManager:
     async def add_role(member: discord.Member, role_name: str) -> bool:
         """
         Add a role to member by name.
-
-        Returns:
-            True if role was added, False if role doesn't exist or member already has it
         """
         if RoleManager.has_role(member, role_name):
             return False
@@ -56,9 +49,6 @@ class RoleManager:
     async def remove_role(member: discord.Member, role_name: str) -> bool:
         """
         Remove a role from member by name.
-
-        Returns:
-            True if role was removed, False if role doesn't exist or member doesn't have it
         """
         if not RoleManager.has_role(member, role_name):
             return False
@@ -73,9 +63,6 @@ class RoleManager:
     async def remove_roles(member: discord.Member, role_names: List[str]) -> int:
         """
         Remove multiple roles from member.
-
-        Returns:
-            Number of roles successfully removed
         """
         roles_to_remove = []
         for role_name in role_names:
@@ -102,11 +89,6 @@ class RoleManager:
     async def sync_user_roles(member: discord.Member, is_registered: bool, is_checked_in: bool) -> None:
         """
         Sync member's roles based on their registration/check-in status.
-
-        Args:
-            member: Discord member to sync
-            is_registered: Whether user should have registered role
-            is_checked_in: Whether user should have checked-in role
         """
         # Handle registered role
         if is_registered and not RoleManager.is_registered(member):
@@ -136,9 +118,6 @@ class RoleManager:
     async def remove_role_from_all(guild: discord.Guild, role_name: str) -> int:
         """
         Remove a role from all members who have it.
-
-        Returns:
-            Number of members the role was removed from
         """
         role = RoleManager.get_role(guild, role_name)
         if not role:

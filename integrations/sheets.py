@@ -73,19 +73,9 @@ except Exception as e:
     client = None
 
 
-def get_sheet_for_guild(guild_id: str, worksheet: Optional[str] = None):
+async def get_sheet_for_guild(guild_id: str, worksheet: Optional[str] = None):
     """
     Open the correct Google Sheet with proper error handling.
-
-    Args:
-        guild_id: Guild ID
-        worksheet: Worksheet name (defaults to "GAL Database")
-
-    Returns:
-        Worksheet object
-
-    Raises:
-        SheetsError: If sheet cannot be opened
     """
     if not client:
         raise SheetsError("Google Sheets client not initialized")
@@ -109,16 +99,30 @@ def get_sheet_for_guild(guild_id: str, worksheet: Optional[str] = None):
         key = key_part.split("/")[0]
         worksheet_name = worksheet or "GAL Database"
 
-        spreadsheet = client.open_by_key(key)
-        return spreadsheet.worksheet(worksheet_name)
+        # Add retry logic for transient failures
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                spreadsheet = client.open_by_key(key)
+                return spreadsheet.worksheet(worksheet_name)
+            except gspread.exceptions.APIError as e:
+                if e.response.status_code == 429 and attempt < max_retries - 1:
+                    # Rate limited, wait and retry
+                    import asyncio
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+                raise
 
     except gspread.SpreadsheetNotFound:
+        logging.error(f"Spreadsheet not found or access denied for guild {guild_id}")
         raise SheetsError(f"Spreadsheet not found or access denied for guild {guild_id}")
     except gspread.WorksheetNotFound:
+        logging.error(f"Worksheet '{worksheet_name}' not found for guild {guild_id}")
         raise SheetsError(f"Worksheet '{worksheet_name}' not found")
     except Exception as e:
         if isinstance(e, SheetsError):
             raise
+        logging.error(f"Failed to open sheet for guild {guild_id}: {e}", exc_info=True)
         raise SheetsError(f"Failed to open sheet for guild {guild_id}: {e}")
 
 
@@ -132,16 +136,6 @@ MAX_RETRIES = 5
 async def retry_until_successful(fn, *args, **kwargs):
     """
     Retry function with exponential backoff and comprehensive error handling.
-
-    Args:
-        fn: Function to retry
-        *args, **kwargs: Arguments for the function
-
-    Returns:
-        Function result
-
-    Raises:
-        SheetsError: If all retries are exhausted
     """
     global SHEETS_BASE_DELAY
     delay = SHEETS_BASE_DELAY
@@ -209,12 +203,6 @@ cache_lock = asyncio.Lock()
 def ordinal_suffix(n: Union[int, str]) -> str:
     """
     Get ordinal suffix for a number.
-
-    Args:
-        n: Number to get suffix for
-
-    Returns:
-        Ordinal suffix ("st", "nd", "rd", "th")
     """
     try:
         n = int(n)
@@ -229,15 +217,6 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     """
     Refresh the sheet cache with comprehensive error handling.
     Processes waitlist after cache update to fill any open spots.
-
-    Args:
-        bot: Discord bot instance (optional)
-
-    Returns:
-        Tuple of (num_changes, total_users)
-
-    Raises:
-        SheetsError: If cache refresh fails
     """
     # Only print at start if this is not a recursive call
     if not hasattr(sheet_cache, "_skip_waitlist_processing"):
@@ -269,7 +248,8 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                 raise SheetsError(f"Missing configuration fields: {missing_fields}")
 
             maxp = cfg.get("max_players", 9999)
-            sheet = get_sheet_for_guild(gid, "GAL Database")
+            # FIX: await the async function
+            sheet = await get_sheet_for_guild(gid, "GAL Database")
 
             # Get column indexes
             hline = cfg["header_line_num"]
@@ -433,18 +413,6 @@ async def find_or_register_user(
 ) -> int:
     """
     Find existing user or register new user with comprehensive error handling.
-
-    Args:
-        discord_tag: User's Discord tag
-        ign: In-game name
-        guild_id: Guild ID
-        team_name: Team name for double-up mode
-
-    Returns:
-        Row number in sheet (1-based)
-
-    Raises:
-        SheetsError: If operation fails
     """
     if not discord_tag or not ign:
         raise ValueError("Discord tag and IGN are required")
@@ -457,7 +425,8 @@ async def find_or_register_user(
         gid = str(guild_id) if guild_id else "unknown"
         mode = get_event_mode_for_guild(gid)
         cfg = get_sheet_settings(mode)
-        sheet = get_sheet_for_guild(gid, "GAL Database")
+        # FIX: await the async function
+        sheet = await get_sheet_for_guild(gid, "GAL Database")
 
         # Update existing user
         if existing:
@@ -568,16 +537,6 @@ async def unregister_user(
 ) -> bool:
     """
     Completely remove user from sheet with proper error handling.
-
-    Args:
-        discord_tag: User's Discord tag
-        guild_id: Guild ID
-
-    Returns:
-        True if user was unregistered, False if not found
-
-    Raises:
-        SheetsError: If operation fails
     """
     if not discord_tag:
         raise ValueError("Discord tag is required")
@@ -594,7 +553,8 @@ async def unregister_user(
         gid = str(guild_id) if guild_id else "unknown"
         mode = get_event_mode_for_guild(gid)
         cfg = get_sheet_settings(mode)
-        sheet = get_sheet_for_guild(gid, "GAL Database")
+        # FIX: await the async function
+        sheet = await get_sheet_for_guild(gid, "GAL Database")
 
         # Verify user is still in the sheet at expected location
         try:
@@ -649,16 +609,6 @@ async def mark_checked_in_async(
 ) -> bool:
     """
     Mark user as checked in with proper validation.
-
-    Args:
-        discord_tag: User's Discord tag
-        guild_id: Guild ID
-
-    Returns:
-        True if successfully checked in, False if not registered
-
-    Raises:
-        SheetsError: If operation fails
     """
     return await _update_checkin_status(discord_tag, True, guild_id)
 
@@ -669,16 +619,6 @@ async def unmark_checked_in_async(
 ) -> bool:
     """
     Mark user as not checked in.
-
-    Args:
-        discord_tag: User's Discord tag
-        guild_id: Guild ID
-
-    Returns:
-        True if successfully unchecked, False if not found
-
-    Raises:
-        SheetsError: If operation fails
     """
     return await _update_checkin_status(discord_tag, False, guild_id)
 
@@ -690,17 +630,6 @@ async def _update_checkin_status(
 ) -> bool:
     """
     Internal function to update check-in status.
-
-    Args:
-        discord_tag: User's Discord tag
-        checked_in: Whether user should be checked in
-        guild_id: Guild ID
-
-    Returns:
-        True if successful, False if user not found or not registered
-
-    Raises:
-        SheetsError: If operation fails
     """
     if not discord_tag:
         raise ValueError("Discord tag is required")
@@ -756,23 +685,13 @@ async def _update_checkin_status(
 async def reset_registered_roles_and_sheet(guild, channel) -> int:
     """
     Reset all registration data - clear all columns except headers.
-    FIXED: Only clears from header_line + 1 to header_line + max_players.
-
-    Args:
-        guild: Discord guild
-        channel: Channel for logging
-
-    Returns:
-        Number of rows cleared
-
-    Raises:
-        SheetsError: If operation fails
     """
     try:
         gid = str(guild.id)
         mode = get_event_mode_for_guild(gid)
         cfg = get_sheet_settings(mode)
-        sheet = get_sheet_for_guild(gid, "GAL Database")
+        # FIX: await the async function
+        sheet = await get_sheet_for_guild(gid, "GAL Database")
 
         # Get header line and max players
         header_line = cfg["header_line_num"]
@@ -840,23 +759,13 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
 async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
     """
     Reset only check-in data - set checkin column to False.
-    FIXED: Only clears from header_line + 1 to header_line + max_players.
-
-    Args:
-        guild: Discord guild
-        channel: Channel for logging
-
-    Returns:
-        Number of rows cleared
-
-    Raises:
-        SheetsError: If operation fails
     """
     try:
         gid = str(guild.id)
         mode = get_event_mode_for_guild(gid)
         cfg = get_sheet_settings(mode)
-        sheet = get_sheet_for_guild(gid, "GAL Database")
+        # FIX: await the async function
+        sheet = await get_sheet_for_guild(gid, "GAL Database")
 
         col = cfg["checkin_col"]
         header_line = cfg["header_line_num"]
@@ -895,9 +804,6 @@ async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
 async def health_check() -> Dict[str, Any]:
     """
     Perform health check on sheets integration.
-
-    Returns:
-        Dict with health status information
     """
     health_status = {
         "client_initialized": client is not None,

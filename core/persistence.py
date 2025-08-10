@@ -189,12 +189,6 @@ persisted = load_persisted()
 def set_persisted_msg(guild_id: Union[str, int], key: str, channel_id: int, msg_id: int) -> None:
     """
     Store [channel_id, msg_id] for the given guild/key.
-
-    Args:
-        guild_id: Guild ID
-        key: Message key (e.g., "registration", "checkin")
-        channel_id: Channel ID where message is stored
-        msg_id: Message ID
     """
     gid = str(guild_id)
     if gid not in persisted:
@@ -210,13 +204,6 @@ def get_persisted_msg(guild_id: Union[str, int], key: str) -> Tuple[Optional[int
     """
     Return (channel_id, msg_id) tuple, or (None, None) if missing.
     Supports legacy format where only msg_id was stored.
-
-    Args:
-        guild_id: Guild ID
-        key: Message key
-
-    Returns:
-        Tuple of (channel_id, msg_id) or (None, None)
     """
     guild_data = persisted.get(str(guild_id), {})
     value = guild_data.get(key)
@@ -233,12 +220,6 @@ def get_persisted_msg(guild_id: Union[str, int], key: str) -> Tuple[Optional[int
 def get_event_mode_for_guild(guild_id: Union[str, int]) -> str:
     """
     Get event mode for guild.
-
-    Args:
-        guild_id: Guild ID
-
-    Returns:
-        Event mode ("normal" or "doubleup")
     """
     gid = str(guild_id)
     return persisted.get(gid, {}).get("event_mode", "normal")
@@ -247,10 +228,6 @@ def get_event_mode_for_guild(guild_id: Union[str, int]) -> str:
 def set_event_mode_for_guild(guild_id: Union[str, int], mode: str) -> None:
     """
     Set event mode for guild.
-
-    Args:
-        guild_id: Guild ID
-        mode: Event mode ("normal" or "doubleup")
     """
     if mode not in ["normal", "doubleup"]:
         raise ValueError(f"Invalid event mode: {mode}")
@@ -268,13 +245,6 @@ def set_event_mode_for_guild(guild_id: Union[str, int], mode: str) -> None:
 def get_schedule(guild_id: Union[str, int], key: str) -> Optional[str]:
     """
     Get scheduled time for a specific key.
-
-    Args:
-        guild_id: Guild ID
-        key: Schedule key
-
-    Returns:
-        ISO datetime string or None
     """
     data = persisted.get(str(guild_id), {})
     return data.get(f"{key}_schedule")
@@ -283,11 +253,6 @@ def get_schedule(guild_id: Union[str, int], key: str) -> Optional[str]:
 def set_schedule(guild_id: Union[str, int], key: str, dtstr: Optional[str]) -> None:
     """
     Set scheduled time for a specific key.
-
-    Args:
-        guild_id: Guild ID
-        key: Schedule key
-        dtstr: ISO datetime string or None to clear
     """
     gid = str(guild_id)
     if gid not in persisted:
@@ -324,9 +289,6 @@ def migrate_legacy_format() -> None:
 def cleanup_old_data(days: int = 30) -> None:
     """
     Clean up old persisted data (only works with database).
-
-    Args:
-        days: Number of days to keep data
     """
     if not connection_pool:
         logging.info("Database not available, skipping cleanup")

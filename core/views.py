@@ -302,7 +302,6 @@ async def complete_registration(
 
 class WaitlistTeamChoiceView(discord.ui.View):
     """View for choosing team name when adding to waitlist"""
-
     def __init__(self, guild, member, ign, pronouns, suggested_team, user_team, alt_igns, existing_position):
         super().__init__(timeout=60)
         self.guild = guild
@@ -461,7 +460,6 @@ class ChannelCheckOutButton(discord.ui.Button):
 
 class DMUnregisterButton(discord.ui.Button):
     """DM button for unregistering only"""
-
     def __init__(self, guild: discord.Guild, member: discord.Member):
         super().__init__(
             label="Unregister",
@@ -1033,12 +1031,13 @@ class RegistrationModal(discord.ui.Modal):
             overwrites = reg_channel.overwrites_for(angel_role)
             if not overwrites.view_channel:
                 embed = embed_from_cfg("registration_closed")
-                await interaction.response.send_message(embed=embed, ephemeral=True)
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 return
 
         try:
             if mode == "doubleup" and not getattr(self, "bypass_similarity", False):
-                sheet = get_sheet_for_guild(guild_id, "GAL Database")
+                # FIX: await the coroutine
+                sheet = await get_sheet_for_guild(guild_id, "GAL Database")
                 team_col_raw = await retry_until_successful(sheet.col_values, 9)
                 user_team_value = team_value.strip().lower()
 
@@ -1052,9 +1051,7 @@ class RegistrationModal(discord.ui.Modal):
                             team_col.append(normalized)
                             norm_to_original[normalized] = t.strip()
 
-                result = process.extractOne(
-                    user_team_value, team_col, scorer=fuzz.ratio, score_cutoff=75
-                )
+                result = process.extractOne(user_team_value, team_col, scorer=fuzz.ratio, score_cutoff=75)
                 suggested_team = norm_to_original[result[0]] if result else None
 
                 if suggested_team:
@@ -1197,6 +1194,7 @@ async def update_registration_embed(
         msg_id: int,
         guild: discord.Guild
 ):
+    """Update registration embed with current registered users."""
     is_open = ChannelManager.get_channel_state(guild)['registration_open']
 
     key = "registration" if is_open else "registration_closed"
@@ -1204,8 +1202,11 @@ async def update_registration_embed(
 
     try:
         msg = await channel.fetch_message(msg_id)
-    except:
-        logging.error(f"Could not fetch registration message {msg_id}")
+    except discord.NotFound:
+        logging.error(f"Registration message {msg_id} not found in channel {channel.id}")
+        return
+    except discord.HTTPException as e:
+        logging.error(f"Failed to fetch registration message {msg_id}: {e}")
         return
 
     if not is_open:
@@ -1224,6 +1225,7 @@ async def update_registration_embed(
         desc += f" \n⏰ Registration closes at <t:{ts}:F>"
     desc += "\n\n"
 
+    # Use the centralized helper instead of duplicate logic
     lines = EmbedHelper.build_registration_list_lines(users, mode)
 
     embed = discord.Embed(
@@ -1246,6 +1248,7 @@ async def update_checkin_embed(
         msg_id: int,
         guild: discord.Guild
 ):
+    """Update check-in embed with current check-in status."""
     ci_ch = discord.utils.get(guild.text_channels, name=CHECK_IN_CHANNEL)
     reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
     is_open = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
@@ -1255,8 +1258,11 @@ async def update_checkin_embed(
 
     try:
         msg = await channel.fetch_message(msg_id)
-    except:
-        logging.error(f"Could not fetch check-in message {msg_id}")
+    except discord.NotFound:
+        logging.error(f"Check-in message {msg_id} not found in channel {channel.id}")
+        return
+    except discord.HTTPException as e:
+        logging.error(f"Failed to fetch check-in message {msg_id}: {e}")
         return
 
     if not is_open:
@@ -1295,6 +1301,10 @@ async def update_checkin_embed(
 
     mode = get_event_mode_for_guild(str(guild.id))
 
+    # Calculate team stats for doubleup mode
+    fully_checked_teams = 0
+    total_teams = 0
+
     if mode == "doubleup":
         teams_data = {}
         for tag, tpl in all_registered:
@@ -1303,25 +1313,18 @@ async def update_checkin_embed(
                 teams_data[team_name] = []
             teams_data[team_name].append((tag, tpl))
 
-        fully_checked_teams = 0
         total_teams = len(teams_data)
 
         for team_name, members in teams_data.items():
             if len(members) >= 2:
-                team_fully_checked = True
-                for tag, member_data in members:
-                    ci_status = is_true(member_data[3]) if len(member_data) > 3 else False
-                    if not ci_status:
-                        team_fully_checked = False
-                        break
-
+                team_fully_checked = all(
+                    is_true(member_data[3]) if len(member_data) > 3 else False
+                    for tag, member_data in members
+                )
                 if team_fully_checked:
                     fully_checked_teams += 1
 
-    else:
-        total_teams = 0
-        fully_checked_teams = 0
-
+    # Use centralized helper for list building
     lines = EmbedHelper.build_checkin_list_lines(all_registered, mode)
 
     new_desc = desc + ("\n".join(lines) if lines else "")
@@ -1344,6 +1347,7 @@ async def update_checkin_embed(
 
     view = CheckInView(guild)
 
+    # Remove reminder button if everyone is checked in
     if total_reg > 0 and total_ci == total_reg:
         new_view = discord.ui.View(timeout=None)
         for item in view.children:

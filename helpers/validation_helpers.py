@@ -1,7 +1,4 @@
 # helpers/validation_helpers.py
-"""
-Common validation patterns used throughout the bot.
-"""
 
 from typing import Optional, Tuple
 
@@ -17,7 +14,6 @@ from .sheet_helpers import SheetOperations
 
 class ValidationError:
     """Represents a validation error with an associated embed."""
-
     def __init__(self, embed_key: str, **kwargs):
         self.embed_key = embed_key
         self.kwargs = kwargs
@@ -29,7 +25,6 @@ class ValidationError:
 
 class Validators:
     """Common validation patterns for the bot."""
-
     @staticmethod
     async def validate_registration_capacity(
             guild_id: str,
@@ -38,15 +33,6 @@ class Validators:
     ) -> Optional[ValidationError]:
         """
         Validate if registration is within capacity limits.
-        FIXED: Allow joining existing teams even when max teams reached.
-
-        Args:
-            guild_id: Guild ID
-            team_name: Team name to check (for double-up mode)
-            exclude_discord_tag: Discord tag to exclude from count (for updates)
-
-        Returns:
-            ValidationError if capacity exceeded, None if valid
         """
         mode = get_event_mode_for_guild(guild_id)
         cfg = get_sheet_settings(mode)
@@ -125,9 +111,6 @@ class Validators:
     ) -> Optional[ValidationError]:
         """
         Validate if user has staff permissions.
-
-        Returns:
-            ValidationError if no permission, None if valid
         """
         if not RoleManager.has_allowed_role_from_interaction(interaction):
             return ValidationError("permission_denied")
@@ -141,14 +124,6 @@ class Validators:
     ) -> Optional[ValidationError]:
         """
         Validate member's registration status.
-
-        Args:
-            member: Discord member to check
-            require_registered: If True, member must be registered
-            require_not_registered: If True, member must NOT be registered
-
-        Returns:
-            ValidationError if validation fails, None if valid
         """
         is_registered = RoleManager.is_registered(member)
 
@@ -168,14 +143,6 @@ class Validators:
     ) -> Optional[ValidationError]:
         """
         Validate member's check-in status.
-
-        Args:
-            member: Discord member to check
-            require_checked_in: If True, member must be checked in
-            require_not_checked_in: If True, member must NOT be checked in
-
-        Returns:
-            ValidationError if validation fails, None if valid
         """
         is_checked_in = RoleManager.is_checked_in(member)
 
@@ -194,13 +161,6 @@ class Validators:
     ) -> bool:
         """
         Run multiple validations and respond with error if any fail.
-
-        Args:
-            interaction: Discord interaction
-            validations: ValidationError objects or None
-
-        Returns:
-            True if all validations passed, False if any failed
         """
         for validation in validations:
             if validation:
@@ -225,9 +185,6 @@ class Validators:
     ) -> Tuple[Optional[discord.TextChannel], Optional[discord.Role], Optional[ValidationError]]:
         """
         Validate that both channel and role exist.
-
-        Returns:
-            Tuple of (channel, role, error) - error is None if both exist
         """
         channel = ChannelManager.get_channel(guild, channel_name)
         role = RoleManager.get_role(guild, role_name)
@@ -249,13 +206,6 @@ class Validators:
     ) -> Optional[ValidationError]:
         """
         Validate that a channel is open.
-
-        Args:
-            guild: Discord guild
-            channel_type: Either "registration" or "checkin"
-
-        Returns:
-            ValidationError if channel is closed, None if open
         """
         channel, role = ChannelManager.get_channel_and_role(guild, channel_type)
         if not channel or not role:
@@ -273,9 +223,6 @@ class Validators:
     def validate_event_mode(mode: str) -> Optional[ValidationError]:
         """
         Validate event mode value.
-
-        Returns:
-            ValidationError if invalid mode, None if valid
         """
         valid_modes = ["normal", "doubleup"]
         if mode.lower() not in valid_modes:

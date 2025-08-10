@@ -24,7 +24,6 @@ class WaitlistError(Exception):
 
 class WaitlistManager:
     """Manages waitlist functionality with improved database/file persistence."""
-
     WAITLIST_FILE = os.path.join(os.path.dirname(__file__), "..", "waitlist_data.json")
 
     # Database connection management
@@ -199,13 +198,6 @@ class WaitlistManager:
     async def _find_similar_team(team_name: str, guild_id: str) -> Optional[str]:
         """
         Find a similar team name from both registered players and waitlist.
-
-        Args:
-            team_name: Team name to check
-            guild_id: Guild ID
-
-        Returns:
-            Suggested team name if similar match found, None otherwise
         """
         if not team_name:
             return None
@@ -260,20 +252,6 @@ class WaitlistManager:
     ) -> int:
         """
         Add a user to the waitlist with validation and team similarity check.
-
-        Args:
-            guild: Discord guild
-            member: Discord member
-            ign: In-game name
-            pronouns: User pronouns
-            team_name: Team name (for double-up mode)
-            alt_igns: Alternative IGNs
-
-        Returns:
-            Position in waitlist (1-based)
-
-        Raises:
-            WaitlistError: If operation fails
         """
         if not all([guild, member, ign]):
             raise ValueError("Guild, member, and IGN are required")
@@ -341,16 +319,6 @@ class WaitlistManager:
     async def remove_from_waitlist(guild_id: str, discord_tag: str) -> bool:
         """
         Remove a user from the waitlist.
-
-        Args:
-            guild_id: Guild ID
-            discord_tag: Discord tag to remove
-
-        Returns:
-            True if user was removed, False if not found
-
-        Raises:
-            WaitlistError: If operation fails
         """
         if not guild_id or not discord_tag:
             raise ValueError("Guild ID and discord tag are required")
@@ -434,9 +402,6 @@ class WaitlistManager:
     ) -> bool:
         """
         Update a user's waitlist entry while preserving their position.
-
-        Returns:
-            True if updated, False if not found
         """
         if not all([guild_id, discord_tag, ign]):
             raise ValueError("Guild ID, discord tag, and IGN are required")
@@ -508,14 +473,6 @@ class WaitlistManager:
     async def process_waitlist(guild: discord.Guild) -> List[Dict]:
         """
         Process the waitlist with smart team pairing and priority logic.
-
-        Priority order:
-        1. Team pairs that can be registered together (if 2+ spots available)
-        2. Individuals joining existing teams with space
-        3. Individuals in FIFO order
-
-        Returns:
-            List of registered user info
         """
         if not guild:
             raise ValueError("Guild is required")

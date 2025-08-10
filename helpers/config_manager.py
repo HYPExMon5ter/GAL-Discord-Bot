@@ -1,7 +1,4 @@
 # helpers/config_manager.py
-"""
-Configuration management helper for dynamic config updates.
-"""
 
 from typing import Dict, Any
 
@@ -18,12 +15,6 @@ class ConfigManager:
     def reload_config(config_path: str = "config.yaml") -> bool:
         """
         Reload configuration from file.
-
-        Args:
-            config_path: Path to config file
-
-        Returns:
-            True if successful, False otherwise
         """
         try:
             with open(config_path, "r", encoding="utf-8") as f:
@@ -58,9 +49,6 @@ class ConfigManager:
     def get_rich_presence() -> tuple[discord.ActivityType, str]:
         """
         Get rich presence configuration.
-
-        Returns:
-            Tuple of (activity_type, message)
         """
         presence_cfg = _FULL_CFG.get("rich_presence", {})
         pres_type = presence_cfg.get("type", "PLAYING").upper()
@@ -94,9 +82,6 @@ class ConfigManager:
     def validate_config() -> Dict[str, list[str]]:
         """
         Validate configuration for common issues.
-
-        Returns:
-            Dict mapping section names to list of issues found
         """
         issues = {
             "embeds": [],
@@ -148,10 +133,6 @@ class ConfigManager:
         """
         Update an embed template in memory (not persisted to file).
         Useful for dynamic embed updates.
-
-        Args:
-            key: Embed key to update
-            **kwargs: Fields to update (title, description, color)
         """
         if key not in EMBEDS_CFG:
             EMBEDS_CFG[key] = {}
@@ -164,9 +145,6 @@ class ConfigManager:
     async def reload_and_update_all(bot: discord.Client) -> Dict[str, bool]:
         """
         Reload config and update all necessary components.
-
-        Returns:
-            Dict with status of each operation
         """
         from helpers import EmbedHelper
 

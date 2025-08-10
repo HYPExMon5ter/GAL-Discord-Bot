@@ -1,9 +1,5 @@
 # helpers/embed_helpers.py
 
-"""
-Centralized helper functions for updating embeds across the bot.
-"""
-
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Callable, Dict, List
@@ -50,15 +46,6 @@ class EmbedHelper:
     ) -> bool:
         """
         Generic helper to update any persisted embed.
-
-        Args:
-            guild: Discord guild
-            persist_key: Key for persisted message (e.g., "registration", "checkin")
-            update_func: Async function that takes (channel, msg_id, guild) as params
-            error_context: Context string for error logging
-
-        Returns:
-            True if update was successful, False otherwise
         """
         chan_id, msg_id = get_persisted_msg(guild.id, persist_key)
 
@@ -80,9 +67,6 @@ class EmbedHelper:
     async def update_all_guild_embeds(guild: discord.Guild) -> Dict[str, bool]:
         """
         Update all live embeds for a guild.
-
-        Returns:
-            Dict mapping embed names to success status
         """
         # Import here to avoid circular imports
         from core.views import update_registration_embed, update_checkin_embed
@@ -119,18 +103,6 @@ class EmbedHelper:
     ) -> Optional[discord.Message]:
         """
         Create and persist an embed message.
-
-        Args:
-            guild: Discord guild
-            channel: Channel to send embed to
-            embed: Embed to send
-            view: View to attach to the message
-            persist_key: Key to persist the message under
-            pin: Whether to pin the message
-            announce_pin: Whether to announce the pin
-
-        Returns:
-            The created message or None if failed
         """
         from core.persistence import set_persisted_msg
 
@@ -162,14 +134,6 @@ class EmbedHelper:
     ) -> int:
         """
         Refresh DM action views for specified users or all cached users.
-
-        Args:
-            guild: Discord guild
-            discord_tags: Optional list of specific discord tags to update.
-                         If None, updates all users in cache.
-
-        Returns:
-            Number of successfully updated DMs
         """
         from integrations.sheets import sheet_cache, cache_lock
         from core.views import DMActionView
@@ -211,7 +175,7 @@ class EmbedHelper:
     def build_registration_list_lines(users: List[tuple], mode: str) -> List[str]:
         """
         Build formatted lines for registration list display with team completeness sorting.
-        Full teams (2+ members) are shown first, then partial teams, then unassigned players.
+        Full teams (2+ members) are shown first, then partial teams.
         """
         import random
 
@@ -313,7 +277,7 @@ class EmbedHelper:
     def build_checkin_list_lines(checked_in_users: List[tuple], mode: str) -> List[str]:
         """
         Build formatted lines showing ALL registered users with check-in status.
-        Shows ready teams first, then non-ready teams, all in a single list format.
+        Shows ready teams first, then non-ready teams.
         """
 
         lines = []

@@ -1,7 +1,4 @@
 # helpers/channel_helpers.py
-"""
-Centralized channel management utilities.
-"""
 
 from typing import Optional, Tuple, Dict
 
@@ -26,13 +23,6 @@ class ChannelManager:
     ) -> Tuple[Optional[discord.TextChannel], Optional[discord.Role]]:
         """
         Get channel and associated role based on channel type.
-
-        Args:
-            guild: Discord guild
-            channel_type: Either "registration" or "checkin"
-
-        Returns:
-            Tuple of (channel, role) or (None, None) if not found
         """
         if channel_type == "registration":
             channel = ChannelManager.get_channel(guild, REGISTRATION_CHANNEL)
@@ -63,15 +53,6 @@ class ChannelManager:
     ) -> bool:
         """
         Set channel visibility for a role.
-
-        Args:
-            channel: Channel to modify
-            role: Role to set permissions for
-            visible: Whether channel should be visible
-            ping_role: Whether to ping the role when making visible
-
-        Returns:
-            True if permissions were changed, False if already in desired state
         """
         overwrites = channel.overwrites_for(role)
         current_visible = bool(overwrites.view_channel)
@@ -99,14 +80,6 @@ class ChannelManager:
     ) -> Optional[bool]:
         """
         Toggle channel visibility for its associated role.
-
-        Args:
-            guild: Discord guild
-            channel_type: Either "registration" or "checkin"
-            ping_role: Whether to ping role when opening
-
-        Returns:
-            True if now visible, False if now hidden, None if channel/role not found
         """
         channel, role = ChannelManager.get_channel_and_role(guild, channel_type)
         if not channel or not role:
@@ -123,9 +96,6 @@ class ChannelManager:
     def get_channel_state(guild: discord.Guild) -> Dict[str, bool]:
         """
         Get current state of registration and check-in channels.
-
-        Returns:
-            Dict with 'registration_open' and 'checkin_open' booleans
         """
         state = {
             'registration_open': False,
@@ -152,14 +122,6 @@ class ChannelManager:
     ) -> bool:
         """
         Open a channel immediately.
-
-        Args:
-            guild: Discord guild
-            channel_type: Either "registration" or "checkin"
-            ping_role: Whether to ping the role
-
-        Returns:
-            True if successful, False otherwise
         """
         channel, role = ChannelManager.get_channel_and_role(guild, channel_type)
         if not channel or not role:
@@ -176,13 +138,6 @@ class ChannelManager:
     ) -> bool:
         """
         Close a channel immediately.
-
-        Args:
-            guild: Discord guild
-            channel_type: Either "registration" or "checkin"
-
-        Returns:
-            True if successful, False otherwise
         """
         channel, role = ChannelManager.get_channel_and_role(guild, channel_type)
         if not channel or not role:

@@ -1,4 +1,4 @@
-# core/events.py - Fixed with complete error handling
+# core/events.py
 
 import asyncio
 import logging
@@ -182,14 +182,13 @@ async def _handle_event_schedule(bot, event, is_edit: bool):
 def setup_events(bot: commands.Bot):
     @bot.event
     async def on_ready():
-        print(f"[on_ready] Logged in as {bot.user}")
+        #print(f"[on_ready] Logged in as {bot.user}")
         logging.info(f"Bot logged in as {bot.user} (ID: {bot.user.id})")
 
         try:
             # Update command IDs first
-            print("[on_ready] Starting command ID update...")
             await update_gal_command_ids(bot)
-            print("[on_ready] • GAL_COMMAND_IDs populated, help links ready")
+            logging.info("Updated command IDs")
 
             # per-guild startup
             for guild in bot.guilds:
@@ -197,106 +196,86 @@ def setup_events(bot: commands.Bot):
                     logging.info(f"Processing guild: {guild.name} ({guild.id})")
 
                     # Refresh cache for this guild
-                    print(f"[on_ready] Refreshing cache for guild {guild.name}...")
                     await refresh_sheet_cache(bot=bot)
-                    print(f"[on_ready] • Cache refreshed for guild {guild.name} ({guild.id})")
+                    logging.info(f"Cache refreshed for guild {guild.name} ({guild.id})")
 
                     # Test import of views
-                    print("[on_ready] Testing view imports...")
                     try:
                         from core.views import RegistrationView, CheckInView, PersistentRegisteredListView
-                        print("[on_ready] • View imports successful")
                     except Exception as e:
-                        print(f"[on_ready] ERROR importing views: {e}")
                         logging.error(f"Failed to import views: {e}")
                         traceback.print_exc()
                         continue
 
                     # Add persistent registered list view
-                    print("[on_ready] Adding PersistentRegisteredListView...")
                     try:
                         bot.add_view(PersistentRegisteredListView(guild))
-                        print(f"[on_ready] • Added PersistentRegisteredListView for guild {guild.name}")
                     except Exception as e:
-                        print(f"[on_ready] ERROR adding PersistentRegisteredListView: {e}")
                         logging.error(f"Failed to add PersistentRegisteredListView: {e}")
                         traceback.print_exc()
 
                     # Add registration view if exists
-                    print("[on_ready] Checking registration view...")
                     try:
                         reg_chan_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
-                        print(f"[on_ready] Registration persisted: chan_id={reg_chan_id}, msg_id={reg_msg_id}")
+                        logging.info(f"Registration persisted: chan_id={reg_chan_id}, msg_id={reg_msg_id}")
                         if reg_chan_id and reg_msg_id:
                             bot.add_view(RegistrationView(reg_msg_id, guild))
-                            print(f"[on_ready] • Added persistent RegistrationView for message {reg_msg_id}")
+                            logging.info(f"Added persistent RegistrationView for message {reg_msg_id}")
                         else:
-                            print("[on_ready] • No registration message to attach view to")
+                            logging.warning("No registration message to attach view to")
                     except Exception as e:
-                        print(f"[on_ready] ERROR with registration view: {e}")
                         logging.error(f"Failed to add registration view: {e}")
                         traceback.print_exc()
 
                     # Add check-in view if exists
-                    print("[on_ready] Checking check-in view...")
                     try:
                         ci_chan_id, ci_msg_id = get_persisted_msg(guild.id, "checkin")
-                        print(f"[on_ready] Check-in persisted: chan_id={ci_chan_id}, msg_id={ci_msg_id}")
+                        logging.info(f"Check-in persisted: chan_id={ci_chan_id}, msg_id={ci_msg_id}")
                         if ci_chan_id and ci_msg_id:
                             bot.add_view(CheckInView(guild))
-                            print(f"[on_ready] • Added persistent CheckInView for message {ci_msg_id}")
+                            logging.info(f"Added persistent CheckInView for message {ci_msg_id}")
                         else:
-                            print("[on_ready] • No check-in message to attach view to")
+                            logging.warning("No check-in message to attach view to")
                     except Exception as e:
-                        print(f"[on_ready] ERROR with check-in view: {e}")
                         logging.error(f"Failed to add check-in view: {e}")
                         traceback.print_exc()
 
                     # Update all embeds - use the helper
-                    print("[on_ready] Updating embeds...")
                     try:
                         embed_results = await EmbedHelper.update_all_guild_embeds(guild)
-                        print(f"[on_ready] • Live embeds updated for guild {guild.name}: {embed_results}")
+                        logging.info(f"Live embeds updated for guild {guild.name}: {embed_results}")
                     except Exception as e:
-                        print(f"[on_ready] ERROR updating embeds: {e}")
                         logging.error(f"Failed to update embeds: {e}")
                         traceback.print_exc()
 
-                    print(f"[on_ready] Completed processing for guild {guild.name}")
+                    logging.info(f"Completed processing for guild {guild.name}")
 
                 except Exception as e:
-                    print(f"[on_ready] ERROR processing guild {guild.name}: {e}")
                     logging.error(f"Failed to process guild {guild.name}: {e}")
                     traceback.print_exc()
 
             # Apply rich presence using ConfigManager
-            print("[on_ready] Setting rich presence...")
             try:
                 await ConfigManager.apply_rich_presence(bot)
-                print(f"[on_ready] • Rich presence set")
+                logging.info(f"Rich presence set")
             except Exception as e:
-                print(f"[on_ready] ERROR setting rich presence: {e}")
                 logging.error(f"Failed to set rich presence: {e}")
                 traceback.print_exc()
 
             # Start cache refresh loop if not already running
-            print("[on_ready] Starting cache refresh loop...")
             try:
                 if not hasattr(bot, '_cache_refresh_task'):
                     bot._cache_refresh_task = asyncio.create_task(cache_refresh_loop(bot))
-                    print("[on_ready] • Started cache refresh background task")
+                    logging.info("Started cache refresh background task")
                 else:
-                    print("[on_ready] • Cache refresh task already running")
+                    logging.warning("Cache refresh task already running")
             except Exception as e:
-                print(f"[on_ready] ERROR starting cache refresh: {e}")
                 logging.error(f"Failed to start cache refresh loop: {e}")
                 traceback.print_exc()
 
-            logging.info("Bot on_ready completed successfully")
-            print("[on_ready] ✅ Bot is fully ready!")
+            logging.info("✅ Bot is fully ready!")
 
         except Exception as e:
-            print(f"[on_ready] CRITICAL ERROR: {e}")
             logging.error(f"Critical error in on_ready: {e}")
             traceback.print_exc()
 

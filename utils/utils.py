@@ -51,17 +51,7 @@ async def toggle_persisted_channel(
         ping_role: bool = True,
 ) -> None:
     """
-    Universal "open/close channel + update embed" helper with error handling.
-
-    Args:
-        interaction: Discord interaction
-        persist_key: Key for persisted message
-        channel_name: Name of channel to toggle
-        role_name: Name of role to set permissions for
-        ping_role: Whether to ping role when opening
-
-    Raises:
-        UtilsError: If operation fails
+    Universal "open/close channel + update embed" helper.
     """
     try:
         # Lazy imports to break circularity
@@ -161,14 +151,7 @@ async def toggle_persisted_channel(
 
 def resolve_member(guild: discord.Guild, discord_tag: str) -> Optional[discord.Member]:
     """
-    Find a Member in guild by tag, name, or display name with improved matching.
-
-    Args:
-        guild: Discord guild to search in
-        discord_tag: Discord tag, name, or display name to search for
-
-    Returns:
-        Discord member if found, None otherwise
+    Find a Member in guild by tag, name, or display name.
     """
     if not guild or not discord_tag:
         return None
@@ -205,13 +188,6 @@ def resolve_member(guild: discord.Guild, discord_tag: str) -> Optional[discord.M
 async def clear_user_dms(member: discord.Member, bot_user: discord.User) -> int:
     """
     Clear all previous DMs sent by the bot to a user.
-
-    Args:
-        member: Discord member to clear DMs for
-        bot_user: The bot's user object
-
-    Returns:
-        Number of messages deleted
     """
     deleted_count = 0
 
@@ -251,19 +227,6 @@ async def send_reminder_dms(
     """
     Send DM reminders to registered but not checked-in users.
     Clears previous DMs before sending new ones.
-
-    Args:
-        client: Discord client
-        guild: Guild to send reminders for
-        dm_embed: Embed to send in DMs
-        view_cls: View class to attach to DMs
-        skip_member_resolution: If True, skip trying to resolve members (for channel toggles)
-
-    Returns:
-        List of successfully DMed user strings
-
-    Raises:
-        UtilsError: If operation fails critically
     """
     if not guild or not dm_embed or not view_cls:
         raise ValueError("Guild, embed, and view class are required")
@@ -337,15 +300,7 @@ async def toggle_checkin_for_member(
         success_key: str,
 ) -> None:
     """
-    Toggle check-in status for a member with comprehensive error handling.
-
-    Args:
-        interaction: Discord interaction
-        checkin_fn: Function to call for check-in operation
-        success_key: Key for success embed
-
-    Raises:
-        UtilsError: If operation fails
+    Toggle check-in status for a member.
     """
     try:
         # Import here to avoid circular import
@@ -408,11 +363,7 @@ async def toggle_checkin_for_member(
 
 async def update_dm_action_views(guild: discord.Guild) -> None:
     """
-    Refresh DM action views for all users with error handling.
-    FIXED: Skip member resolution to avoid "Could not resolve member" errors during toggles.
-
-    Args:
-        guild: Discord guild to update views for
+    Refresh DM action views for all users.
     """
     try:
         from helpers import EmbedHelper
@@ -424,11 +375,7 @@ async def update_dm_action_views(guild: discord.Guild) -> None:
 
 async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
     """
-    Create hyperlink for lolchess profile in sheet with error handling.
-
-    Args:
-        discord_tag: Discord user tag
-        guild_id: Guild ID
+    Create hyperlink for lolchess profile in sheet.
     """
     if not discord_tag or not guild_id:
         logging.warning("Discord tag and guild ID are required for hyperlinking")

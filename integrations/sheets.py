@@ -228,6 +228,7 @@ def ordinal_suffix(n: Union[int, str]) -> str:
 async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     """
     Refresh the sheet cache with comprehensive error handling.
+    Processes waitlist after cache update to fill any open spots.
 
     Args:
         bot: Discord bot instance (optional)
@@ -238,7 +239,9 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     Raises:
         SheetsError: If cache refresh fails
     """
-    print("[CACHE] Starting refresh_sheet_cache")
+    # Only print at start if this is not a recursive call
+    if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+        print("[CACHE] Starting refresh_sheet_cache")
 
     # Store guild reference for later use
     guild = None
@@ -247,10 +250,13 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     async with cache_lock:
         try:
             # Get guild information
-            print("[CACHE] Getting guild information...")
+            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                print("[CACHE] Getting guild information...")
             guild = getattr(bot, "guilds", [None])[0] if bot else None
             gid = str(guild.id) if guild else "unknown"
-            print(f"[CACHE] Guild ID: {gid}")
+
+            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                print(f"[CACHE] Guild ID: {gid}")
 
             mode = get_event_mode_for_guild(gid)
             cfg = get_sheet_settings(mode)
@@ -275,7 +281,8 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             tc = col_to_index(cfg["team_col"]) if mode == "doubleup" and "team_col" in cfg else None
 
             # Fetch all columns with error handling
-            print("[CACHE] Fetching sheet columns...")
+            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                print("[CACHE] Fetching sheet columns...")
             try:
                 discord_vals = await retry_until_successful(sheet.col_values, dc)
                 ign_vals = await retry_until_successful(sheet.col_values, ic)
@@ -286,7 +293,8 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             except Exception as e:
                 raise SheetsError(f"Failed to fetch sheet data: {e}")
 
-            print("[CACHE] Processing data...")
+            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                print("[CACHE] Processing data...")
             # Slice to relevant range
             start = hline
             end = hline + maxp
@@ -322,6 +330,22 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             removed = set(old_map) - set(new_map)
             changed = {tag for tag in set(new_map) & set(old_map) if new_map[tag] != old_map[tag]}
 
+            # Check if any registered users were removed (indicating unregistrations)
+            unregistered_users = []
+            for tag in removed:
+                if old_map[tag][2] and str(old_map[tag][2]).upper() == "TRUE":
+                    unregistered_users.append(tag)
+
+            # Also check for users who changed from registered to not registered
+            for tag in changed:
+                old_data = old_map[tag]
+                new_data = new_map[tag]
+                # Check if registration status changed from True to False
+                old_registered = str(old_data[2]).upper() == "TRUE" if len(old_data) > 2 else False
+                new_registered = str(new_data[2]).upper() == "TRUE" if len(new_data) > 2 else False
+                if old_registered and not new_registered:
+                    unregistered_users.append(tag)
+
             # Update cache
             sheet_cache["users"] = new_map
             sheet_cache["last_refresh"] = time.time()
@@ -330,21 +354,47 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             total_users = len(new_map)
 
             logging.info(f"Cache refreshed: {total_changes} changes, {total_users} total users")
-            print(f"[CACHE] Cache refreshed: {total_changes} changes, {total_users} total users")
+            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                print(f"[CACHE] Cache refreshed: {total_changes} changes, {total_users} total users")
+
+            # Log if any unregistrations were detected
+            if unregistered_users and not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                print(f"[CACHE] Detected {len(unregistered_users)} unregistrations: {unregistered_users}")
 
         except Exception as e:
-            print(f"[CACHE] ERROR in refresh_sheet_cache: {e}")
+            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                print(f"[CACHE] ERROR in refresh_sheet_cache: {e}")
             if isinstance(e, SheetsError):
                 raise
             raise SheetsError(f"Failed to refresh cache: {e}")
 
     # Process waitlist AFTER releasing the cache lock
-    if guild:
+    # This is important - we process waitlist if:
+    # 1. Users were removed/unregistered (spots opened up)
+    # 2. Always check after cache refresh to ensure consistency
+    if guild and not hasattr(sheet_cache, "_skip_waitlist_processing"):
         print("[CACHE] Processing waitlist (after releasing lock)...")
         try:
             from helpers.waitlist_helpers import WaitlistManager
-            await WaitlistManager.process_waitlist(guild)
-            print("[CACHE] Waitlist processing complete")
+
+            # Always process waitlist after cache refresh to fill any open spots
+            registered_from_waitlist = await WaitlistManager.process_waitlist(guild)
+
+            if registered_from_waitlist:
+                print(f"[CACHE] Registered {len(registered_from_waitlist)} users from waitlist")
+
+                # Refresh cache again after waitlist processing to ensure consistency
+                print("[CACHE] Refreshing cache again after waitlist processing...")
+                # Set flag to skip waitlist processing and reduce logging
+                sheet_cache["_skip_waitlist_processing"] = True
+                try:
+                    await refresh_sheet_cache(bot=bot)
+                finally:
+                    # Remove the flag
+                    del sheet_cache["_skip_waitlist_processing"]
+            else:
+                print("[CACHE] No users registered from waitlist")
+
         except ImportError as e:
             print(f"[CACHE] WaitlistManager import failed: {e}")
             logging.debug("WaitlistManager not available, skipping waitlist processing")
@@ -352,7 +402,10 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             print(f"[CACHE] Waitlist processing failed: {e}")
             logging.warning(f"Failed to process waitlist: {e}")
 
-    print("[CACHE] refresh_sheet_cache complete!")
+    # Only print completion message if not a recursive call
+    if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+        print("[CACHE] refresh_sheet_cache complete!")
+
     return total_changes, total_users
 
 

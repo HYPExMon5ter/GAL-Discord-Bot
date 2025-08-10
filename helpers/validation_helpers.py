@@ -38,6 +38,7 @@ class Validators:
     ) -> Optional[ValidationError]:
         """
         Validate if registration is within capacity limits.
+        FIXED: Allow joining existing teams even when max teams reached.
 
         Args:
             guild_id: Guild ID
@@ -51,7 +52,7 @@ class Validators:
         cfg = get_sheet_settings(mode)
         max_players = cfg.get("max_players", 0)
 
-        # Check total capacity
+        # Get current registration count
         total_registered = await SheetOperations.count_by_criteria(
             guild_id, registered=True
         )
@@ -62,34 +63,59 @@ class Validators:
             if user_data and user_data["registered"]:
                 total_registered -= 1
 
+        # Check total player capacity
         if total_registered >= max_players:
             return ValidationError("registration_full", max_players=max_players)
 
-        # Check team capacity for double-up mode
+        # For double-up mode, check team-specific constraints
         if mode == "doubleup" and team_name:
             max_per_team = cfg.get("max_per_team", 2)
 
-            # Make team comparison case-insensitive
+            # Count current members in this specific team (case-insensitive)
             team_count = 0
+            team_exists = False
+
             async with cache_lock:
                 for tag, tpl in sheet_cache["users"].items():
-                    if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4:
-                        if tpl[4] and tpl[4].lower() == team_name.lower():
+                    # Check if user is registered and has a team
+                    if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4 and tpl[4]:
+                        if tpl[4].lower() == team_name.lower():
+                            team_exists = True
                             team_count += 1
 
             # Exclude current user if they're already on this team
             if exclude_discord_tag:
                 user_data = await SheetOperations.get_user_data(exclude_discord_tag, guild_id)
-                if user_data and user_data["registered"] and user_data.get("team") and user_data.get(
-                        "team").lower() == team_name.lower():
-                    team_count -= 1
+                if user_data and user_data["registered"] and user_data.get("team"):
+                    if user_data.get("team").lower() == team_name.lower():
+                        team_count -= 1
 
+            # Check if team is full
             if team_count >= max_per_team:
                 return ValidationError(
                     "team_full",
                     team_name=team_name,
                     max_per_team=max_per_team
                 )
+
+            # If this is a NEW team (doesn't exist yet), check if we're at max teams
+            if not team_exists:
+                # Count unique teams to see if we can add a new one
+                unique_teams = set()
+                async with cache_lock:
+                    for tag, tpl in sheet_cache["users"].items():
+                        if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4 and tpl[4]:
+                            unique_teams.add(tpl[4].lower())
+
+                # Calculate max teams based on max players and team size
+                max_teams = max_players // max_per_team
+
+                # If we're at max teams, don't allow creating a new team
+                if len(unique_teams) >= max_teams:
+                    return ValidationError(
+                        "registration_full",
+                        max_players=max_players
+                    )
 
         return None
 

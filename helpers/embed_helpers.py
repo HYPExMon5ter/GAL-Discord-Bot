@@ -209,19 +209,16 @@ class EmbedHelper:
 
     @staticmethod
     def build_registration_list_lines(users: List[tuple], mode: str) -> List[str]:
-        """Build formatted lines for registration list display with smart color cycling."""
+        """
+        Build formatted lines for registration list display with team completeness sorting.
+        Full teams (2+ members) are shown first, then partial teams, then unassigned players.
+        """
         import random
 
         lines = []
 
         if mode == "doubleup":
-            users.sort(key=lambda x: (x[2] or "No Team").lower())
-
-            team_emojis = ["🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "⚫", "🟤", "💙", "💚", "💛", "💜", "🧡", "❤️", "🤍", "🖤", "🤎"]
-            used_emojis = []
-            team_emoji_map = {}
-
-            # Group teams first to get the full list
+            # Group users by team
             teams_data = {}
             for tag, ign, team in users:
                 team_key = team or "No Team"
@@ -229,10 +226,37 @@ class EmbedHelper:
                     teams_data[team_key] = []
                 teams_data[team_key].append((tag, ign))
 
-            # Sort teams
-            sorted_teams = sorted(teams_data.items(), key=lambda x: x[0].lower())
+            # Separate teams into categories
+            full_teams = []  # Teams with 2+ members
+            partial_teams = []  # Teams with 1 member
+            no_team = None  # The "No Team" group
 
+            for team_name, members in teams_data.items():
+                if team_name == "No Team":
+                    no_team = (team_name, members)
+                elif len(members) >= 2:
+                    full_teams.append((team_name, members))
+                else:
+                    partial_teams.append((team_name, members))
+
+            # Sort each category by team name
+            full_teams.sort(key=lambda x: x[0].lower())
+            partial_teams.sort(key=lambda x: x[0].lower())
+
+            # Combine in order: full teams first, then partial teams, then no team
+            sorted_teams = full_teams + partial_teams
+            if no_team:
+                sorted_teams.append(no_team)
+
+            # Emoji management for visual distinction
+            team_emojis = ["🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "⚫", "🟤",
+                           "💙", "💚", "💛", "💜", "🧡", "❤️", "🤍", "🖤", "🤎"]
+            used_emojis = []
+            team_emoji_map = {}
+
+            # Build the display lines
             for i, (team, members) in enumerate(sorted_teams):
+                # Assign emoji for this team
                 if team not in team_emoji_map:
                     # If we've used all emojis, start recycling intelligently
                     if len(used_emojis) >= len(team_emojis):
@@ -262,17 +286,18 @@ class EmbedHelper:
                     used_emojis.append(emoji)
 
                 emoji = team_emoji_map[team]
+
+                # Format team header
                 lines.append(f"{emoji} **{team}**")
 
+                # Add team members
                 lines.append("```css")
-
                 for tag, ign in members:
                     lines.append(f"{tag} | {ign}")
-
                 lines.append("```")
-                #lines.append("")
 
         else:
+            # Normal mode - simple list
             lines.append("```css")
             lines.append("# Registered Players")
             lines.append("=" * 40)
@@ -355,7 +380,6 @@ class EmbedHelper:
                     lines.append(f"{status} {tag} | {ign}")
 
                 lines.append("```")
-                #lines.append("")
 
         else:
             # Normal mode - show all registered users with check-in status

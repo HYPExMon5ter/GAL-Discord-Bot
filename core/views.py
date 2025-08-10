@@ -19,7 +19,7 @@ from core.persistence import (
 )
 from helpers import (
     RoleManager, ChannelManager, SheetOperations, Validators,
-    ErrorHandler, EmbedHelper
+    ErrorHandler, EmbedHelper, sheet_helpers
 )
 from helpers.embed_helpers import log_error
 from integrations.sheets import (
@@ -56,11 +56,15 @@ async def complete_registration(
         alt_igns: str,
         reg_modal: "RegistrationModal"
 ):
+    """
+    Complete user registration with team validation and waitlist handling.
+    Handles both regular registration and waitlist addition with smart team matching.
+    """
     # Import here to avoid circular import
     from utils.utils import hyperlink_lolchess_profile
     from helpers.waitlist_helpers import WaitlistManager
 
-    # 1) Defer if not already
+    # 1) Defer if not already done
     if not interaction.response.is_done():
         await interaction.response.defer(ephemeral=True)
 
@@ -80,7 +84,13 @@ async def complete_registration(
     print(f"[REGISTER] Guild={guild.name}({gid}) "
           f"User={discord_tag} IGN={ign!r} Team={team_name!r} Alts={alt_igns!r}")
 
-    # 4) Validate capacity using helper
+    # 4) Get mode for context
+    mode = get_event_mode_for_guild(gid)
+
+    # 5) Check if user is already in waitlist (for updating their info)
+    existing_waitlist_position = await WaitlistManager.get_waitlist_position(gid, discord_tag)
+
+    # 6) Validate capacity using helper
     capacity_error = await Validators.validate_registration_capacity(
         gid, team_name, exclude_discord_tag=discord_tag
     )
@@ -88,24 +98,47 @@ async def complete_registration(
     if capacity_error:
         # Check if it's a full registration error
         if capacity_error.embed_key == "registration_full":
-            # Check if already in waitlist
-            existing_position = await WaitlistManager.get_waitlist_position(gid, discord_tag)
+            # Check for team similarity when adding to waitlist
+            if mode == "doubleup" and team_name:
+                similar_team = await WaitlistManager._find_similar_team(team_name, gid)
+                if similar_team and similar_team.lower() != team_name.lower():
+                    # Show similarity prompt for waitlist
+                    similarity_embed = discord.Embed(
+                        title="Similar Team Found",
+                        description=f"The tournament is full, and you'll be added to the waitlist.\n\n"
+                                    f"Did you mean team **{similar_team}**?\n\n"
+                                    f"Click **Use Suggested** to join the waitlist with the existing team name, "
+                                    f"or **Keep Mine** to use your entered team name.",
+                        color=discord.Color.blurple()
+                    )
 
-            if existing_position:
+                    # Create a special view for waitlist team choice
+                    view = WaitlistTeamChoiceView(
+                        guild, member, ign, pronouns, similar_team, team_name, alt_igns,
+                        existing_waitlist_position
+                    )
+
+                    return await interaction.followup.send(
+                        embed=similarity_embed,
+                        view=view,
+                        ephemeral=True
+                    )
+
+            # Add or update waitlist entry
+            if existing_waitlist_position:
                 # Update their waitlist entry
                 await WaitlistManager.update_waitlist_entry(
                     gid, discord_tag, ign, pronouns, team_name, alt_igns
                 )
 
                 # Get max players for the embed
-                mode = get_event_mode_for_guild(gid)
                 cfg = get_sheet_settings(mode)
                 max_players = cfg.get("max_players", 0)
 
                 waitlist_embed = discord.Embed(
                     title="📋 Waitlist Updated",
                     description=f"Your waitlist information has been updated.\n\n"
-                                f"You remain at position **#{existing_position}** in the waitlist.",
+                                f"You remain at position **#{existing_waitlist_position}** in the waitlist.",
                     color=discord.Color.blue()
                 )
                 return await interaction.followup.send(
@@ -119,7 +152,6 @@ async def complete_registration(
                 )
 
                 # Get max players for the embed
-                mode = get_event_mode_for_guild(gid)
                 cfg = get_sheet_settings(mode)
                 max_players = cfg.get("max_players", 0)
 
@@ -132,21 +164,91 @@ async def complete_registration(
                     embed=waitlist_embed,
                     ephemeral=True
                 )
+
+        elif capacity_error.embed_key == "team_full":
+            # Team is full - check if user should be added to waitlist
+            # First check total capacity
+            from helpers.sheet_helpers import SheetOperations
+            total_registered = await SheetOperations.count_by_criteria(
+                gid, registered=True
+            )
+
+            cfg = get_sheet_settings(mode)
+            max_players = cfg.get("max_players", 0)
+
+            # If we're at max capacity, add to waitlist
+            if total_registered >= max_players:
+                # Check for team similarity when adding to waitlist
+                if mode == "doubleup" and team_name:
+                    similar_team = await WaitlistManager._find_similar_team(team_name, gid)
+                    if similar_team and similar_team.lower() != team_name.lower():
+                        # Show similarity prompt for waitlist with team full context
+                        similarity_embed = discord.Embed(
+                            title="Team Full - Similar Team Found",
+                            description=f"Team **{team_name}** is full, and the tournament is at capacity.\n"
+                                        f"You'll be added to the waitlist.\n\n"
+                                        f"Did you mean team **{similar_team}**?\n\n"
+                                        f"Click **Use Suggested** to join the waitlist with the existing team name, "
+                                        f"or **Keep Mine** to use your entered team name.",
+                            color=discord.Color.blurple()
+                        )
+
+                        view = WaitlistTeamChoiceView(
+                            guild, member, ign, pronouns, similar_team, team_name, alt_igns,
+                            existing_waitlist_position
+                        )
+
+                        return await interaction.followup.send(
+                            embed=similarity_embed,
+                            view=view,
+                            ephemeral=True
+                        )
+
+                if existing_waitlist_position:
+                    # Update waitlist
+                    await WaitlistManager.update_waitlist_entry(
+                        gid, discord_tag, ign, pronouns, team_name, alt_igns
+                    )
+                    waitlist_embed = discord.Embed(
+                        title="📋 Waitlist Updated",
+                        description=f"Team **{team_name}** is full, and the tournament is at capacity.\n\n"
+                                    f"Your waitlist information has been updated.\n"
+                                    f"You remain at position **#{existing_waitlist_position}** in the waitlist.",
+                        color=discord.Color.blue()
+                    )
+                else:
+                    # Add to waitlist
+                    position = await WaitlistManager.add_to_waitlist(
+                        guild, member, ign, pronouns, team_name, alt_igns
+                    )
+                    waitlist_embed = embed_from_cfg(
+                        "waitlist_added",
+                        position=position,
+                        max_players=max_players
+                    )
+
+                return await interaction.followup.send(
+                    embed=waitlist_embed,
+                    ephemeral=True
+                )
+            else:
+                # Tournament not full but team is - show team full error
+                return await interaction.followup.send(
+                    embed=capacity_error.to_embed(),
+                    ephemeral=True
+                )
         else:
-            # Other capacity error (like team full)
+            # Other capacity error
             return await interaction.followup.send(
                 embed=capacity_error.to_embed(),
                 ephemeral=True
             )
 
     try:
-        # Remove from waitlist if they were on it
+        # Remove from waitlist if they were on it (they're being registered now)
         await WaitlistManager.remove_from_waitlist(gid, discord_tag)
 
-        # 5) Get mode
-        mode = get_event_mode_for_guild(gid)
-
-        # 6) Upsert user row
+        # 7) Upsert user row in sheet
         row = await find_or_register_user(
             discord_tag,
             ign,
@@ -154,7 +256,7 @@ async def complete_registration(
             team_name=(team_name if mode == "doubleup" else None)
         )
 
-        # 7) Update sheet cells using helper
+        # 8) Update sheet cells using helper
         updates = {
             get_sheet_settings(mode)['pronouns_col']: pronouns
         }
@@ -163,15 +265,15 @@ async def complete_registration(
         if mode == "doubleup" and team_name:
             updates[get_sheet_settings(mode)['team_col']] = team_name
 
-        await SheetOperations.batch_update_cells(gid, updates, row)
+        await sheet_helpers.SheetOperations.batch_update_cells(gid, updates, row)
 
-        # 8) Assign role using RoleManager
+        # 9) Assign role using RoleManager
         await RoleManager.add_role(member, REGISTERED_ROLE)
 
-        # 9) Refresh embeds using helper
+        # 10) Refresh embeds using helper
         await EmbedHelper.update_all_guild_embeds(guild)
 
-        # 10) Send success embed
+        # 11) Send success embed
         ok_key = f"register_success_{mode}"
         success_embed = embed_from_cfg(
             ok_key,
@@ -180,8 +282,13 @@ async def complete_registration(
         )
         await interaction.followup.send(embed=success_embed, ephemeral=True)
 
-        # 11) Hyperlink IGN
+        # 12) Hyperlink IGN
         await hyperlink_lolchess_profile(discord_tag, gid)
+
+        # 13) Process waitlist to see if more people can be registered
+        # This is important for team scenarios where one person registering
+        # might open up a spot for their teammate on the waitlist
+        await WaitlistManager.process_waitlist(guild)
 
         print(f"[REGISTER SUCCESS] {discord_tag} in guild {guild.name}")
 
@@ -191,6 +298,93 @@ async def complete_registration(
             interaction, e, "Registration",
             f"Failed to complete registration. Please try again."
         )
+
+
+class WaitlistTeamChoiceView(discord.ui.View):
+    """View for choosing team name when adding to waitlist"""
+
+    def __init__(self, guild, member, ign, pronouns, suggested_team, user_team, alt_igns, existing_position):
+        super().__init__(timeout=60)
+        self.guild = guild
+        self.member = member
+        self.ign = ign
+        self.pronouns = pronouns
+        self.suggested_team = suggested_team
+        self.user_team = user_team
+        self.alt_igns = alt_igns
+        self.existing_position = existing_position
+
+    @discord.ui.button(label="Use Suggested", style=discord.ButtonStyle.success)
+    async def use_suggested(self, interaction, button):
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(view=self)
+
+        # Add/update waitlist with suggested team
+        from helpers.waitlist_helpers import WaitlistManager
+
+        gid = str(self.guild.id)
+        discord_tag = str(self.member)
+
+        if self.existing_position:
+            await WaitlistManager.update_waitlist_entry(
+                gid, discord_tag, self.ign, self.pronouns, self.suggested_team, self.alt_igns
+            )
+            embed = discord.Embed(
+                title="📋 Waitlist Updated",
+                description=f"Your waitlist information has been updated with team **{self.suggested_team}**.\n\n"
+                            f"You remain at position **#{self.existing_position}** in the waitlist.",
+                color=discord.Color.blue()
+            )
+        else:
+            position = await WaitlistManager.add_to_waitlist(
+                self.guild, self.member, self.ign, self.pronouns, self.suggested_team, self.alt_igns
+            )
+            cfg = get_sheet_settings(get_event_mode_for_guild(gid))
+            max_players = cfg.get("max_players", 0)
+            embed = embed_from_cfg(
+                "waitlist_added",
+                position=position,
+                max_players=max_players
+            )
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Keep My Team Name", style=discord.ButtonStyle.secondary)
+    async def keep_mine(self, interaction, button):
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(view=self)
+
+        # Add/update waitlist with user's team
+        from helpers.waitlist_helpers import WaitlistManager
+
+        gid = str(self.guild.id)
+        discord_tag = str(self.member)
+
+        if self.existing_position:
+            await WaitlistManager.update_waitlist_entry(
+                gid, discord_tag, self.ign, self.pronouns, self.user_team, self.alt_igns
+            )
+            embed = discord.Embed(
+                title="📋 Waitlist Updated",
+                description=f"Your waitlist information has been updated with team **{self.user_team}**.\n\n"
+                            f"You remain at position **#{self.existing_position}** in the waitlist.",
+                color=discord.Color.blue()
+            )
+        else:
+            position = await WaitlistManager.add_to_waitlist(
+                self.guild, self.member, self.ign, self.pronouns, self.user_team, self.alt_igns
+            )
+            cfg = get_sheet_settings(get_event_mode_for_guild(gid))
+            max_players = cfg.get("max_players", 0)
+            embed = embed_from_cfg(
+                "waitlist_added",
+                position=position,
+                max_players=max_players
+            )
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 class ChannelCheckInButton(discord.ui.Button):

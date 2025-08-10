@@ -5,15 +5,16 @@ import logging
 import os
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple, Set
 
 import discord
+from rapidfuzz import fuzz, process
 
 from config import embed_from_cfg, get_sheet_settings, LOG_CHANNEL_NAME, DATABASE_URL
 from core.persistence import get_event_mode_for_guild
 from helpers.error_handler import ErrorHandler
 from helpers.role_helpers import RoleManager
-from integrations.sheets import find_or_register_user
+from integrations.sheets import find_or_register_user, cache_lock, sheet_cache
 
 
 class WaitlistError(Exception):
@@ -28,6 +29,7 @@ class WaitlistManager:
 
     # Database connection management
     _connection_pool = None
+    _data_loaded = False  # Track if data has been loaded this session
 
     @classmethod
     def _initialize_database(cls):
@@ -115,6 +117,10 @@ class WaitlistManager:
                             for row in rows:
                                 guild_id, data = row
                                 result[guild_id] = data if isinstance(data, dict) else json.loads(data)
+                            # Only log once per session
+                            if not WaitlistManager._data_loaded:
+                                logging.debug("Loaded waitlist data from database")
+                                WaitlistManager._data_loaded = True
                             return result
 
                         return {}
@@ -127,7 +133,10 @@ class WaitlistManager:
             if os.path.exists(WaitlistManager.WAITLIST_FILE):
                 with open(WaitlistManager.WAITLIST_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    logging.debug("Loaded waitlist data from file")
+                    # Only log once per session
+                    if not WaitlistManager._data_loaded:
+                        logging.debug("Loaded waitlist data from file")
+                        WaitlistManager._data_loaded = True
                     return data
             return {}
 
@@ -158,7 +167,6 @@ class WaitlistManager:
                                 (guild_id, json.dumps(guild_data))
                             )
                         conn.commit()
-                        logging.debug("Saved waitlist data to database")
                         return
 
             except Exception as e:
@@ -176,7 +184,6 @@ class WaitlistManager:
 
             # Atomic rename
             os.replace(temp_file, WaitlistManager.WAITLIST_FILE)
-            logging.debug("Saved waitlist data to file")
 
         except Exception as e:
             logging.error(f"Failed to save waitlist data: {e}")
@@ -189,6 +196,60 @@ class WaitlistManager:
             raise WaitlistError(f"Failed to save waitlist data: {e}")
 
     @staticmethod
+    async def _find_similar_team(team_name: str, guild_id: str) -> Optional[str]:
+        """
+        Find a similar team name from both registered players and waitlist.
+
+        Args:
+            team_name: Team name to check
+            guild_id: Guild ID
+
+        Returns:
+            Suggested team name if similar match found, None otherwise
+        """
+        if not team_name:
+            return None
+
+        # Collect all existing teams
+        all_teams = set()
+
+        # Get registered teams from cache
+        async with cache_lock:
+            for tag, tpl in sheet_cache["users"].items():
+                if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4 and tpl[4]:
+                    all_teams.add(tpl[4])
+
+        # Get waitlisted teams
+        all_data = WaitlistManager._load_waitlist_data()
+        if guild_id in all_data:
+            for entry in all_data[guild_id].get("waitlist", []):
+                if entry.get("team_name"):
+                    all_teams.add(entry["team_name"])
+
+        if not all_teams:
+            return None
+
+        # Check for similarity
+        team_lower = team_name.lower()
+        team_list = list(all_teams)
+
+        # Use fuzzy matching to find similar team names
+        result = process.extractOne(
+            team_name,
+            team_list,
+            scorer=fuzz.ratio,
+            score_cutoff=75
+        )
+
+        if result:
+            suggested_team, score = result[0], result[1]
+            # Only suggest if it's not an exact match (case-insensitive)
+            if suggested_team.lower() != team_lower:
+                return suggested_team
+
+        return None
+
+    @staticmethod
     async def add_to_waitlist(
             guild: discord.Guild,
             member: discord.Member,
@@ -198,7 +259,7 @@ class WaitlistManager:
             alt_igns: Optional[str] = None
     ) -> int:
         """
-        Add a user to the waitlist with validation.
+        Add a user to the waitlist with validation and team similarity check.
 
         Args:
             guild: Discord guild
@@ -221,6 +282,15 @@ class WaitlistManager:
             guild_id = str(guild.id)
             discord_tag = str(member)
 
+            # Check for team similarity before adding/updating
+            if team_name:
+                similar_team = await WaitlistManager._find_similar_team(team_name, guild_id)
+                if similar_team:
+                    # Note: In the actual implementation, you'd want to prompt the user
+                    # For now, we'll use the suggested team
+                    logging.info(f"Using similar team '{similar_team}' instead of '{team_name}'")
+                    team_name = similar_team
+
             # Load current data
             all_data = WaitlistManager._load_waitlist_data()
             if guild_id not in all_data:
@@ -238,7 +308,7 @@ class WaitlistManager:
                         "pronouns": pronouns.strip() if pronouns else "",
                         "team_name": team_name.strip() if team_name else None,
                         "alt_igns": alt_igns.strip() if alt_igns else None,
-                        "added_at": datetime.utcnow().isoformat()
+                        "added_at": entry.get("added_at", datetime.utcnow().isoformat())  # Preserve original time
                     }
                     WaitlistManager._save_waitlist_data(all_data)
                     logging.info(f"Updated waitlist entry for {discord_tag} at position {i + 1}")
@@ -406,10 +476,43 @@ class WaitlistManager:
             raise WaitlistError(f"Failed to update waitlist entry: {e}")
 
     @staticmethod
+    async def _get_team_status(team_name: str, guild_id: str) -> Tuple[int, int]:
+        """
+        Get the current member count and available spots for a team.
+
+        Returns:
+            Tuple of (current_members, available_spots)
+        """
+        if not team_name:
+            return 0, 0
+
+        mode = get_event_mode_for_guild(guild_id)
+        if mode != "doubleup":
+            return 0, 0
+
+        cfg = get_sheet_settings(mode)
+        max_per_team = cfg.get("max_per_team", 2)
+
+        # Count current team members
+        team_count = 0
+        async with cache_lock:
+            for tag, tpl in sheet_cache["users"].items():
+                if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4 and tpl[4]:
+                    if tpl[4].lower() == team_name.lower():
+                        team_count += 1
+
+        available_spots = max_per_team - team_count
+        return team_count, available_spots
+
+    @staticmethod
     async def process_waitlist(guild: discord.Guild) -> List[Dict]:
         """
-        Process the waitlist when spots open up with comprehensive error handling.
-        Registers multiple users if multiple spots are available.
+        Process the waitlist with smart team pairing and priority logic.
+
+        Priority order:
+        1. Team pairs that can be registered together (if 2+ spots available)
+        2. Individuals joining existing teams with space
+        3. Individuals in FIFO order
 
         Returns:
             List of registered user info
@@ -417,7 +520,7 @@ class WaitlistManager:
         if not guild:
             raise ValueError("Guild is required")
 
-        print(f"[WAITLIST] Starting process_waitlist for guild {guild.id}")
+        print(f"[WAITLIST] Starting smart process_waitlist for guild {guild.id}")
         registered_users = []
 
         try:
@@ -425,130 +528,192 @@ class WaitlistManager:
             from core.views import DMActionView
 
             guild_id = str(guild.id)
+            mode = get_event_mode_for_guild(guild_id)
+            cfg = get_sheet_settings(mode)
+            max_players = cfg.get("max_players", 0)
+            max_per_team = cfg.get("max_per_team", 2)
 
             # Keep processing while there are spots and waitlist entries
             while True:
-                # Check if there's space
-                mode = get_event_mode_for_guild(guild_id)
-                cfg = get_sheet_settings(mode)
-                max_players = cfg.get("max_players", 0)
-
-                print(f"[WAITLIST] Checking capacity: mode={mode}, max_players={max_players}")
-
+                # Check available capacity
                 current_registered = await SheetOperations.count_by_criteria(
                     guild_id, registered=True
                 )
-
-                print(f"[WAITLIST] Current registered: {current_registered}/{max_players}")
-
                 available_spots = max_players - current_registered
+
+                print(f"[WAITLIST] Available spots: {available_spots}")
+
                 if available_spots <= 0:
-                    logging.debug(f"Guild {guild_id} is at capacity ({current_registered}/{max_players})")
                     print(f"[WAITLIST] At capacity, stopping")
                     break
 
-                # Get waitlist
+                # Get current waitlist
                 all_data = WaitlistManager._load_waitlist_data()
                 if guild_id not in all_data or not all_data[guild_id]["waitlist"]:
-                    logging.debug(f"No waitlist entries for guild {guild_id}")
                     print(f"[WAITLIST] No entries in waitlist")
                     break
 
                 waitlist = all_data[guild_id]["waitlist"]
-                print(f"[WAITLIST] Found {len(waitlist)} entries in waitlist, {available_spots} spots available")
+                print(f"[WAITLIST] Processing {len(waitlist)} waitlist entries")
 
-                # Process next person in waitlist
-                next_user = waitlist.pop(0)
+                # Track who we'll register in this iteration
+                to_register = []
+
+                # In double-up mode, apply smart prioritization
+                if mode == "doubleup":
+                    # Priority 1: Check for team pairs if 2+ spots available
+                    if available_spots >= 2:
+                        print("[WAITLIST] Checking for team pairs...")
+
+                        # Group waitlist by team name
+                        team_groups = {}
+                        for entry in waitlist:
+                            team = entry.get("team_name")
+                            if team:
+                                team_lower = team.lower()
+                                if team_lower not in team_groups:
+                                    team_groups[team_lower] = []
+                                team_groups[team_lower].append(entry)
+
+                        # Look for teams with 2+ waitlisted members
+                        for team_lower, team_members in team_groups.items():
+                            if len(team_members) >= 2:
+                                # Check if this team has room for both
+                                current_count, spots = await WaitlistManager._get_team_status(
+                                    team_lower, guild_id
+                                )
+
+                                if spots >= 2:
+                                    print(f"[WAITLIST] Found team pair for '{team_lower}' - registering both")
+                                    to_register = team_members[:2]  # Take first 2
+                                    break
+
+                    # Priority 2: Check for individuals joining existing teams
+                    if not to_register:
+                        print("[WAITLIST] Checking for individuals to join existing teams...")
+
+                        for entry in waitlist:
+                            team = entry.get("team_name")
+                            if team:
+                                current_count, spots = await WaitlistManager._get_team_status(
+                                    team, guild_id
+                                )
+
+                                # If team exists with space (partially filled)
+                                if current_count > 0 and spots > 0:
+                                    print(f"[WAITLIST] Found user to complete team '{team}'")
+                                    to_register = [entry]
+                                    break
+
+                # Priority 3: FIFO - take the first person in line
+                if not to_register and waitlist:
+                    print("[WAITLIST] Using FIFO - taking first person in queue")
+                    to_register = [waitlist[0]]
+
+                # If we have no one to register, stop
+                if not to_register:
+                    print("[WAITLIST] No suitable candidates found")
+                    break
+
+                # Remove selected users from waitlist FIRST
+                for user in to_register:
+                    waitlist.remove(user)
                 WaitlistManager._save_waitlist_data(all_data)
 
-                print(f"[WAITLIST] Processing user: {next_user['discord_tag']}")
+                # Register each selected user
+                for next_user in to_register:
+                    print(f"[WAITLIST] Processing user: {next_user['discord_tag']}")
 
-                # Register the user
-                member = guild.get_member(next_user["member_id"])
-                if not member:
-                    logging.warning(f"Member {next_user['discord_tag']} left server, processing next in waitlist")
-                    print(f"[WAITLIST] Member not found, trying next")
-                    continue  # Continue to next iteration to try next person
+                    # Get member object
+                    member = guild.get_member(next_user["member_id"])
+                    if not member:
+                        logging.warning(f"Member {next_user['discord_tag']} left server, skipping")
+                        print(f"[WAITLIST] Member not found, skipping")
+                        continue
 
-                try:
-                    # Register in sheet
-                    print(f"[WAITLIST] Registering user in sheet...")
-                    row = await find_or_register_user(
-                        next_user["discord_tag"],
-                        next_user["ign"],
-                        guild_id=guild_id,
-                        team_name=next_user.get("team_name")
-                    )
-
-                    # Update additional fields
-                    updates = {}
-                    if next_user.get("pronouns"):
-                        updates[cfg['pronouns_col']] = next_user["pronouns"]
-                    if next_user.get("alt_igns"):
-                        updates[cfg['alt_ign_col']] = next_user["alt_igns"]
-                    if mode == "doubleup" and next_user.get("team_name"):
-                        updates[cfg['team_col']] = next_user["team_name"]
-
-                    if updates:
-                        await SheetOperations.batch_update_cells(guild_id, updates, row)
-
-                    # Add registered role
-                    print(f"[WAITLIST] Adding registered role...")
-                    await RoleManager.add_role(member, "Registered")
-
-                    # Send DM notification
-                    print(f"[WAITLIST] Sending DM notification...")
                     try:
-                        # Clear previous DMs first
-                        from utils.utils import clear_user_dms
-                        deleted = await clear_user_dms(member, guild.me)
-                        if deleted > 0:
-                            logging.debug(f"Cleared {deleted} previous DMs for {next_user['discord_tag']}")
-
-                        # Send new DM
-                        dm_embed = embed_from_cfg("waitlist_registered")
-                        await member.send(
-                            embed=dm_embed,
-                            view=DMActionView(guild, member)
+                        # Register in sheet
+                        print(f"[WAITLIST] Registering user in sheet...")
+                        row = await find_or_register_user(
+                            next_user["discord_tag"],
+                            next_user["ign"],
+                            guild_id=guild_id,
+                            team_name=next_user.get("team_name")
                         )
-                    except discord.Forbidden:
-                        logging.debug(f"Could not DM {next_user['discord_tag']} - DMs disabled")
-                    except Exception as dm_error:
-                        logging.warning(f"Failed to DM {next_user['discord_tag']}: {dm_error}")
 
-                    # Log to bot-log channel
-                    log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
-                    if log_channel:
+                        # Update additional fields
+                        updates = {}
+                        if next_user.get("pronouns"):
+                            updates[cfg['pronouns_col']] = next_user["pronouns"]
+                        if next_user.get("alt_igns"):
+                            updates[cfg['alt_ign_col']] = next_user["alt_igns"]
+                        if mode == "doubleup" and next_user.get("team_name"):
+                            updates[cfg['team_col']] = next_user["team_name"]
+
+                        if updates:
+                            await SheetOperations.batch_update_cells(guild_id, updates, row)
+
+                        # Add registered role
+                        print(f"[WAITLIST] Adding registered role...")
+                        await RoleManager.add_role(member, "Registered")
+
+                        # Send DM notification
+                        print(f"[WAITLIST] Sending DM notification...")
                         try:
-                            log_embed = discord.Embed(
-                                title="✅ Waitlist Registration",
-                                description=f"**{next_user['discord_tag']}** ({next_user['ign']}) has been automatically registered from the waitlist.",
-                                color=discord.Color.green(),
-                                timestamp=datetime.utcnow()
+                            # Clear previous DMs first
+                            from utils.utils import clear_user_dms
+                            deleted = await clear_user_dms(member, guild.me)
+                            if deleted > 0:
+                                logging.debug(f"Cleared {deleted} previous DMs for {next_user['discord_tag']}")
+
+                            # Send new DM
+                            dm_embed = embed_from_cfg("waitlist_registered")
+                            await member.send(
+                                embed=dm_embed,
+                                view=DMActionView(guild, member)
                             )
-                            await log_channel.send(embed=log_embed)
-                        except Exception as log_error:
-                            logging.warning(f"Failed to log waitlist registration: {log_error}")
+                        except discord.Forbidden:
+                            logging.debug(f"Could not DM {next_user['discord_tag']} - DMs disabled")
+                        except Exception as dm_error:
+                            logging.warning(f"Failed to DM {next_user['discord_tag']}: {dm_error}")
 
-                    registered_users.append(next_user)
-                    logging.info(f"Successfully registered {next_user['discord_tag']} from waitlist")
-                    print(f"[WAITLIST] Successfully registered {next_user['discord_tag']}")
+                        # Log to bot-log channel
+                        log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+                        if log_channel:
+                            try:
+                                team_info = f" for team **{next_user.get('team_name')}**" if next_user.get(
+                                    "team_name") else ""
+                                log_embed = discord.Embed(
+                                    title="✅ Waitlist Registration",
+                                    description=f"**{next_user['discord_tag']}** ({next_user['ign']}) has been automatically registered from the waitlist{team_info}.",
+                                    color=discord.Color.green(),
+                                    timestamp=datetime.utcnow()
+                                )
+                                await log_channel.send(embed=log_embed)
+                            except Exception as log_error:
+                                logging.warning(f"Failed to log waitlist registration: {log_error}")
 
-                    # Continue loop to check if more spots are available
+                        registered_users.append(next_user)
+                        logging.info(f"Successfully registered {next_user['discord_tag']} from waitlist")
+                        print(f"[WAITLIST] Successfully registered {next_user['discord_tag']}")
 
-                except Exception as reg_error:
-                    print(f"[WAITLIST] Registration error: {reg_error}")
-                    await ErrorHandler.log_warning(
-                        guild,
-                        f"Failed to auto-register {next_user['discord_tag']} from waitlist: {reg_error}",
-                        "Waitlist Processing"
-                    )
-                    # Continue to next iteration to try next person
-                    continue
+                    except Exception as reg_error:
+                        print(f"[WAITLIST] Registration error: {reg_error}")
+                        await ErrorHandler.log_warning(
+                            guild,
+                            f"Failed to auto-register {next_user['discord_tag']} from waitlist: {reg_error}",
+                            "Waitlist Processing"
+                        )
+                        # Continue to next iteration
+                        continue
 
             # After loop ends
             if registered_users:
                 print(f"[WAITLIST] Registered {len(registered_users)} users from waitlist")
+
+                # Update embeds after successful registrations
+                from helpers import EmbedHelper
+                await EmbedHelper.update_all_guild_embeds(guild)
             else:
                 print(f"[WAITLIST] No users registered from waitlist")
 

@@ -21,7 +21,7 @@ class SheetOperations:
         Update a single cell in the sheet.
         """
         try:
-            sheet = get_sheet_for_guild(guild_id, worksheet)
+            sheet = await get_sheet_for_guild(guild_id, worksheet)
             await retry_until_successful(
                 sheet.update_acell,
                 f"{col_letter}{row}",
@@ -74,7 +74,7 @@ class SheetOperations:
         # Get pronouns from sheet
         pronouns = ""
         try:
-            sheet = get_sheet_for_guild(guild_id)
+            sheet = await get_sheet_for_guild(guild_id)
             cell = await retry_until_successful(sheet.acell, f"{cfg['pronouns_col']}{row}")
             pronouns = cell.value or ""
         except:
@@ -163,7 +163,7 @@ class SheetOperations:
         """
         Clear an entire column to a specific value.
         """
-        sheet = get_sheet_for_guild(guild_id, worksheet)
+        sheet = await get_sheet_for_guild(guild_id, worksheet)
         col_idx = col_to_index(column)
 
         # Get all values to determine range
@@ -200,7 +200,7 @@ class SheetOperations:
         if check_column is None:
             check_column = cfg["discord_col"]
 
-        sheet = get_sheet_for_guild(guild_id)
+        sheet = await get_sheet_for_guild(guild_id)
         col_idx = col_to_index(check_column)
 
         vals = await retry_until_successful(sheet.col_values, col_idx)

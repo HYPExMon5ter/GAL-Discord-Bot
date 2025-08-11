@@ -54,14 +54,24 @@ embeds:
     description: "😢 Team **{team_name}** already has 2 players! Please choose or create a different team."
     color: "#e74c3c"
 
+  max_teams_reached:
+    title: "🚫 Maximum Teams Reached"
+    description: |
+      The tournament has reached the maximum of **{max_teams}** teams.
+      
+      **{teams_count}** teams have space available. Please select a team from the dropdown below to join an existing team.
+      
+      If you don't want to join any of these teams, you can cancel and wait for a spot to open up.
+    color: "#f39c12"
+
   register_success_normal:
     title: "✅ New Registration!"
-    description: "**{ign}** has just registered! 🎉"
+    description: "You're now registered with **{ign}**! 🎉"
     color: "#27ae60"
 
   register_success_doubleup:
-    title: "✅ New Team Registration!"
-    description: "**{ign}** registered for team **{team_name}**! 🤜🤛"
+    title: "✅ New Registration!"
+    description: "You're now registered with **{ign}** for team **{team_name}**! 🤜🤛"
     color: "#27ae60"
 
   unregister_success:
@@ -70,7 +80,7 @@ embeds:
     color: "#e67e22"
 
   unregister_not_registered:
-    title: "ℹ️ Not Registered"
+    title: "⚠️ Registration Required"
     description: "You’re not currently registered. 👉 Click the **Register** button."
     color: "#e74c3c"
 
@@ -251,8 +261,8 @@ sheet_configuration:
 
   doubleup:
     #Top sheet url = prod, bottom = testing
-    #sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
-    sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
+    sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
+    #sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
     header_line_num: 2
     max_players: 32
     discord_col: "B"

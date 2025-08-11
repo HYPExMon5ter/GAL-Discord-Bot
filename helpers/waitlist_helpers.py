@@ -14,7 +14,7 @@ from config import embed_from_cfg, get_sheet_settings, LOG_CHANNEL_NAME, DATABAS
 from core.persistence import get_event_mode_for_guild
 from helpers.error_handler import ErrorHandler
 from helpers.role_helpers import RoleManager
-from integrations.sheets import find_or_register_user, cache_lock, sheet_cache
+from integrations.sheets import find_or_register_user, cache_lock, sheet_cache, refresh_sheet_cache
 
 
 class WaitlistError(Exception):
@@ -473,6 +473,7 @@ class WaitlistManager:
     async def process_waitlist(guild: discord.Guild) -> List[Dict]:
         """
         Process the waitlist with smart team pairing and priority logic.
+        Validates team existence and capacity before registering.
         """
         if not guild:
             raise ValueError("Guild is required")
@@ -489,6 +490,7 @@ class WaitlistManager:
             cfg = get_sheet_settings(mode)
             max_players = cfg.get("max_players", 0)
             max_per_team = cfg.get("max_per_team", 2)
+            max_teams = max_players // max_per_team
 
             # Keep processing while there are spots and waitlist entries
             while True:
@@ -518,6 +520,18 @@ class WaitlistManager:
 
                 # In double-up mode, apply smart prioritization
                 if mode == "doubleup":
+                    # Get current team status
+                    team_member_counts = {}
+                    async with cache_lock:
+                        for tag, tpl in sheet_cache["users"].items():
+                            if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4 and tpl[4]:
+                                team_lower = tpl[4].lower()
+                                if team_lower not in team_member_counts:
+                                    team_member_counts[team_lower] = []
+                                team_member_counts[team_lower].append(tag)
+
+                    num_existing_teams = len(team_member_counts)
+
                     # Priority 1: Check for team pairs if 2+ spots available
                     if available_spots >= 2:
                         print("[WAITLIST] Checking for team pairs...")
@@ -535,15 +549,25 @@ class WaitlistManager:
                         # Look for teams with 2+ waitlisted members
                         for team_lower, team_members in team_groups.items():
                             if len(team_members) >= 2:
-                                # Check if this team has room for both
-                                current_count, spots = await WaitlistManager._get_team_status(
-                                    team_lower, guild_id
-                                )
+                                # Check if this team exists or can be created
+                                team_exists = team_lower in team_member_counts
+                                current_count = len(team_member_counts.get(team_lower, []))
 
-                                if spots >= 2:
-                                    print(f"[WAITLIST] Found team pair for '{team_lower}' - registering both")
-                                    to_register = team_members[:2]  # Take first 2
-                                    break
+                                if team_exists:
+                                    # Team exists - check if there's room for both
+                                    spots_in_team = max_per_team - current_count
+                                    if spots_in_team >= 2:
+                                        print(
+                                            f"[WAITLIST] Found team pair for existing team '{team_lower}' - registering both")
+                                        to_register = team_members[:2]
+                                        break
+                                else:
+                                    # Team doesn't exist - check if we can create new team
+                                    if num_existing_teams < max_teams:
+                                        print(
+                                            f"[WAITLIST] Found team pair for new team '{team_lower}' - registering both")
+                                        to_register = team_members[:2]
+                                        break
 
                     # Priority 2: Check for individuals joining existing teams
                     if not to_register:
@@ -552,19 +576,36 @@ class WaitlistManager:
                         for entry in waitlist:
                             team = entry.get("team_name")
                             if team:
-                                current_count, spots = await WaitlistManager._get_team_status(
-                                    team, guild_id
-                                )
+                                team_lower = team.lower()
 
-                                # If team exists with space (partially filled)
-                                if current_count > 0 and spots > 0:
-                                    print(f"[WAITLIST] Found user to complete team '{team}'")
-                                    to_register = [entry]
-                                    break
+                                # Check if team exists and has space
+                                if team_lower in team_member_counts:
+                                    current_count = len(team_member_counts[team_lower])
+                                    if current_count < max_per_team:
+                                        print(f"[WAITLIST] Found user to complete existing team '{team}'")
+                                        to_register = [entry]
+                                        break
+                                else:
+                                    # Team doesn't exist - check if we can create it
+                                    if num_existing_teams < max_teams:
+                                        print(f"[WAITLIST] Found user to create new team '{team}'")
+                                        to_register = [entry]
+                                        break
 
-                # Priority 3: FIFO - take the first person in line
-                if not to_register and waitlist:
-                    print("[WAITLIST] Using FIFO - taking first person in queue")
+                    # Priority 3: Solo players without teams (if space for new teams)
+                    if not to_register:
+                        print("[WAITLIST] Checking for solo players...")
+
+                        for entry in waitlist:
+                            if not entry.get("team_name"):
+                                # Solo player - can register if there's space
+                                print(f"[WAITLIST] Found solo player")
+                                to_register = [entry]
+                                break
+
+                else:
+                    # Normal mode - just take first in line
+                    print("[WAITLIST] Normal mode - taking first person in queue")
                     to_register = [waitlist[0]]
 
                 # If we have no one to register, stop
@@ -663,6 +704,9 @@ class WaitlistManager:
                         )
                         # Continue to next iteration
                         continue
+
+                # Refresh cache after each registration batch
+                await refresh_sheet_cache()
 
             # After loop ends
             if registered_users:

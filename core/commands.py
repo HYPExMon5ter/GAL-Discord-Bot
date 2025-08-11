@@ -495,7 +495,7 @@ async def _update_doubleup_placements(guild: discord.Guild, round: int):
     """Helper to update double-up placements in the Lobbies sheet."""
     try:
         gid = str(guild.id)
-        lobby_sheet = get_sheet_for_guild(gid, "Lobbies")
+        lobby_sheet = await get_sheet_for_guild(gid, "Lobbies")
 
         # Map rounds → (IGN col, Placement col)
         cols = {

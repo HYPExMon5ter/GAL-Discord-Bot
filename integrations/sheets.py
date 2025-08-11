@@ -658,7 +658,7 @@ async def _update_checkin_status(
         gid = str(guild_id) if guild_id else "unknown"
         mode = get_event_mode_for_guild(gid)
         cfg = get_sheet_settings(mode)
-        sheet = get_sheet_for_guild(gid, "GAL Database")
+        sheet = await get_sheet_for_guild(gid, "GAL Database")
 
         # Update sheet
         await retry_until_successful(

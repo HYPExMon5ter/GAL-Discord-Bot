@@ -19,7 +19,7 @@ from core.persistence import (
 )
 from helpers import (
     RoleManager, ChannelManager, SheetOperations, Validators,
-    ErrorHandler, EmbedHelper, sheet_helpers
+    ErrorHandler, EmbedHelper, sheet_helpers, ValidationError
 )
 from helpers.embed_helpers import log_error
 from integrations.sheets import (
@@ -96,7 +96,33 @@ async def complete_registration(
     )
 
     if capacity_error:
-        # Check if it's a full registration error
+        # Check if it's a max teams error with available teams
+        if capacity_error.embed_key == "max_teams_reached":
+            teams_with_space = capacity_error.kwargs.get("teams_with_space", [])
+
+            if teams_with_space:
+                # Show dropdown for team selection
+                embed = embed_from_cfg(
+                    "max_teams_reached",
+                    max_teams=capacity_error.kwargs.get("max_teams"),
+                    teams_count=len(teams_with_space)
+                )
+
+                view = TeamSelectionView(
+                    reg_modal, ign, pronouns, teams_with_space, alt_igns
+                )
+
+                return await interaction.followup.send(
+                    embed=embed,
+                    view=view,
+                    ephemeral=True
+                )
+            else:
+                # No teams with space, treat as full
+                capacity_error = ValidationError("registration_full",
+                                                 max_players=capacity_error.kwargs.get("max_players", 0))
+
+        # Handle other capacity errors (registration_full, team_full)
         if capacity_error.embed_key == "registration_full":
             # Check for team similarity when adding to waitlist
             if mode == "doubleup" and team_name:
@@ -1035,37 +1061,53 @@ class RegistrationModal(discord.ui.Modal):
                 return
 
         try:
-            if mode == "doubleup" and not getattr(self, "bypass_similarity", False):
-                # FIX: await the coroutine
-                sheet = await get_sheet_for_guild(guild_id, "GAL Database")
-                team_col_raw = await retry_until_successful(sheet.col_values, 9)
-                user_team_value = team_value.strip().lower()
+            if mode == "doubleup" and team_value and not getattr(self, "bypass_similarity", False):
+                # Check for exact case-insensitive match first
+                exact_match = None
+                async with cache_lock:
+                    for tag, tpl in sheet_cache["users"].items():
+                        if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4 and tpl[4]:
+                            if tpl[4].lower() == team_value.lower() and tpl[4] != team_value:
+                                exact_match = tpl[4]
+                                break
 
-                # Make the normalization case-insensitive
-                norm_to_original = {}
-                team_col = []
-                for t in team_col_raw[2:]:
-                    if t and t.strip():
-                        normalized = t.strip().lower()
-                        if normalized != user_team_value:
-                            team_col.append(normalized)
-                            norm_to_original[normalized] = t.strip()
+                # If exact case-insensitive match found, use it without prompting
+                if exact_match:
+                    team_value = exact_match
+                else:
+                    # Otherwise check for fuzzy similarity
+                    sheet = await get_sheet_for_guild(guild_id, "GAL Database")
+                    team_col_raw = await retry_until_successful(sheet.col_values, 9)
+                    user_team_value = team_value.strip().lower()
 
-                result = process.extractOne(user_team_value, team_col, scorer=fuzz.ratio, score_cutoff=75)
-                suggested_team = norm_to_original[result[0]] if result else None
+                    # Make the normalization case-insensitive
+                    norm_to_original = {}
+                    team_col = []
+                    for t in team_col_raw[2:]:
+                        if t and t.strip():
+                            normalized = t.strip().lower()
+                            if normalized != user_team_value:
+                                team_col.append(normalized)
+                                norm_to_original[normalized] = t.strip()
 
-                if suggested_team:
-                    await interaction.followup.send(
-                        embed=discord.Embed(
-                            title="Similar Team Found",
-                            description=f"Did you mean **{suggested_team}**?\n\n"
-                                        f"Click **Use Suggested** to use the located team name, or **Keep Mine** to register your entered team name.",
-                            color=discord.Color.blurple()
-                        ),
-                        view=TeamNameChoiceView(self, ign, pronouns, suggested_team, team_value),
-                        ephemeral=True
-                    )
-                    return
+                    if team_col:  # Only check similarity if there are existing teams
+                        result = process.extractOne(
+                            user_team_value, team_col, scorer=fuzz.ratio, score_cutoff=75
+                        )
+                        suggested_team = norm_to_original[result[0]] if result else None
+
+                        if suggested_team:
+                            await interaction.followup.send(
+                                embed=discord.Embed(
+                                    title="Similar Team Found",
+                                    description=f"Did you mean **{suggested_team}**?\n\n"
+                                                f"Click **Use Suggested** to use the located team name, or **Keep Mine** to register your entered team name.",
+                                    color=discord.Color.blurple()
+                                ),
+                                view=TeamNameChoiceView(self, ign, pronouns, suggested_team, team_value),
+                                ephemeral=True
+                            )
+                            return
 
             await complete_registration(
                 interaction,
@@ -1117,6 +1159,68 @@ class TeamNameChoiceView(discord.ui.View):
             self.user_team,
             self.reg_modal.alt_ign_input.value.strip(),
             self.reg_modal
+        )
+
+
+class TeamSelectionView(discord.ui.View):
+    """View with dropdown for selecting existing teams with space."""
+
+    def __init__(self, reg_modal, ign, pronouns, teams_with_space, alt_igns):
+        super().__init__(timeout=60)
+        self.reg_modal = reg_modal
+        self.ign = ign
+        self.pronouns = pronouns
+        self.alt_igns = alt_igns
+        self.selected_team = None
+
+        # Add dropdown with available teams
+        self.team_select = discord.ui.Select(
+            placeholder="Choose a team to join...",
+            options=[
+                discord.SelectOption(label=team, value=team)
+                for team in teams_with_space[:25]  # Discord limit is 25 options
+            ]
+        )
+        self.team_select.callback = self.team_selected
+        self.add_item(self.team_select)
+
+        # Add cancel button
+        self.cancel_btn = discord.ui.Button(
+            label="Cancel",
+            style=discord.ButtonStyle.secondary
+        )
+        self.cancel_btn.callback = self.cancel_clicked
+        self.add_item(self.cancel_btn)
+
+    async def team_selected(self, interaction: discord.Interaction):
+        """Handle team selection from dropdown."""
+        self.selected_team = self.team_select.values[0]
+
+        # Disable all items
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.response.edit_message(view=self)
+
+        # Complete registration with selected team
+        await complete_registration(
+            interaction,
+            self.ign,
+            self.pronouns,
+            self.selected_team,
+            self.alt_igns,
+            self.reg_modal
+        )
+
+    async def cancel_clicked(self, interaction: discord.Interaction):
+        """Handle cancel button."""
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.response.edit_message(
+            content="Registration cancelled.",
+            embed=None,
+            view=self
         )
 
 

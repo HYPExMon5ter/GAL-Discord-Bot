@@ -17,24 +17,58 @@ from core.events import setup_events
 # Configure logging with better formatting
 def setup_logging():
     """Configure logging with proper formatting and levels."""
+    import colorama
+    from colorama import Fore, Style
+    colorama.init(autoreset=True)
+
+    class ColoredFormatter(logging.Formatter):
+        """Custom formatter with colors for different log levels."""
+
+        COLORS = {
+            logging.DEBUG: Style.DIM,
+            logging.INFO: "",  # No color for info
+            logging.WARNING: Fore.YELLOW,
+            logging.ERROR: Fore.RED,
+            logging.CRITICAL: Fore.RED + Style.BRIGHT,
+        }
+
+        def format(self, record):
+            # Get the color for this log level
+            color = self.COLORS.get(record.levelno, "")
+
+            # Format the message
+            formatted = super().format(record)
+
+            # Only apply color to WARNING and above
+            if record.levelno >= logging.WARNING:
+                return f"{color}{formatted}{Style.RESET_ALL}"
+            return formatted
+
     log_format = "%(asctime)s | %(levelname)-8s | %(name)-20s | %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
 
-    # Create formatter
-    formatter = logging.Formatter(log_format, date_format)
+    # Create colored formatter for console
+    console_formatter = ColoredFormatter(log_format, date_format)
 
-    # Console handler
+    # Create regular formatter for file
+    file_formatter = logging.Formatter(log_format, date_format)
+
+    # Remove all existing handlers first to prevent duplicates
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    # Console handler with colored output
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
+    console_handler.setFormatter(console_formatter)
     console_handler.setLevel(logging.INFO)
 
-    # File handler
+    # File handler without colors
     file_handler = logging.FileHandler("gal_bot.log", encoding="utf-8", mode="a")
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(file_formatter)
     file_handler.setLevel(logging.DEBUG)
 
     # Configure root logger
-    root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)

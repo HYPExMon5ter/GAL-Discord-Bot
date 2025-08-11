@@ -108,31 +108,8 @@ async def toggle_persisted_channel(
                 set_schedule(guild.id, "checkin_open", None)
                 set_schedule(guild.id, "checkin_close", None)
 
-        # Update persisted embed - this is critical!
-        _, msg_id = get_persisted_msg(guild.id, persist_key)
-        if msg_id:
-            # Always update the embed when toggling
-            update_func = (
-                update_registration_embed if persist_key == "registration"
-                else update_checkin_embed
-            )
-            try:
-                await update_func(channel, msg_id, guild)
-            except Exception as e:
-                logging.error(f"Failed to update {persist_key} embed: {e}")
-        else:
-            # Create initial embed if it doesn't exist
-            if new_open:
-                embed = embed_from_cfg(f"{persist_key}")
-            else:
-                embed = embed_from_cfg(f"{persist_key}_closed")
-
-            view = (
-                RegistrationView(None, guild)
-                if persist_key == "registration"
-                else CheckInView(guild)
-            )
-            await create_persisted_embed(guild, channel, embed, view, persist_key)
+        # Force update ALL embeds after channel state change
+        await EmbedHelper.update_all_guild_embeds(guild)
 
         # Send feedback
         feedback = embed_from_cfg(f"{persist_key}_channel_toggled", visible=new_open)
@@ -430,7 +407,7 @@ async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
         # Update sheet with hyperlink
         mode = get_event_mode_for_guild(guild_id)
         settings = get_sheet_settings(mode)
-        sheet = get_sheet_for_guild(guild_id, "GAL Database")
+        sheet = await get_sheet_for_guild(guild_id, "GAL Database")
 
         formula = f'=HYPERLINK("{profile_url}","{ign_clean}")'
 

@@ -101,7 +101,14 @@ def hex_to_color(s: str) -> discord.Color:
 
 def embed_from_cfg(key: str, **kwargs) -> discord.Embed:
     """
-    Create Discord embed from configuration.
+    Create Discord embed from configuration with error handling.
+
+    Args:
+        key: Configuration key for the embed
+        **kwargs: Variables to format in the embed text
+
+    Returns:
+        discord.Embed: Configured embed object
     """
     data = EMBEDS_CFG.get(key, {})
 

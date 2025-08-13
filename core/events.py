@@ -67,7 +67,16 @@ async def schedule_channel_open(
             from utils.utils import update_dm_action_views
             await update_dm_action_views(guild)
 
-            # Log the opening
+            # Log the opening with schedule-specific message
+            log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+            if log_ch:
+                channel_type = "Registration" if channel_name == REGISTRATION_CHANNEL else "Check-in"
+                embed = embed_from_cfg(
+                    "schedule_channel_opened",
+                    type=channel_type
+                )
+                await log_ch.send(embed=embed)
+
             logging.info(f"Opened {channel_name} channel for guild {guild.id}")
 
         # Clear persisted open time so it won't fire again
@@ -100,7 +109,18 @@ async def schedule_channel_close(
             from utils.utils import update_dm_action_views
             await update_dm_action_views(guild)
 
-            # Log the closing
+            # Log the closing with schedule-specific message
+            log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+            if log_ch:
+                channel_type = "Registration" if channel_name == REGISTRATION_CHANNEL else "Check-in"
+                close_ts = int(close_time.timestamp())
+                embed = embed_from_cfg(
+                    "schedule_channel_closed",
+                    type=channel_type,
+                    close_ts=close_ts
+                )
+                await log_ch.send(embed=embed)
+
             logging.info(f"Closed {channel_name} channel for guild {guild.id}")
 
         # Clear persisted close time so it won't fire again

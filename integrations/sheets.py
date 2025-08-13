@@ -11,7 +11,7 @@ from typing import Optional, Tuple, Union, Dict, Any
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-from config import get_sheet_settings, col_to_index, CACHE_REFRESH_SECONDS
+from config import get_sheet_settings, col_to_index, CACHE_REFRESH_SECONDS, REGISTERED_ROLE, CHECKED_IN_ROLE
 from core.persistence import get_event_mode_for_guild
 
 # Scope for Google Sheets API
@@ -216,6 +216,7 @@ def ordinal_suffix(n: Union[int, str]) -> str:
 async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     """
     Refresh the sheet cache with comprehensive error handling.
+    Synchronizes Discord roles with sheet data after refresh.
     Processes waitlist after cache update to fill any open spots.
     """
     # Only print at start if this is not a recursive call
@@ -224,6 +225,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
 
     # Store guild reference for later use
     guild = None
+    roles_synced = 0
 
     # Do the cache refresh inside the lock
     async with cache_lock:
@@ -348,7 +350,48 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                 raise
             raise SheetsError(f"Failed to refresh cache: {e}")
 
-    # Process waitlist AFTER releasing the cache lock
+    # ROLE SYNCHRONIZATION - After cache is updated, sync all Discord roles
+    if guild and not hasattr(sheet_cache, "_skip_waitlist_processing"):
+        print("[CACHE] Synchronizing Discord roles with sheet data...")
+        try:
+            from helpers import RoleManager
+            from utils.utils import resolve_member
+
+            # Get a snapshot of the cache for role sync
+            async with cache_lock:
+                cache_snapshot = dict(sheet_cache["users"])
+
+            for discord_tag, user_data in cache_snapshot.items():
+                try:
+                    # Resolve member from discord tag
+                    member = resolve_member(guild, discord_tag)
+
+                    if not member:
+                        # User not in server, skip
+                        continue
+
+                    # Parse registration and check-in status from cache
+                    _, _, reg_status, ci_status, _, _ = user_data
+                    is_registered = str(reg_status).upper() == "TRUE"
+                    is_checked_in = str(ci_status).upper() == "TRUE"
+
+                    # Sync roles using existing helper
+                    await RoleManager.sync_user_roles(member, is_registered, is_checked_in)
+                    roles_synced += 1
+
+                except Exception as e:
+                    logging.warning(f"Failed to sync roles for {discord_tag}: {e}")
+                    continue
+
+            if roles_synced > 0:
+                print(f"[CACHE] Synchronized roles for {roles_synced} users")
+                logging.info(f"Synchronized Discord roles for {roles_synced} users after cache refresh")
+
+        except Exception as e:
+            print(f"[CACHE] Role synchronization failed: {e}")
+            logging.error(f"Failed to synchronize roles after cache refresh: {e}")
+
+    # Process waitlist AFTER releasing the cache lock and syncing roles
     # This is important - we process waitlist if:
     # 1. Users were removed/unregistered (spots opened up)
     # 2. Always check after cache refresh to ensure consistency
@@ -384,7 +427,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
 
     # Only print completion message if not a recursive call
     if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-        print("[CACHE] refresh_sheet_cache complete!")
+        print(f"[CACHE] refresh_sheet_cache complete! (Synced {roles_synced} roles)")
 
     return total_changes, total_users
 
@@ -685,6 +728,7 @@ async def _update_checkin_status(
 async def reset_registered_roles_and_sheet(guild, channel) -> int:
     """
     Reset all registration data - clear all columns except headers.
+    Also removes roles from all members to match the cleared sheet.
     """
     try:
         gid = str(guild.id)
@@ -741,12 +785,41 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
             all_data[gid]["waitlist"] = []
             WaitlistManager._save_waitlist_data(all_data)
 
-        # Refresh cache
+        # Remove roles from ALL members who have them
+        from helpers import RoleManager
+
+        registered_role = RoleManager.get_role(guild, REGISTERED_ROLE)
+        checked_in_role = RoleManager.get_role(guild, CHECKED_IN_ROLE)
+
+        roles_removed = 0
+
+        if registered_role:
+            for member in registered_role.members[:]:  # Use slice to avoid modification during iteration
+                try:
+                    roles_to_remove = [registered_role]
+                    if checked_in_role and checked_in_role in member.roles:
+                        roles_to_remove.append(checked_in_role)
+                    await member.remove_roles(*roles_to_remove, reason="Registration reset")
+                    roles_removed += 1
+                except Exception as e:
+                    logging.warning(f"Failed to remove roles from {member}: {e}")
+
+        # Also check for any orphaned checked-in roles (shouldn't happen but be safe)
+        if checked_in_role:
+            for member in checked_in_role.members[:]:
+                if registered_role not in member.roles:  # Has checked-in but not registered
+                    try:
+                        await member.remove_roles(checked_in_role, reason="Registration reset - orphaned role")
+                        roles_removed += 1
+                    except Exception as e:
+                        logging.warning(f"Failed to remove orphaned checked-in role from {member}: {e}")
+
+        # Refresh cache (this will also sync any remaining role discrepancies)
         await refresh_sheet_cache()
 
         # Return the number of rows that were cleared
         cleared_rows = max_players
-        logging.info(f"Reset registration for {cleared_rows} rows (max capacity)")
+        logging.info(f"Reset registration for {cleared_rows} rows and removed roles from {roles_removed} members")
 
         return cleared_rows
 
@@ -759,6 +832,7 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
 async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
     """
     Reset only check-in data - set checkin column to False.
+    Also removes checked-in role from all members.
     """
     try:
         gid = str(guild.id)
@@ -786,11 +860,25 @@ async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
 
             await retry_until_successful(sheet.update_cells, cell_list)
 
-        # Refresh cache
+        # Remove checked-in role from ALL members who have it
+        from helpers import RoleManager
+
+        checked_in_role = RoleManager.get_role(guild, CHECKED_IN_ROLE)
+        roles_removed = 0
+
+        if checked_in_role:
+            for member in checked_in_role.members[:]:  # Use slice to avoid modification during iteration
+                try:
+                    await member.remove_roles(checked_in_role, reason="Check-in reset")
+                    roles_removed += 1
+                except Exception as e:
+                    logging.warning(f"Failed to remove checked-in role from {member}: {e}")
+
+        # Refresh cache (this will also sync any remaining role discrepancies)
         await refresh_sheet_cache()
 
         cleared_count = max_players
-        logging.info(f"Reset check-in for {cleared_count} rows (max capacity)")
+        logging.info(f"Reset check-in for {cleared_count} rows and removed role from {roles_removed} members")
 
         return cleared_count
 

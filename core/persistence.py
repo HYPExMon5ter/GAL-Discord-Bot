@@ -105,21 +105,47 @@ def get_db_connection():
 
 
 def load_persisted() -> Dict[str, Any]:
-    """Load persisted data with proper error handling."""
+    """Load persisted data."""
+    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    dev_guild_id = os.getenv("DEV_GUILD_ID")
+
     if connection_pool:
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT data FROM persisted_views WHERE key = %s", ("default",))
                     row = cursor.fetchone()
-                    return row[0] if row else {}
+                    if row:
+                        data = row[0] if row else {}
+
+                        # In dev mode, only load dev guild data
+                        if not is_production and dev_guild_id:
+                            filtered_data = {}
+                            for key, value in data.items():
+                                # Only load dev guild data
+                                if key == dev_guild_id:
+                                    filtered_data[key] = value
+                            return filtered_data
+
+                        return data
+                    return {}
         except Exception as e:
             logging.error(f"Failed to load from database, falling back to file: {e}")
 
     # File fallback
     try:
         with open(PERSIST_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+
+            # In dev mode, only load dev guild data
+            if not is_production and dev_guild_id:
+                filtered_data = {}
+                for key, value in data.items():
+                    if key == dev_guild_id:
+                        filtered_data[key] = value
+                return filtered_data
+
+            return data
     except FileNotFoundError:
         logging.info("No persisted data file found, starting fresh")
         return {}
@@ -132,29 +158,59 @@ def load_persisted() -> Dict[str, Any]:
 
 
 def save_persisted(data: Dict[str, Any]) -> None:
-    """Save persisted data with proper error handling."""
+    """Save persisted data with proper error handling and environment checking."""
+    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    dev_guild_id = os.getenv("DEV_GUILD_ID")
+
+    # If we're in dev mode with a production database URL, only save dev guild data
+    if not is_production and DATABASE_URL and dev_guild_id:
+        # Filter data to only save the dev guild's data
+        filtered_data = {}
+        for key, value in data.items():
+            # Only keep dev guild data
+            if key == dev_guild_id or key == "default":
+                filtered_data[key] = value
+        data = filtered_data
+
+        # Don't save if there's no dev guild data
+        if not filtered_data or (len(filtered_data) == 1 and "default" in filtered_data):
+            logging.debug("Skipping persistence save in dev mode - no dev guild data to save")
+            return
+
     if connection_pool:
         try:
             with get_db_connection() as conn:
                 with conn.cursor() as cursor:
-                    # Try with updated_at column first
-                    try:
+                    # In dev mode, only update dev guild's data
+                    if not is_production and dev_guild_id:
+                        # Only update the specific dev guild's data
                         cursor.execute(
                             """INSERT INTO persisted_views (key, data, updated_at) 
                                VALUES (%s, %s, CURRENT_TIMESTAMP) 
                                ON CONFLICT (key) 
-                               DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP""",
-                            ("default", json.dumps(data))
+                               DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP
+                               WHERE persisted_views.key = %s""",
+                            ("default", json.dumps(data), "default")
                         )
-                    except psycopg2.errors.UndefinedColumn:
-                        # Fallback to without updated_at column
-                        cursor.execute(
-                            """INSERT INTO persisted_views (key, data) 
-                               VALUES (%s, %s) 
-                               ON CONFLICT (key) 
-                               DO UPDATE SET data = EXCLUDED.data""",
-                            ("default", json.dumps(data))
-                        )
+                    else:
+                        # Production mode - save everything
+                        try:
+                            cursor.execute(
+                                """INSERT INTO persisted_views (key, data, updated_at) 
+                                   VALUES (%s, %s, CURRENT_TIMESTAMP) 
+                                   ON CONFLICT (key) 
+                                   DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP""",
+                                ("default", json.dumps(data))
+                            )
+                        except psycopg2.errors.UndefinedColumn:
+                            # Fallback to without updated_at column
+                            cursor.execute(
+                                """INSERT INTO persisted_views (key, data) 
+                                   VALUES (%s, %s) 
+                                   ON CONFLICT (key) 
+                                   DO UPDATE SET data = EXCLUDED.data""",
+                                ("default", json.dumps(data))
+                            )
                     conn.commit()
             return
         except Exception as e:
@@ -190,7 +246,17 @@ def set_persisted_msg(guild_id: Union[str, int], key: str, channel_id: int, msg_
     """
     Store [channel_id, msg_id] for the given guild/key.
     """
+    # Environment check to prevent dev from overwriting prod
+    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    dev_guild_id = os.getenv("DEV_GUILD_ID")
     gid = str(guild_id)
+
+    # If we're in dev mode, only allow saving dev guild data
+    if not is_production and dev_guild_id:
+        if gid != dev_guild_id:
+            logging.warning(f"Blocked persistence save for non-dev guild {gid} in dev mode")
+            return
+
     if gid not in persisted:
         persisted[gid] = {}
 
@@ -232,7 +298,17 @@ def set_event_mode_for_guild(guild_id: Union[str, int], mode: str) -> None:
     if mode not in ["normal", "doubleup"]:
         raise ValueError(f"Invalid event mode: {mode}")
 
+    # Environment check to prevent dev from overwriting prod
+    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    dev_guild_id = os.getenv("DEV_GUILD_ID")
     gid = str(guild_id)
+
+    # If we're in dev mode, only allow saving dev guild data
+    if not is_production and dev_guild_id:
+        if gid != dev_guild_id:
+            logging.warning(f"Blocked event mode save for non-dev guild {gid} in dev mode")
+            return
+
     if gid not in persisted:
         persisted[gid] = {}
 
@@ -254,7 +330,17 @@ def set_schedule(guild_id: Union[str, int], key: str, dtstr: Optional[str]) -> N
     """
     Set scheduled time for a specific key.
     """
+    # Environment check to prevent dev from overwriting prod
+    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    dev_guild_id = os.getenv("DEV_GUILD_ID")
     gid = str(guild_id)
+
+    # If we're in dev mode, only allow saving dev guild data
+    if not is_production and dev_guild_id:
+        if gid != dev_guild_id:
+            logging.warning(f"Blocked schedule save for non-dev guild {gid} in dev mode")
+            return
+
     if gid not in persisted:
         persisted[gid] = {}
 

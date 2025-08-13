@@ -163,14 +163,14 @@ embeds:
     description: "🗑️ **{event}** was removed. {type} schedule cleared."
     color: "#e67e22"
 
-  schedule_open:
+  schedule_channel_opened:
     title: "🚪 {type} Channel Opened"
-    description: "{type} channel is now **open**! ({time})"
+    description: "{type} channel has been **automatically opened** by the scheduled event."
     color: "#2ecc71"
 
-  schedule_close:
+  schedule_channel_closed:
     title: "🔒 {type} Channel Closed"
-    description: "{type} was auto-closed at <t:{close_ts}:F>."
+    description: "{type} channel has been **automatically closed** at <t:{close_ts}:F>."
     color: "#e74c3c"
 
   reminder_dm:

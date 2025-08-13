@@ -1,5 +1,5 @@
 # helpers/role_helpers.py
-
+import logging
 from typing import Optional, List
 
 import discord
@@ -89,18 +89,56 @@ class RoleManager:
     async def sync_user_roles(member: discord.Member, is_registered: bool, is_checked_in: bool) -> None:
         """
         Sync member's roles based on their registration/check-in status.
+        This ensures Discord roles always match the sheet data.
         """
-        # Handle registered role
-        if is_registered and not RoleManager.is_registered(member):
-            await RoleManager.add_role(member, REGISTERED_ROLE)
-        elif not is_registered and RoleManager.is_registered(member):
-            await RoleManager.remove_role(member, REGISTERED_ROLE)
+        try:
+            # Get the role objects
+            reg_role = RoleManager.get_role(member.guild, REGISTERED_ROLE)
+            ci_role = RoleManager.get_role(member.guild, CHECKED_IN_ROLE)
 
-        # Handle checked-in role (can't be checked in without being registered)
-        if is_checked_in and is_registered and not RoleManager.is_checked_in(member):
-            await RoleManager.add_role(member, CHECKED_IN_ROLE)
-        elif (not is_checked_in or not is_registered) and RoleManager.is_checked_in(member):
-            await RoleManager.remove_role(member, CHECKED_IN_ROLE)
+            if not reg_role:
+                logging.warning(f"Registered role '{REGISTERED_ROLE}' not found in guild {member.guild.name}")
+                return
+
+            if not ci_role:
+                logging.warning(f"Checked-in role '{CHECKED_IN_ROLE}' not found in guild {member.guild.name}")
+                return
+
+            # Track what changes we're making for logging
+            changes = []
+
+            # Handle registered role
+            has_reg_role = reg_role in member.roles
+            if is_registered and not has_reg_role:
+                await member.add_roles(reg_role)
+                changes.append(f"Added {REGISTERED_ROLE}")
+            elif not is_registered and has_reg_role:
+                await member.remove_roles(reg_role)
+                changes.append(f"Removed {REGISTERED_ROLE}")
+
+            # Handle checked-in role (can't be checked in without being registered)
+            has_ci_role = ci_role in member.roles
+
+            # Logic: User should have checked-in role ONLY if both registered AND checked in
+            should_have_ci = is_registered and is_checked_in
+
+            if should_have_ci and not has_ci_role:
+                await member.add_roles(ci_role)
+                changes.append(f"Added {CHECKED_IN_ROLE}")
+            elif not should_have_ci and has_ci_role:
+                await member.remove_roles(ci_role)
+                changes.append(f"Removed {CHECKED_IN_ROLE}")
+
+            # Log changes if any were made
+            if changes:
+                logging.debug(f"Role sync for {member}: {', '.join(changes)}")
+
+        except discord.Forbidden:
+            logging.error(f"Missing permissions to sync roles for {member}")
+        except discord.HTTPException as e:
+            logging.error(f"Discord API error syncing roles for {member}: {e}")
+        except Exception as e:
+            logging.error(f"Unexpected error syncing roles for {member}: {e}")
 
     @staticmethod
     async def count_members_with_role(guild: discord.Guild, role_name: str) -> int:

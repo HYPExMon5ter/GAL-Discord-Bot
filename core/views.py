@@ -109,7 +109,7 @@ async def complete_registration(
                 )
 
                 view = TeamSelectionView(
-                    reg_modal, ign, pronouns, teams_with_space, alt_igns
+                    reg_modal, ign, pronouns, teams_with_space, alt_igns, team_name  # Pass team_name
                 )
 
                 return await interaction.followup.send(
@@ -1165,12 +1165,13 @@ class TeamNameChoiceView(discord.ui.View):
 class TeamSelectionView(discord.ui.View):
     """View with dropdown for selecting existing teams with space."""
 
-    def __init__(self, reg_modal, ign, pronouns, teams_with_space, alt_igns):
+    def __init__(self, reg_modal, ign, pronouns, teams_with_space, alt_igns, team_name):
         super().__init__(timeout=60)
         self.reg_modal = reg_modal
         self.ign = ign
         self.pronouns = pronouns
         self.alt_igns = alt_igns
+        self.team_name = team_name  # Store original team name
         self.selected_team = None
 
         # Add dropdown with available teams
@@ -1184,10 +1185,18 @@ class TeamSelectionView(discord.ui.View):
         self.team_select.callback = self.team_selected
         self.add_item(self.team_select)
 
-        # Add cancel button
+        # Add waitlist button (green)
+        self.waitlist_btn = discord.ui.Button(
+            label="Add to Waitlist",
+            style=discord.ButtonStyle.success
+        )
+        self.waitlist_btn.callback = self.waitlist_clicked
+        self.add_item(self.waitlist_btn)
+
+        # Add cancel button (red)
         self.cancel_btn = discord.ui.Button(
             label="Cancel",
-            style=discord.ButtonStyle.secondary
+            style=discord.ButtonStyle.danger
         )
         self.cancel_btn.callback = self.cancel_clicked
         self.add_item(self.cancel_btn)
@@ -1211,6 +1220,54 @@ class TeamSelectionView(discord.ui.View):
             self.alt_igns,
             self.reg_modal
         )
+
+    async def waitlist_clicked(self, interaction: discord.Interaction):
+        """Handle waitlist button click."""
+        from helpers.waitlist_helpers import WaitlistManager
+
+        # Disable all items
+        for item in self.children:
+            item.disabled = True
+
+        await interaction.response.edit_message(view=self)
+
+        guild = self.reg_modal.guild if hasattr(self.reg_modal, 'guild') else interaction.guild
+        member = self.reg_modal.member if hasattr(self.reg_modal, 'member') else interaction.user
+        guild_id = str(guild.id)
+        discord_tag = str(member)
+
+        # Check if already in waitlist
+        existing_position = await WaitlistManager.get_waitlist_position(guild_id, discord_tag)
+
+        if existing_position:
+            # Update waitlist entry
+            await WaitlistManager.update_waitlist_entry(
+                guild_id, discord_tag, self.ign, self.pronouns, self.team_name, self.alt_igns
+            )
+
+            waitlist_embed = discord.Embed(
+                title="📋 Waitlist Updated",
+                description=f"Your waitlist information has been updated.\n\n"
+                            f"You remain at position **#{existing_position}** in the waitlist.",
+                color=discord.Color.blue()
+            )
+        else:
+            # Add to waitlist
+            position = await WaitlistManager.add_to_waitlist(
+                guild, member, self.ign, self.pronouns, self.team_name, self.alt_igns
+            )
+
+            mode = get_event_mode_for_guild(guild_id)
+            cfg = get_sheet_settings(mode)
+            max_players = cfg.get("max_players", 0)
+
+            waitlist_embed = embed_from_cfg(
+                "waitlist_added",
+                position=position,
+                max_players=max_players
+            )
+
+        await interaction.followup.send(embed=waitlist_embed, ephemeral=True)
 
     async def cancel_clicked(self, interaction: discord.Interaction):
         """Handle cancel button."""

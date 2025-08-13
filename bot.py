@@ -134,59 +134,23 @@ class GALBot(commands.Bot):
 
                 logging.info("Preparing to sync commands...")
 
-                if dev_guild_id and not is_production:
-                    # Development mode: Only sync to guild, skip global sync
-                    try:
-                        dev_guild = discord.Object(id=int(dev_guild_id))
-
-                        # Clear only guild commands (don't sync the clear)
-                        self.tree.clear_commands(guild=dev_guild)
-
-                        # Copy global commands to guild for testing
-                        self.tree.copy_global_to(guild=dev_guild)
-
-                        # Single sync to the specific guild
-                        logging.info(f"Syncing commands to dev guild {dev_guild_id}...")
-                        synced = await self.tree.sync(guild=dev_guild)
-                        logging.info(f"Development mode: Synced {len(synced)} commands to guild {dev_guild_id}")
-
-                        # List the synced commands
-                        for cmd in synced:
-                            logging.debug(f"  - Synced command: {cmd.name}")
-
-                        self._commands_synced = True
-
-                    except ValueError as e:
-                        logging.error(f"Invalid DEV_GUILD_ID: {dev_guild_id}")
-                        raise
-                    except Exception as e:
-                        logging.error(f"Failed to sync commands to dev guild: {e}")
-                        raise
-
-                else:
-                    # Production mode: sync globally only
+                if is_production:
+                    # Production mode: sync globally ONLY
                     logging.info("Production mode detected, syncing globally...")
 
-                    # Clear any residual guild-specific commands first if transitioning from dev
+                    # Clear any guild-specific commands that might exist
                     if dev_guild_id:
                         try:
                             dev_guild = discord.Object(id=int(dev_guild_id))
-                            # Get existing guild commands
-                            existing_guild_commands = await self.tree.fetch_commands(guild=dev_guild)
-
-                            if existing_guild_commands:
-                                logging.info(f"Found {len(existing_guild_commands)} guild commands to clear")
-                                # Delete each command individually (faster than sync for small numbers)
-                                for cmd in existing_guild_commands:
-                                    await cmd.delete()
-                                    logging.debug(f"Deleted guild command: {cmd.name}")
-                                logging.info(
-                                    f"Cleared {len(existing_guild_commands)} guild commands from {dev_guild_id}")
+                            # Clear guild commands without syncing
+                            self.tree.clear_commands(guild=dev_guild)
+                            # Sync the clear to remove them
+                            await self.tree.sync(guild=dev_guild)
+                            logging.info(f"Cleared guild commands from {dev_guild_id}")
                         except Exception as e:
                             logging.warning(f"Could not clear dev guild commands: {e}")
 
                     # Single global sync
-                    logging.info("Syncing commands globally...")
                     synced = await self.tree.sync()
                     logging.info(f"Production mode: Synced {len(synced)} commands globally")
 
@@ -195,6 +159,38 @@ class GALBot(commands.Bot):
                         logging.debug(f"  - Synced command: {cmd.name}")
 
                     self._commands_synced = True
+
+                else:
+                    # Development mode: Only sync to guild
+                    if dev_guild_id:
+                        try:
+                            dev_guild = discord.Object(id=int(dev_guild_id))
+
+                            # Clear only guild commands (don't sync the clear)
+                            self.tree.clear_commands(guild=dev_guild)
+
+                            # Copy global commands to guild for testing
+                            self.tree.copy_global_to(guild=dev_guild)
+
+                            # Single sync to the specific guild
+                            logging.info(f"Syncing commands to dev guild {dev_guild_id}...")
+                            synced = await self.tree.sync(guild=dev_guild)
+                            logging.info(f"Development mode: Synced {len(synced)} commands to guild {dev_guild_id}")
+
+                            # List the synced commands
+                            for cmd in synced:
+                                logging.debug(f"  - Synced command: {cmd.name}")
+
+                            self._commands_synced = True
+
+                        except ValueError as e:
+                            logging.error(f"Invalid DEV_GUILD_ID: {dev_guild_id}")
+                            raise
+                        except Exception as e:
+                            logging.error(f"Failed to sync commands to dev guild: {e}")
+                            raise
+                    else:
+                        logging.warning("Development mode but no DEV_GUILD_ID set - commands not synced")
 
             # Setup event handlers
             setup_events(self)

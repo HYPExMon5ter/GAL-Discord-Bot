@@ -171,6 +171,36 @@ def col_to_index(col: str) -> int:
     return idx
 
 
+def get_sheet_url_for_environment(mode: str) -> str:
+    """
+    Get the appropriate sheet URL based on environment (dev/prod).
+    Supports both old format (sheet_url) and new format (sheet_url_prod/dev).
+    """
+    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    dev_guild_id = os.getenv("DEV_GUILD_ID")
+
+    settings = get_sheet_settings(mode)
+
+    # Determine which URL to use
+    if is_production:
+        url_key = "sheet_url_prod"
+    else:
+        url_key = "sheet_url_dev"
+
+    # Try to get the environment-specific URL
+    url = settings.get(url_key)
+
+    # Fall back to legacy "sheet_url" if new keys don't exist
+    if not url:
+        url = settings.get("sheet_url")
+        if not url:
+            # If no URL found at all, raise error
+            raise ValueError(f"No sheet URL found for mode {mode} (checked {url_key} and sheet_url)")
+
+    logging.info(f"Using {'production' if is_production else 'development'} sheet for mode {mode}")
+    return url
+
+
 # Command IDs for help system
 GAL_COMMAND_IDS: Dict[str, int] = {}
 
@@ -241,7 +271,7 @@ async def update_gal_command_ids(bot) -> None:
         if not gal_command:
             logging.warning("GAL command not found in application commands - this is normal on first run")
             # Set placeholder IDs for help command
-            for subcommand in ["toggle", "event", "registeredlist", "reminder", "cache", "validate", "placements",
+            for subcommand in ["toggle", "event", "registeredlist", "reminder", "cache", "config",
                                "reload", "help"]:
                 GAL_COMMAND_IDS[subcommand] = 0
             return
@@ -276,7 +306,7 @@ def validate_configuration() -> None:
     """Validate critical configuration settings."""
     errors = []
 
-    # Check required embed keys
+    # Check required embed keys (basic ones only)
     required_embeds = [
         "registration", "registration_closed", "checkin", "checkin_closed",
         "permission_denied", "error", "checked_in", "checked_out"
@@ -293,14 +323,27 @@ def validate_configuration() -> None:
             continue
 
         mode_config = SHEET_CONFIG[mode]
-        required_fields = ["sheet_url", "header_line_num", "max_players"]
-        missing_fields = [field for field in required_fields if field not in mode_config]
 
-        if missing_fields:
-            errors.append(f"Missing fields in {mode} sheet config: {missing_fields}")
+        # Check for URLs (either format)
+        has_urls = ("sheet_url_prod" in mode_config or
+                    "sheet_url_dev" in mode_config or
+                    "sheet_url" in mode_config)
+
+        if not has_urls:
+            errors.append(f"Missing sheet URLs for {mode} mode")
+
+        # Check essential fields
+        essential = ["header_line_num", "max_players", "discord_col",
+                     "ign_col", "registered_col", "checkin_col"]
+        if mode == "doubleup":
+            essential.append("team_col")
+
+        missing = [f for f in essential if f not in mode_config]
+        if missing:
+            errors.append(f"Missing fields in {mode}: {missing}")
 
     if errors:
-        error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors)
+        error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
         raise ValueError(error_msg)
 
 

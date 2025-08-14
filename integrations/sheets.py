@@ -82,9 +82,11 @@ async def get_sheet_for_guild(guild_id: str, worksheet: Optional[str] = None):
 
     try:
         mode = get_event_mode_for_guild(guild_id)
-        cfg = get_sheet_settings(mode)
 
-        sheet_url = cfg.get("sheet_url")
+        # Use the new environment-aware function
+        from config import get_sheet_url_for_environment
+        sheet_url = get_sheet_url_for_environment(mode)
+
         if not sheet_url:
             raise SheetsError(f"No sheet URL configured for mode: {mode}")
 
@@ -435,15 +437,26 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
 async def cache_refresh_loop(bot):
     """Background task to refresh cache periodically."""
     # Wait for the initial refresh interval before starting
-    # This prevents double refresh on startup since on_ready already does one
     await asyncio.sleep(CACHE_REFRESH_SECONDS)
+
+    consecutive_errors = 0
+    max_consecutive_errors = 3
 
     while True:
         try:
             await refresh_sheet_cache(bot=bot)
             logging.debug("Periodic cache refresh completed")
+            consecutive_errors = 0  # Reset on success
         except Exception as e:
-            logging.error(f"Periodic cache refresh failed: {e}")
+            consecutive_errors += 1
+            logging.error(f"Periodic cache refresh failed ({consecutive_errors}/{max_consecutive_errors}): {e}")
+
+            # If too many consecutive errors, wait longer before retrying
+            if consecutive_errors >= max_consecutive_errors:
+                logging.error(f"Too many cache refresh failures, waiting 5 minutes before retry")
+                await asyncio.sleep(300)  # 5 minutes
+                consecutive_errors = 0  # Reset counter
+                continue
 
         await asyncio.sleep(CACHE_REFRESH_SECONDS)
 

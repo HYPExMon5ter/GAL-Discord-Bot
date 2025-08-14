@@ -214,6 +214,113 @@ embeds:
       All registration and check-in logic will follow this setting.
     color: "#2ecc71"
 
+  # Config Management Embeds
+  config_invalid_mode:
+    title: "⚠️ Invalid Mode"
+    description: "'{mode}' is not a valid mode. Please use 'normal' or 'doubleup'."
+    color: "#e74c3c"
+
+  config_invalid_number:
+    title: "⚠️ Invalid Number"
+    description: "Invalid value for **{field}**: {error}"
+    color: "#e74c3c"
+
+  config_edit_success:
+    title: "✅ Configuration Updated"
+    description: |
+      Successfully updated configuration for **{mode}** mode:
+      • Max Players: **{max_players}**
+      • Header Line: **{header_line}**
+      • Cache Refresh: **{cache_refresh}s**
+
+      Backup saved as: `{backup}`
+    color: "#27ae60"
+
+  config_edit_log:
+    title: "📝 Configuration Edited"
+    description: |
+      Configuration was edited by {user}
+
+      **Mode:** {mode}
+      **Changes:** {changes}
+    color: "#3498db"
+
+  config_edit_error:
+    title: "❌ Configuration Error"
+    description: "Failed to update configuration: {error}"
+    color: "#e74c3c"
+
+  config_download_success:
+    title: "📥 Configuration Download"
+    description: "Here's your current configuration file. You can edit it and re-upload using `/gal config` with the upload option."
+    color: "#3498db"
+
+  config_upload_invalid_file:
+    title: "⚠️ Invalid File"
+    description: "Please upload a valid YAML configuration file (.yaml or .yml extension)."
+    color: "#e74c3c"
+
+  config_upload_success:
+    title: "✅ Configuration Uploaded"
+    description: |
+      Configuration file has been uploaded and validated successfully!
+
+      **Backup created:** `{backup_name}`
+      **Status:** Configuration reloaded and all embeds updated
+    color: "#27ae60"
+
+  config_upload_error:
+    title: "❌ Upload Failed"
+    description: |
+      Failed to upload configuration file:
+      {error}
+
+      The original configuration has been preserved.
+    color: "#e74c3c"
+
+  config_backup_created:
+    title: "💾 Backup Created"
+    description: "Configuration backup saved as: `{filename}`"
+    color: "#95a5a6"
+
+  sheet_url_update_success:
+    title: "✅ Sheet URLs Updated"
+    description: |
+      Successfully updated sheet URLs for **{mode}** mode!
+
+      **Environment:** {environment}
+      **Using URL:** {url}
+    color: "#27ae60"
+
+  sheet_url_invalid:
+    title: "⚠️ Invalid Sheet URL"
+    description: |
+      The provided URL doesn't appear to be a valid Google Sheets URL.
+
+      URLs should be in the format:
+      `https://docs.google.com/spreadsheets/d/[SHEET_ID]/edit`
+    color: "#e74c3c"
+
+  config_view_current:
+    title: "📋 Current Configuration"
+    description: |
+      **Mode:** {mode}
+      **Max Players:** {max_players}
+      **Teams Enabled:** {teams_enabled}
+      **Sheet Environment:** {environment}
+      **Cache Refresh:** {cache_refresh}s
+      **Bot Status:** {bot_status}
+    color: "#3498db"
+
+  config_restart_required:
+    title: "🔄 Restart Required"
+    description: |
+      Some configuration changes require a bot restart to take effect:
+      {changes}
+
+      Please restart the bot when convenient.
+    color: "#f39c12"
+
   event_mode_invalid:
     title: "⚠️ Invalid Event Mode"
     description: "That mode isn’t recognized. Allowed: **{allowed}**."
@@ -231,25 +338,29 @@ embeds:
 
   help:
     title: "🆘 GAL Bot Help"
-    description: "Here’s a list of all `/gal` commands you can use:"
+    description: "Here's a list of all `/gal` commands you can use:"
     commands:
       toggle: "🔄 Toggles the registration or check-in channel."
       event: "🎮 View or set the event mode for this guild (normal/doubleup)."
-      placements: "📈 Update the sheet & show the latest TFT placements."
-      validate: "✅ Validate the TFT username of each registered user."
+      config: "⚙️ Edit essential settings or upload/download full configuration."
       reload: "♻️ Reload the bot configuration, update embeds & rich presence."
       help: "❓ Show this help message again."
       registeredlist: "📋 Show the current registration list."
       reminder: "✉️ Send a DM reminder to all unchecked-in users."
-      cache: "📄 Re-cache the data from the sheet."
+      cache: "🔄 Re-cache the data from the sheet."
 
 rich_presence:
   type: "PLAYING"
   message: "🛡️ TFT"
 
+current_mode: "doubleup"
+
 sheet_configuration:
   normal:
-    sheet_url: "https://docs.google.com/spreadsheets/d/1Y_NBCYSJvYs3j_xD8IivMU5EdAbTMNAtsU40g7bCQzg/edit"
+    # Production sheet URL
+    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Y_NBCYSJvYs3j_xD8IivMU5EdAbTMNAtsU40g7bCQzg/edit"
+    # Development sheet URL (for testing)
+    sheet_url_dev: "https://docs.google.com/spreadsheets/d/YOUR_DEV_NORMAL_SHEET_ID/edit"
     header_line_num: 2
     max_players: 32
     discord_col: "B"
@@ -260,9 +371,10 @@ sheet_configuration:
     checkin_col: "G"
 
   doubleup:
-    #Top sheet url = prod, bottom = testing
-    sheet_url: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
-    #sheet_url: "https://docs.google.com/spreadsheets/d/1Bwike-oQGJp8K5lGODEGwA3LKfpYxQNk9OTQTeGeiTI/edit"
+    # Production sheet URL
+    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
+    # Development sheet URL (for testing)
+    sheet_url_dev: "https://docs.google.com/spreadsheets/d/1zQbY95rGf8hEtk4lLiwmWiY2nT0ysWfIjg5B5f0169A/edit"
     header_line_num: 2
     max_players: 32
     discord_col: "B"

@@ -1320,7 +1320,7 @@ class RegistrationView(discord.ui.View):
 
 class DMActionView(discord.ui.View):
     def __init__(self, guild: discord.Guild, member: discord.Member):
-        super().__init__(timeout=None)
+        super().__init__(timeout=3600)  # 1 hour timeout for DMs
         self.guild = guild
         self.member = member
 
@@ -1337,6 +1337,11 @@ class DMActionView(discord.ui.View):
             ci_btn = DMCheckToggleButton(guild, member)
             ci_btn.disabled = not ci_open
             self.add_item(ci_btn)
+
+    async def on_timeout(self):
+        """Disable buttons when DM view times out."""
+        for item in self.children:
+            item.disabled = True
 
 
 class PersistentRegisteredListView(discord.ui.View):
@@ -1462,54 +1467,63 @@ async def update_checkin_embed(
 
     mode = get_event_mode_for_guild(str(guild.id))
 
-    # Calculate team stats for doubleup mode
-    fully_checked_teams = 0
-    total_teams = 0
-
-    if mode == "doubleup":
-        teams_data = {}
-        for tag, tpl in all_registered:
-            team_name = tpl[4] if len(tpl) > 4 and tpl[4] else "No Team"
-            if team_name not in teams_data:
-                teams_data[team_name] = []
-            teams_data[team_name].append((tag, tpl))
-
-        total_teams = len(teams_data)
-
-        for team_name, members in teams_data.items():
-            if len(members) >= 2:
-                team_fully_checked = all(
-                    is_true(member_data[3]) if len(member_data) > 3 else False
-                    for tag, member_data in members
-                )
-                if team_fully_checked:
-                    fully_checked_teams += 1
-
-    # Use centralized helper for list building
-    lines = EmbedHelper.build_checkin_list_lines(all_registered, mode)
-
-    new_desc = desc + ("\n".join(lines) if lines else "")
-    embed = discord.Embed(
-        title=base.title,
-        description=new_desc,
-        color=base.color
-    )
-
-    footer_parts = [f"👤 Checked-In: {total_ci}/{total_reg}"]
-
-    if mode == "doubleup":
-        footer_parts.append(f"👥 Teams Ready: {fully_checked_teams}/{total_teams}")
-
+    # Only show content if there are registered users
     if total_reg > 0:
+        # Calculate team stats for doubleup mode
+        fully_checked_teams = 0
+        total_teams = 0
+
+        if mode == "doubleup":
+            teams_data = {}
+            for tag, tpl in all_registered:
+                team_name = tpl[4] if len(tpl) > 4 and tpl[4] else "No Team"
+                if team_name not in teams_data:
+                    teams_data[team_name] = []
+                teams_data[team_name].append((tag, tpl))
+
+            total_teams = len(teams_data)
+
+            for team_name, members in teams_data.items():
+                if len(members) >= 2:
+                    team_fully_checked = all(
+                        is_true(member_data[3]) if len(member_data) > 3 else False
+                        for tag, member_data in members
+                    )
+                    if team_fully_checked:
+                        fully_checked_teams += 1
+
+        # Use centralized helper for list building
+        lines = EmbedHelper.build_checkin_list_lines(all_registered, mode)
+        new_desc = desc + ("\n".join(lines) if lines else "")
+
+        embed = discord.Embed(
+            title=base.title,
+            description=new_desc,
+            color=base.color
+        )
+
+        # Build footer
+        footer_parts = [f"👤 Checked-In: {total_ci}/{total_reg}"]
+
+        if mode == "doubleup" and total_teams > 0:
+            footer_parts.append(f"👥 Teams Ready: {fully_checked_teams}/{total_teams}")
+
         percentage = (total_ci / total_reg) * 100
         footer_parts.append(f"📊 {percentage:.0f}%")
 
-    embed.set_footer(text=" • ".join(footer_parts))
+        embed.set_footer(text=" • ".join(footer_parts))
+    else:
+        # No registered users, don't show footer
+        embed = discord.Embed(
+            title=base.title,
+            description=desc + "*No registered players yet.*",
+            color=base.color
+        )
 
     view = CheckInView(guild)
 
-    # Remove reminder button if everyone is checked in
-    if total_reg > 0 and total_ci == total_reg:
+    # Remove reminder button if everyone is checked in OR no one is registered
+    if total_reg == 0 or (total_reg > 0 and total_ci == total_reg):
         new_view = discord.ui.View(timeout=None)
         for item in view.children:
             if not isinstance(item, ReminderButton):

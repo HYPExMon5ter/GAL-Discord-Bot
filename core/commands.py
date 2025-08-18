@@ -3,8 +3,7 @@
 import logging
 import os
 import time
-from datetime import timezone
-from itertools import groupby
+from datetime import timezone, datetime
 from typing import Optional, Dict, Any
 
 import discord
@@ -13,8 +12,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from config import (
-    embed_from_cfg, col_to_index, BotConstants, LOG_CHANNEL_NAME, get_sheet_settings, SHEET_CONFIG,
-    CACHE_REFRESH_SECONDS, _FULL_CFG, EMBEDS_CFG
+    embed_from_cfg, BotConstants, LOG_CHANNEL_NAME, get_sheet_settings, _FULL_CFG
 )
 from core.persistence import (
     get_event_mode_for_guild, set_event_mode_for_guild
@@ -24,13 +22,11 @@ from core.views import (
 )
 # Import all helpers
 from helpers import (
-    RoleManager, SheetOperations, Validators,
+    RoleManager, Validators,
     ErrorHandler, ConfigManager, EmbedHelper
 )
-from integrations.riot_api import tactics_tools_get_latest_placement
 from integrations.sheets import (
-    sheet_cache, cache_lock, refresh_sheet_cache, ordinal_suffix,
-    retry_until_successful, get_sheet_for_guild
+    refresh_sheet_cache
 )
 from utils.utils import (
     toggle_persisted_channel, send_reminder_dms,
@@ -309,7 +305,8 @@ async def cache(interaction: discord.Interaction):
 @app_commands.choices(action=[
     app_commands.Choice(name="edit", value="edit"),
     app_commands.Choice(name="download", value="download"),
-    app_commands.Choice(name="upload", value="upload")
+    app_commands.Choice(name="upload", value="upload"),
+    app_commands.Choice(name="reload", value="reload")
 ])
 async def config_cmd(
         interaction: discord.Interaction,
@@ -343,6 +340,9 @@ async def config_cmd(
             is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
             environment = "Production" if is_production else "Development"
 
+            # Get cache refresh from config
+            cache_refresh_seconds = _FULL_CFG.get("cache_refresh_seconds", 600)
+
             embed.add_field(
                 name="Current Settings",
                 value=f"**Mode:** {current_mode}\n"
@@ -353,7 +353,7 @@ async def config_cmd(
 
             embed.add_field(
                 name="Cache Status",
-                value=f"**Refresh Rate:** {CACHE_REFRESH_SECONDS}s\n"
+                value=f"**Refresh Rate:** {cache_refresh_seconds}s\n"
                       f"**Last Refresh:** Recently",
                 inline=True
             )
@@ -415,10 +415,23 @@ async def config_cmd(
 
             await interaction.response.defer(ephemeral=True)
 
-            # Create backup first
+            # Clean up old timestamped backups
+            import glob
+            try:
+                old_backups = glob.glob("config_backup_*.yaml")
+                for old_backup in old_backups:
+                    if not old_backup.endswith("_latest.yaml"):
+                        try:
+                            os.remove(old_backup)
+                        except:
+                            pass
+            except:
+                pass
+
+            # Create single backup
             from datetime import datetime
             import shutil
-            backup_name = f"config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
+            backup_name = "config_backup_latest.yaml"
             shutil.copy("config.yaml", backup_name)
 
             try:
@@ -438,18 +451,13 @@ async def config_cmd(
 
                 # Try to reload configuration
                 try:
+                    from helpers import ConfigManager
                     results = await ConfigManager.reload_and_update_all(interaction.client)
 
                     embed = discord.Embed(
                         title="✅ Configuration Uploaded",
                         description=f"Configuration has been updated successfully!",
                         color=discord.Color.green()
-                    )
-
-                    embed.add_field(
-                        name="📁 Backup",
-                        value=f"`{backup_name}`",
-                        inline=False
                     )
 
                     if results["config_reload"]:
@@ -461,28 +469,34 @@ async def config_cmd(
 
                     await interaction.followup.send(embed=embed, ephemeral=True)
 
-                    # Log to bot-log channel
+                    # Log to bot-log channel with revert button
                     log_channel = discord.utils.get(interaction.guild.text_channels, name=LOG_CHANNEL_NAME)
                     if log_channel:
+                        # Clear old revert buttons first
+                        await clear_old_config_views(log_channel)
+
                         log_embed = discord.Embed(
                             title="📝 Configuration Uploaded",
-                            description=f"Configuration was uploaded by {interaction.user.mention}\nBackup: `{backup_name}`",
+                            description=f"Configuration was uploaded by {interaction.user.mention}",
                             color=discord.Color.blue(),
                             timestamp=datetime.now(timezone.utc)
                         )
-                        await log_channel.send(embed=log_embed)
+
+                        # Add revert view to new message
+                        revert_view = ConfigRevertView(backup_name)
+                        await log_channel.send(embed=log_embed, view=revert_view)
 
                 except Exception as reload_error:
                     # Reload failed, restore backup
                     shutil.copy(backup_name, "config.yaml")
+                    from helpers import ConfigManager
                     await ConfigManager.reload_and_update_all(interaction.client)
 
                     await interaction.followup.send(
                         embed=discord.Embed(
                             title="❌ Configuration Invalid",
                             description=f"The uploaded configuration caused an error and has been reverted.\n\n"
-                                        f"**Error:** `{str(reload_error)[:100]}`\n"
-                                        f"**Restored from:** `{backup_name}`",
+                                        f"**Error:** `{str(reload_error)[:100]}`",
                             color=discord.Color.red()
                         ),
                         ephemeral=True
@@ -502,6 +516,68 @@ async def config_cmd(
                     embed=discord.Embed(
                         title="❌ Upload Failed",
                         description=f"Failed to process the uploaded file:\n```{str(e)[:200]}```",
+                        color=discord.Color.red()
+                    ),
+                    ephemeral=True
+                )
+
+        elif action_value == "reload":
+            # Reload configuration from file
+            await interaction.response.defer(ephemeral=True)
+
+            try:
+                from helpers import ConfigManager
+                results = await ConfigManager.reload_and_update_all(interaction.client)
+
+                # Refresh sheet cache
+                from integrations.sheets import refresh_sheet_cache
+                await refresh_sheet_cache(bot=interaction.client)
+
+                if results["config_reload"]:
+                    embed = discord.Embed(
+                        title="✅ Configuration Reloaded",
+                        description="All settings have been refreshed from `config.yaml`",
+                        color=discord.Color.green()
+                    )
+
+                    # Show what was updated
+                    if results.get("embeds_updated"):
+                        updated_count = sum(
+                            sum(1 for v in guild_results.values() if v)
+                            for guild_results in results["embeds_updated"].values()
+                        )
+                        embed.add_field(
+                            name="📝 Embeds",
+                            value=f"{updated_count} embeds refreshed",
+                            inline=True
+                        )
+
+                    if results.get("presence_update"):
+                        embed.add_field(
+                            name="🎮 Bot Status",
+                            value="Updated successfully",
+                            inline=True
+                        )
+
+                    embed.add_field(
+                        name="📊 Cache",
+                        value="Sheet cache refreshed",
+                        inline=True
+                    )
+                else:
+                    embed = discord.Embed(
+                        title="❌ Reload Failed",
+                        description="Failed to reload configuration. Check the logs for details.",
+                        color=discord.Color.red()
+                    )
+
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+            except Exception as e:
+                await interaction.followup.send(
+                    embed=discord.Embed(
+                        title="❌ Reload Error",
+                        description=f"Error reloading configuration:\n```{str(e)[:200]}```",
                         color=discord.Color.red()
                     ),
                     ephemeral=True
@@ -556,8 +632,13 @@ class ConfigMenuView(discord.ui.View):
             config_file = discord.File(f, filename="config.yaml")
 
         embed = discord.Embed(
-            title="📥 Configuration File",
-            description="Here's your current configuration file.\n\nEdit this for advanced settings like embed messages.",
+            title="📥 Configuration Download",
+            description="Here's your current `config.yaml` file.\n\n"
+                        "**Edit this file for:**\n"
+                        "• Embed messages\n"
+                        "• Advanced settings\n"
+                        "• Bulk changes\n\n"
+                        "Then use `/gal config upload` to apply changes.",
             color=discord.Color.blue()
         )
 
@@ -573,6 +654,7 @@ class ConfigMenuView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
 
         try:
+            from helpers import ConfigManager
             results = await ConfigManager.reload_and_update_all(interaction.client)
 
             # Refresh sheet cache
@@ -642,6 +724,9 @@ class ConfigMenuView(discord.ui.View):
         presence_cfg = _FULL_CFG.get("rich_presence", {})
         bot_status = presence_cfg.get("message", "Not set")
 
+        # Get cache refresh from config, not constant
+        cache_refresh_seconds = _FULL_CFG.get("cache_refresh_seconds", 600)
+
         # Build detailed view
         embed = discord.Embed(
             title="📋 Current Configuration",
@@ -654,7 +739,7 @@ class ConfigMenuView(discord.ui.View):
             value=f"**Mode:** {mode}\n"
                   f"**Max Players:** {settings.get('max_players', 32)}\n"
                   f"**Header Line:** {settings.get('header_line_num', 2)}\n"
-                  f"**Cache Refresh:** {CACHE_REFRESH_SECONDS}s",
+                  f"**Cache Refresh:** {cache_refresh_seconds}s",
             inline=True
         )
 
@@ -674,7 +759,7 @@ class ConfigMenuView(discord.ui.View):
 
         # Environment Info
         embed.add_field(
-            name="🌐 Environment",
+            name="🌍 Environment",
             value=f"**Type:** {environment}\n"
                   f"**Bot Status:** {bot_status}\n"
                   f"**Using:** {environment} sheets",
@@ -691,7 +776,7 @@ class ConfigMenuView(discord.ui.View):
                     sheet_id = current_url.split("/d/")[1].split("/")[0]
                     embed.add_field(
                         name="📄 Active Sheet",
-                        value=f"ID: `{sheet_id[:20]}...`" if len(sheet_id) > 20 else f"ID: `{sheet_id}`",
+                        value=f"ID: `{sheet_id}...`" if len(sheet_id) > 20 else f"ID: `{sheet_id}`",
                         inline=False
                     )
         except:
@@ -713,6 +798,7 @@ class ConfigMenuView(discord.ui.View):
             view=self
         )
 
+
 class GeneralConfigModal(discord.ui.Modal):
     """Modal for editing general bot settings."""
 
@@ -723,6 +809,9 @@ class GeneralConfigModal(discord.ui.Modal):
         # Get current settings
         settings = get_sheet_settings(current_mode)
         presence_cfg = _FULL_CFG.get("rich_presence", {})
+
+        # Get cache refresh from root config, not from constants
+        current_cache_refresh = _FULL_CFG.get("cache_refresh_seconds", 600)
 
         # Event Mode
         self.mode_input = discord.ui.TextInput(
@@ -755,11 +844,11 @@ class GeneralConfigModal(discord.ui.Modal):
         )
         self.add_item(self.header_line_input)
 
-        # Cache Refresh
+        # Cache Refresh - now reading from actual config
         self.cache_refresh_input = discord.ui.TextInput(
             label="Cache Refresh Interval (seconds)",
             placeholder="Seconds between cache refreshes (e.g., 600)",
-            default=str(CACHE_REFRESH_SECONDS),
+            default=str(current_cache_refresh),
             required=True,
             max_length=5
         )
@@ -956,16 +1045,153 @@ class SheetConfigModal(discord.ui.Modal):
         )
 
 
+class ConfigRevertView(discord.ui.View):
+    """View for reverting configuration changes."""
+
+    def __init__(self, backup_name: str = "config_backup_latest.yaml"):
+        super().__init__(timeout=None)  # Persistent view
+        self.backup_name = backup_name
+
+    @discord.ui.button(label="🔄 Revert to Backup", style=discord.ButtonStyle.danger, custom_id="revert_config")
+    async def revert_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Revert configuration to backup."""
+        # Check permissions
+        from helpers import RoleManager
+        if not RoleManager.has_allowed_role_from_interaction(interaction):
+            await interaction.response.send_message(
+                embed=embed_from_cfg("permission_denied"),
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            import shutil
+            import os
+
+            # Check if backup exists
+            if not os.path.exists(self.backup_name):
+                await interaction.followup.send(
+                    embed=discord.Embed(
+                        title="❌ Backup Not Found",
+                        description=f"No backup file `{self.backup_name}` found.",
+                        color=discord.Color.red()
+                    ),
+                    ephemeral=True
+                )
+                return
+
+            # Revert the config
+            shutil.copy(self.backup_name, "config.yaml")
+
+            # Reload configuration
+            from helpers import ConfigManager
+            results = await ConfigManager.reload_and_update_all(interaction.client)
+
+            if results["config_reload"]:
+                embed = discord.Embed(
+                    title="✅ Configuration Reverted",
+                    description=f"Configuration has been reverted to the backup.",
+                    color=discord.Color.green()
+                )
+
+                # Remove the view from this message
+                await interaction.message.edit(view=None)
+
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+                # Log the revert (without a new revert button)
+                log_embed = discord.Embed(
+                    title="🔄 Configuration Reverted",
+                    description=f"Configuration was reverted by {interaction.user.mention}",
+                    color=discord.Color.orange(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                await interaction.channel.send(embed=log_embed)
+
+                # Clear any other old config views in the channel
+                await clear_old_config_views(interaction.channel)
+            else:
+                await interaction.followup.send(
+                    embed=discord.Embed(
+                        title="❌ Revert Failed",
+                        description="Failed to reload configuration after revert.",
+                        color=discord.Color.red()
+                    ),
+                    ephemeral=True
+                )
+
+        except Exception as e:
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="❌ Revert Error",
+                    description=f"Error reverting configuration:\n```{str(e)[:200]}```",
+                    color=discord.Color.red()
+                ),
+                ephemeral=True
+            )
+
+
+async def clear_old_config_views(log_channel: discord.TextChannel):
+    """Remove revert buttons from old configuration messages."""
+    try:
+        # Look through recent messages for config update messages
+        async for message in log_channel.history(limit=50):
+            if message.author.bot and message.embeds:
+                embed = message.embeds[0]
+                # Check if it's a config update/upload message
+                if embed.title and ("Configuration Updated" in embed.title or
+                                    "Configuration Uploaded" in embed.title or
+                                    "Configuration Reverted" in embed.title):
+                    # If message has components (buttons), remove them
+                    if message.components:
+                        try:
+                            await message.edit(view=None)
+                            logging.debug(f"Removed view from old config message {message.id}")
+                        except discord.HTTPException as e:
+                            logging.debug(f"Could not edit message {message.id}: {e}")
+    except Exception as e:
+        logging.warning(f"Error clearing old config views: {e}")
+
+
 async def handle_config_update(interaction: discord.Interaction, modal, update_type: str, updates: dict):
     """Shared handler for all config modal updates with backup/restore."""
-    from datetime import datetime
+    from datetime import datetime, timezone
     import shutil
+    import os
+    import glob
 
-    # Create backup FIRST
-    backup_name = f"config_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
+    # Use ruamel.yaml for round-trip preservation
+    try:
+        from ruamel.yaml import YAML
+        yaml_handler = YAML()
+        yaml_handler.preserve_quotes = True
+        yaml_handler.width = 4096  # Prevent line wrapping
+    except ImportError:
+        # Fallback to regular yaml if ruamel not available
+        import yaml as yaml_fallback
+        yaml_handler = None
+
+    # Clean up old timestamped backups first (one-time cleanup)
+    try:
+        old_backups = glob.glob("config_backup_*.yaml")
+        for old_backup in old_backups:
+            if not old_backup.endswith("_latest.yaml"):
+                try:
+                    os.remove(old_backup)
+                    logging.debug(f"Removed old backup: {old_backup}")
+                except:
+                    pass
+    except:
+        pass
+
+    # Use a single latest backup file
+    backup_name = "config_backup_latest.yaml"
 
     try:
         shutil.copy("config.yaml", backup_name)
+        logging.debug(f"Created backup: {backup_name}")
     except Exception as e:
         await interaction.response.send_message(
             embed=discord.Embed(
@@ -980,9 +1206,13 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
     await interaction.response.defer(ephemeral=True)
 
     try:
-        # Load current config
-        with open("config.yaml", "r", encoding="utf-8") as f:
-            full_config = yaml.safe_load(f)
+        # Load current config preserving formatting
+        if yaml_handler:
+            with open("config.yaml", "r", encoding="utf-8") as f:
+                full_config = yaml_handler.load(f)
+        else:
+            with open("config.yaml", "r", encoding="utf-8") as f:
+                full_config = yaml_fallback.safe_load(f)
 
         guild_id = str(interaction.guild.id)
         current_mode = get_event_mode_for_guild(guild_id)
@@ -1010,6 +1240,9 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             config_section["max_players"] = max_players
             config_section["header_line_num"] = header_line
 
+            # Update cache refresh at root level
+            full_config["cache_refresh_seconds"] = cache_refresh
+
             # Update bot status
             if updates["bot_status"]:
                 if "rich_presence" not in full_config:
@@ -1024,16 +1257,17 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             changes.extend([
                 f"Max Players: {max_players}",
                 f"Header Line: {header_line}",
-                f"Cache Refresh: {cache_refresh}s" + (
-                    " (restart required)" if cache_refresh != CACHE_REFRESH_SECONDS else "")
+                f"Cache Refresh: {cache_refresh}s"
             ])
 
             if updates["bot_status"]:
                 changes.append(f"Bot Status: {updates['bot_status']}")
 
             # Update in-memory config
+            from config import SHEET_CONFIG, _FULL_CFG
             SHEET_CONFIG[new_mode]["max_players"] = max_players
             SHEET_CONFIG[new_mode]["header_line_num"] = header_line
+            _FULL_CFG["cache_refresh_seconds"] = cache_refresh
 
         elif update_type == "columns":
             # Validate and update column mappings
@@ -1047,6 +1281,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             config_section = full_config["sheet_configuration"][mode]
             for col_name, col_value in updates.items():
                 config_section[col_name] = col_value
+                from config import SHEET_CONFIG
                 SHEET_CONFIG[mode][col_name] = col_value
 
             changes.append(f"Updated {mode} mode columns:")
@@ -1076,6 +1311,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
                 config_section["alt_ign_col"] = updates["alt_ign_col"]
 
             # Update in-memory
+            from config import SHEET_CONFIG
             SHEET_CONFIG[mode_to_edit]["sheet_url_prod"] = updates["sheet_url_prod"]
             SHEET_CONFIG[mode_to_edit]["sheet_url_dev"] = updates["sheet_url_dev"]
 
@@ -1090,12 +1326,17 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             if "alt_ign_col" in updates:
                 changes.append(f"Alt IGN Column: {updates['alt_ign_col']}")
 
-        # Save updated config
-        with open("config.yaml", "w", encoding="utf-8") as f:
-            yaml.dump(full_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        # Save updated config with formatting preserved
+        if yaml_handler:
+            with open("config.yaml", "w", encoding="utf-8") as f:
+                yaml_handler.dump(full_config, f)
+        else:
+            with open("config.yaml", "w", encoding="utf-8") as f:
+                yaml_fallback.dump(full_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
         # Try to reload
         try:
+            from helpers import ConfigManager
             results = await ConfigManager.reload_and_update_all(interaction.client)
 
             # Refresh cache if columns or sheets changed
@@ -1106,7 +1347,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             # Success message
             embed = discord.Embed(
                 title="✅ Configuration Updated",
-                description=f"Settings have been updated successfully!\n\n**Backup:** `{backup_name}`",
+                description=f"Settings have been updated successfully!",
                 color=discord.Color.green()
             )
 
@@ -1118,21 +1359,28 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
-            # Log changes
+            # Log changes with revert button
+            from config import LOG_CHANNEL_NAME
             log_channel = discord.utils.get(interaction.guild.text_channels, name=LOG_CHANNEL_NAME)
             if log_channel:
-                await log_channel.send(
-                    embed=discord.Embed(
-                        title=f"⚙️ Configuration Updated ({update_type.title()})",
-                        description=f"Updated by {interaction.user.mention}\nBackup: `{backup_name}`",
-                        color=discord.Color.blue(),
-                        timestamp=datetime.now(timezone.utc)
-                    )
+                # Clear old revert buttons first
+                await clear_old_config_views(log_channel)
+
+                log_embed = discord.Embed(
+                    title=f"⚙️ Configuration Updated ({update_type.title()})",
+                    description=f"Updated by {interaction.user.mention}",
+                    color=discord.Color.blue(),
+                    timestamp=datetime.now(timezone.utc)
                 )
+
+                # Add revert view to new message
+                revert_view = ConfigRevertView(backup_name)
+                await log_channel.send(embed=log_embed, view=revert_view)
 
         except Exception as reload_error:
             # Restore backup
             shutil.copy(backup_name, "config.yaml")
+            from helpers import ConfigManager
             await ConfigManager.reload_and_update_all(interaction.client)
             raise ValueError(f"Invalid configuration, reverted: {str(reload_error)}")
 
@@ -1141,10 +1389,11 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
         try:
             import shutil
             shutil.copy(backup_name, "config.yaml")
+            from helpers import ConfigManager
             await ConfigManager.reload_and_update_all(interaction.client)
-            error_msg = f"❌ Error: {str(e)[:200]}\n\n✅ Restored from: `{backup_name}`"
+            error_msg = f"❌ Error: {str(e)[:200]}\n\n✅ Configuration restored from backup"
         except:
-            error_msg = f"❌ Error: {str(e)[:200]}\n\n📁 Backup available: `{backup_name}`"
+            error_msg = f"❌ Error: {str(e)[:200]}\n\n📁 Manual restore needed from backup"
 
         await interaction.followup.send(
             embed=discord.Embed(
@@ -1154,60 +1403,6 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             ),
             ephemeral=True
         )
-
-
-@gal.command(name="reload", description="Reloads config, updates live embeds, and refreshes rich presence.")
-async def reload_cmd(interaction: discord.Interaction):
-    """Reload configuration and update all components."""
-    if not await Validators.validate_and_respond(
-            interaction,
-            Validators.validate_staff_permission(interaction)
-    ):
-        return
-
-    try:
-        await interaction.response.defer(ephemeral=True)
-
-        # Use ConfigManager for comprehensive reloading
-        results = await ConfigManager.reload_and_update_all(interaction.client)
-
-        if results["config_reload"]:
-            # Success embed
-            embed = discord.Embed(
-                title="✅ Configuration Reloaded",
-                description="All embeds, live views, and rich presence have been updated!",
-                color=discord.Color.green()
-            )
-
-            # Add details about what was updated
-            if results["embeds_updated"]:
-                guild_results = results["embeds_updated"].get(interaction.guild.name, {})
-                if guild_results:
-                    successful = sum(1 for success in guild_results.values() if success)
-                    total = len(guild_results)
-                    embed.add_field(
-                        name="Embeds Updated",
-                        value=f"✅ {successful}/{total} embeds updated successfully",
-                        inline=False
-                    )
-
-            if results["presence_update"]:
-                embed.add_field(
-                    name="Rich Presence",
-                    value="✅ Updated successfully",
-                    inline=True
-                )
-        else:
-            embed = discord.Embed(
-                title="❌ Configuration Reload Failed",
-                description="Failed to reload config.yaml. Check console for errors.",
-                color=discord.Color.red()
-            )
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    except Exception as e:
-        await ErrorHandler.handle_interaction_error(interaction, e, "Reload Command")
 
 
 @gal.command(name="help", description="Shows this help message.")
@@ -1251,7 +1446,6 @@ async def help_cmd(interaction: discord.Interaction):
 @reminder.error
 @cache.error
 @config_cmd.error
-@reload_cmd.error
 @help_cmd.error
 async def command_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Global error handler for all GAL commands."""

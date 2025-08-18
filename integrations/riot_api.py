@@ -4,7 +4,6 @@ import json
 import os
 import re
 import urllib.parse
-from datetime import datetime
 from typing import Optional
 
 import aiohttp

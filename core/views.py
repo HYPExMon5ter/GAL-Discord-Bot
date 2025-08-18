@@ -328,6 +328,7 @@ async def complete_registration(
 
 class WaitlistTeamChoiceView(discord.ui.View):
     """View for choosing team name when adding to waitlist"""
+
     def __init__(self, guild, member, ign, pronouns, suggested_team, user_team, alt_igns, existing_position):
         super().__init__(timeout=60)
         self.guild = guild
@@ -427,14 +428,25 @@ class ChannelCheckInButton(discord.ui.Button):
 
         print(f"[CHECK-IN] Guild={guild.name}({guild.id}) User={member}")
 
-        # Use validators instead of manual checking
-        validations = [
-            Validators.validate_registration_status(member, require_registered=True),
-            Validators.validate_checkin_status(member, require_not_checked_in=True)
-        ]
+        # Check if registered
+        reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
+        if reg_role not in member.roles:
+            view = QuickRegisterView()
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("checkin_requires_registration"),
+                view=view,
+                ephemeral=True
+            )
 
-        if not await Validators.validate_and_respond(interaction, *validations):
-            return
+        # Check if already checked in
+        ci_role = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
+        if ci_role in member.roles:
+            view = AlreadyCheckedInView()
+            return await interaction.response.send_message(
+                embed=embed_from_cfg("already_checked_in"),
+                view=view,
+                ephemeral=True
+            )
 
         # Perform check-in using the existing helper
         await toggle_checkin_for_member(
@@ -461,16 +473,22 @@ class ChannelCheckOutButton(discord.ui.Button):
         # 1) Must be registered
         reg_role = discord.utils.get(guild.roles, name=REGISTERED_ROLE)
         if reg_role not in member.roles:
+            # Add register button for unregistered users
+            view = QuickRegisterView()
             return await interaction.response.send_message(
                 embed=embed_from_cfg("checkin_requires_registration"),
+                view=view,
                 ephemeral=True
             )
 
         # 2) Must currently be checked in
         ci_role = discord.utils.get(guild.roles, name=CHECKED_IN_ROLE)
         if ci_role not in member.roles:
+            # Add check-in button for users who are already checked out
+            view = QuickCheckInView()
             return await interaction.response.send_message(
                 embed=embed_from_cfg("already_checked_out"),
+                view=view,
                 ephemeral=True
             )
 
@@ -486,6 +504,7 @@ class ChannelCheckOutButton(discord.ui.Button):
 
 class DMUnregisterButton(discord.ui.Button):
     """DM button for unregistering only"""
+
     def __init__(self, guild: discord.Guild, member: discord.Member):
         super().__init__(
             label="Unregister",
@@ -814,8 +833,11 @@ class UnregisterButton(discord.ui.Button):
         ok = await unregister_user(discord_tag, guild_id=guild_id)
 
         if not ok:
+            # Add register button to the error message
+            view = QuickRegisterView()
             return await interaction.followup.send(
                 embed=embed_from_cfg("unregister_not_registered"),
+                view=view,
                 ephemeral=True
             )
 
@@ -1282,7 +1304,7 @@ class TeamSelectionView(discord.ui.View):
 
 
 class CheckInView(discord.ui.View):
-    def __init__(self, guild: discord.Guild):
+    def __init__(self, guild: discord.Guild, show_reminder: bool = False):
         super().__init__(timeout=None)
         self.guild = guild
 
@@ -1291,11 +1313,16 @@ class CheckInView(discord.ui.View):
         is_open = bool(ci_ch and reg_role and ci_ch.overwrites_for(reg_role).view_channel)
 
         if is_open:
+            # When open, show check-in/out buttons first
             self.add_item(ChannelCheckInButton())
             self.add_item(ChannelCheckOutButton())
-            self.add_item(ReminderButton())
+            if show_reminder:
+                self.add_item(ReminderButton())
             self.add_item(ToggleCheckInButton())
         else:
+            # When closed, show reminder first if applicable
+            if show_reminder:
+                self.add_item(ReminderButton())
             self.add_item(ResetCheckInsButton())
             self.add_item(ToggleCheckInButton())
 
@@ -1350,6 +1377,38 @@ class PersistentRegisteredListView(discord.ui.View):
         self.add_item(ReminderButton())
 
 
+class QuickRegisterView(discord.ui.View):
+    """View with just a register button for error messages."""
+
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(RegisterButton(label="Register Now"))
+
+
+class AlreadyCheckedInView(discord.ui.View):
+    """View with unregister and check-out buttons for already checked in error."""
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(UnregisterButton())
+        self.add_item(ChannelCheckOutButton())
+
+
+class QuickCheckInView(discord.ui.View):
+    """View with just a check-in button for error messages."""
+
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(ChannelCheckInButton())
+
+
+class QuickCheckOutView(discord.ui.View):
+    """View with just a check-out button for error messages."""
+
+    def __init__(self):
+        super().__init__(timeout=60)
+        self.add_item(ChannelCheckOutButton())
+
+
 async def update_live_embeds(guild):
     """Update all live embeds for a guild."""
     await EmbedHelper.update_all_guild_embeds(guild)
@@ -1360,7 +1419,7 @@ async def update_registration_embed(
         msg_id: int,
         guild: discord.Guild
 ):
-    """Update registration embed with current registered users."""
+    """Update registration embed with current registered users and capacity info."""
     is_open = ChannelManager.get_channel_state(guild)['registration_open']
 
     key = "registration" if is_open else "registration_closed"
@@ -1379,12 +1438,39 @@ async def update_registration_embed(
         return await msg.edit(embed=base, view=RegistrationView(msg_id, guild))
 
     mode = get_event_mode_for_guild(str(guild.id))
+    cfg = get_sheet_settings(mode)
+    max_players = cfg.get("max_players", 32)
     users = await SheetOperations.get_all_registered_users(str(guild.id))
 
     total_players = len(users)
     total_teams = len({t for _, _, t in users if t}) if mode == "doubleup" else 0
 
+    # Calculate capacity info for display
+    spots_remaining = max_players - total_players
+
+    # Build description with capacity placeholders filled in
     desc = base.description or ""
+
+    # Replace placeholders with actual values
+    capacity_info = {
+        "max_players": max_players,
+        "total_players": total_players,
+        "spots_remaining": spots_remaining
+    }
+
+    if mode == "doubleup":
+        max_teams = max_players // cfg.get("max_per_team", 2)
+        capacity_info["max_teams"] = max_teams
+        capacity_info["total_teams"] = total_teams
+        capacity_info["teams_remaining"] = max_teams - total_teams
+
+    # Format description with capacity info
+    try:
+        desc = desc.format(**capacity_info)
+    except KeyError:
+        # If placeholders don't exist, just use original description
+        pass
+
     close_iso = get_schedule(guild.id, "registration_close")
     if close_iso:
         ts = int(datetime.fromisoformat(close_iso).timestamp())
@@ -1401,9 +1487,10 @@ async def update_registration_embed(
     )
 
     if total_players > 0:
-        footer_parts = [f"👤 Players: {total_players}"]
+        footer_parts = [f"👤 Players: {total_players}/{max_players}"]
         if mode == "doubleup":
-            footer_parts.append(f"👥 Teams: {total_teams}")
+            max_teams = max_players // cfg.get("max_per_team", 2)
+            footer_parts.append(f"👥 Teams: {total_teams}/{max_teams}")
         embed.set_footer(text=" • ".join(footer_parts))
 
     await msg.edit(embed=embed, view=RegistrationView(msg_id, guild))
@@ -1431,21 +1518,7 @@ async def update_checkin_embed(
         logging.error(f"Failed to fetch check-in message {msg_id}: {e}")
         return
 
-    if not is_open:
-        embed = discord.Embed(
-            title=base.title,
-            description=base.description or "",
-            color=base.color
-        )
-        return await msg.edit(embed=embed, view=CheckInView(guild))
-
-    desc = base.description or ""
-    close_iso = get_schedule(guild.id, "checkin_close")
-    if close_iso:
-        ts = int(datetime.fromisoformat(close_iso).timestamp())
-        desc += f" \n⏰ Check-in closes at <t:{ts}:t>"
-    desc += "\n\n"
-
+    # Get stats for all registered users
     async with cache_lock:
         entries = list(sheet_cache["users"].items())
 
@@ -1464,6 +1537,26 @@ async def update_checkin_embed(
 
     total_reg = len(all_registered)
     total_ci = len(checked_in)
+
+    # Determine if reminder button should show
+    show_reminder = total_reg > 0 and total_ci < total_reg
+
+    if not is_open:
+        # Channel closed - minimal embed
+        embed = discord.Embed(
+            title=base.title,
+            description=base.description or "",
+            color=base.color
+        )
+        view = CheckInView(guild, show_reminder=show_reminder)
+        return await msg.edit(embed=embed, view=view)
+
+    desc = base.description or ""
+    close_iso = get_schedule(guild.id, "checkin_close")
+    if close_iso:
+        ts = int(datetime.fromisoformat(close_iso).timestamp())
+        desc += f" \n⏰ Check-in closes at <t:{ts}:t>"
+    desc += "\n\n"
 
     mode = get_event_mode_for_guild(str(guild.id))
 
@@ -1519,15 +1612,8 @@ async def update_checkin_embed(
             description=desc + "*No registered players yet.*",
             color=base.color
         )
+        show_reminder = False  # No one to remind
 
-    view = CheckInView(guild)
-
-    # Remove reminder button if everyone is checked in OR no one is registered
-    if total_reg == 0 or (total_reg > 0 and total_ci == total_reg):
-        new_view = discord.ui.View(timeout=None)
-        for item in view.children:
-            if not isinstance(item, ReminderButton):
-                new_view.add_item(item)
-        view = new_view
+    view = CheckInView(guild, show_reminder=show_reminder)
 
     await msg.edit(embed=embed, view=view)

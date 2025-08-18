@@ -14,7 +14,7 @@ import discord
 from config import (
     embed_from_cfg, get_sheet_settings, CHECKED_IN_ROLE, REGISTRATION_CHANNEL, CHECK_IN_CHANNEL
 )
-from core.persistence import get_persisted_msg, get_event_mode_for_guild
+from core.persistence import get_event_mode_for_guild
 from integrations.sheets import (
     get_sheet_for_guild, retry_until_successful
 )
@@ -86,14 +86,15 @@ async def toggle_persisted_channel(
         new_open = not was_open
 
         if new_open:
-            # Use schedule_channel_open for immediate open
+            # Use schedule_channel_open for immediate open but mark as manual
             await schedule_channel_open(
                 interaction.client,
                 guild,
                 channel_name,
                 role_name,
                 datetime.now(ZoneInfo("UTC")),
-                ping_role=ping_role
+                ping_role=ping_role,
+                is_scheduled_event=False  # This is a manual toggle, not scheduled
             )
         else:
             # Close the channel

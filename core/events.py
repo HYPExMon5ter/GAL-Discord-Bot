@@ -49,7 +49,8 @@ async def schedule_channel_open(
         channel_name: str,
         role_name: str,
         open_time: datetime,
-        ping_role: bool = True
+        ping_role: bool = True,
+        is_scheduled_event: bool = True  # Add parameter to distinguish scheduled vs manual
 ):
     now = datetime.now(ZoneInfo("UTC"))
     wait = (open_time - now).total_seconds()
@@ -67,15 +68,16 @@ async def schedule_channel_open(
             from utils.utils import update_dm_action_views
             await update_dm_action_views(guild)
 
-            # Log the opening with schedule-specific message
-            log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
-            if log_ch:
-                channel_type = "Registration" if channel_name == REGISTRATION_CHANNEL else "Check-in"
-                embed = embed_from_cfg(
-                    "schedule_channel_opened",
-                    type=channel_type
-                )
-                await log_ch.send(embed=embed)
+            # Only log if this was from a scheduled event
+            if is_scheduled_event:
+                log_ch = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+                if log_ch:
+                    channel_type = "Registration" if channel_name == REGISTRATION_CHANNEL else "Check-in"
+                    embed = embed_from_cfg(
+                        "schedule_channel_opened",
+                        type=channel_type
+                    )
+                    await log_ch.send(embed=embed)
 
             logging.info(f"Opened {channel_name} channel for guild {guild.id}")
 
@@ -202,7 +204,7 @@ async def _handle_event_schedule(bot, event, is_edit: bool):
 def setup_events(bot: commands.Bot):
     @bot.event
     async def on_ready():
-        #print(f"[on_ready] Logged in as {bot.user}")
+        # print(f"[on_ready] Logged in as {bot.user}")
         logging.info(f"Bot logged in as {bot.user} (ID: {bot.user.id})")
 
         try:

@@ -14,6 +14,7 @@ from .sheet_helpers import SheetOperations
 
 class ValidationError:
     """Represents a validation error with an associated embed."""
+
     def __init__(self, embed_key: str, **kwargs):
         self.embed_key = embed_key
         self.kwargs = kwargs
@@ -25,6 +26,7 @@ class ValidationError:
 
 class Validators:
     """Common validation patterns for the bot."""
+
     @staticmethod
     async def validate_registration_capacity(
             guild_id: str,
@@ -181,14 +183,30 @@ class Validators:
         """
         for validation in validations:
             if validation:
+                embed = validation.to_embed()
+                view = None
+
+                # Add appropriate action button based on error type
+                from core.views import QuickRegisterView, QuickCheckOutView, QuickCheckInView, AlreadyCheckedInView
+                if validation.embed_key == "unregister_not_registered":
+                    view = QuickRegisterView()
+                elif validation.embed_key == "checkin_requires_registration":
+                    view = QuickRegisterView()
+                elif validation.embed_key == "already_checked_in":
+                    view = AlreadyCheckedInView()
+                elif validation.embed_key == "already_checked_out":
+                    view = QuickCheckInView()
+
                 if interaction.response.is_done():
                     await interaction.followup.send(
-                        embed=validation.to_embed(),
+                        embed=embed,
+                        view=view,
                         ephemeral=True
                     )
                 else:
                     await interaction.response.send_message(
-                        embed=validation.to_embed(),
+                        embed=embed,
+                        view=view,
                         ephemeral=True
                     )
                 return False

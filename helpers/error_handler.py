@@ -11,6 +11,7 @@ from config import embed_from_cfg, LOG_CHANNEL_NAME, PING_USER
 
 class ErrorHandler:
     """Centralized error handling for the bot."""
+
     @staticmethod
     async def handle_interaction_error(
             interaction: discord.Interaction,

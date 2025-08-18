@@ -11,7 +11,7 @@ from typing import Optional, Tuple, Union, Dict, Any
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-from config import get_sheet_settings, col_to_index, CACHE_REFRESH_SECONDS, REGISTERED_ROLE, CHECKED_IN_ROLE
+from config import get_sheet_settings, col_to_index, REGISTERED_ROLE, CHECKED_IN_ROLE
 from core.persistence import get_event_mode_for_guild
 
 # Scope for Google Sheets API
@@ -232,11 +232,26 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     # Do the cache refresh inside the lock
     async with cache_lock:
         try:
-            # Get guild information
+            # Get guild information - properly resolve from bot
             if not hasattr(sheet_cache, "_skip_waitlist_processing"):
                 print("[CACHE] Getting guild information...")
-            guild = getattr(bot, "guilds", [None])[0] if bot else None
-            gid = str(guild.id) if guild else "unknown"
+
+            # Properly get guild from bot
+            if bot and hasattr(bot, "guilds") and bot.guilds:
+                guild = bot.guilds[0]  # Get first guild
+                gid = str(guild.id)
+            else:
+                # Try to get guild ID from environment for dev mode
+                dev_guild_id = os.getenv("DEV_GUILD_ID")
+                if dev_guild_id:
+                    gid = dev_guild_id
+                    # Try to get guild object if bot is available
+                    if bot:
+                        guild = bot.get_guild(int(dev_guild_id))
+                else:
+                    # Fallback but log warning
+                    gid = "unknown"
+                    logging.warning("[CACHE] No guild available for cache refresh - using 'unknown'")
 
             if not hasattr(sheet_cache, "_skip_waitlist_processing"):
                 print(f"[CACHE] Guild ID: {gid}")
@@ -252,7 +267,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                 raise SheetsError(f"Missing configuration fields: {missing_fields}")
 
             maxp = cfg.get("max_players", 9999)
-            # FIX: await the async function
+            # AWAIT the async function
             sheet = await get_sheet_for_guild(gid, "GAL Database")
 
             # Get column indexes
@@ -436,8 +451,12 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
 
 async def cache_refresh_loop(bot):
     """Background task to refresh cache periodically."""
+    # Get initial refresh interval from config
+    from config import _FULL_CFG
+    cache_refresh_seconds = _FULL_CFG.get("cache_refresh_seconds", 600)
+
     # Wait for the initial refresh interval before starting
-    await asyncio.sleep(CACHE_REFRESH_SECONDS)
+    await asyncio.sleep(cache_refresh_seconds)
 
     consecutive_errors = 0
     max_consecutive_errors = 3
@@ -458,7 +477,9 @@ async def cache_refresh_loop(bot):
                 consecutive_errors = 0  # Reset counter
                 continue
 
-        await asyncio.sleep(CACHE_REFRESH_SECONDS)
+        # Re-read cache refresh interval from config in case it changed
+        cache_refresh_seconds = _FULL_CFG.get("cache_refresh_seconds", 600)
+        await asyncio.sleep(cache_refresh_seconds)
 
 
 async def find_or_register_user(
@@ -481,8 +502,7 @@ async def find_or_register_user(
         gid = str(guild_id) if guild_id else "unknown"
         mode = get_event_mode_for_guild(gid)
         cfg = get_sheet_settings(mode)
-        # FIX: await the async function
-        sheet = await get_sheet_for_guild(gid, "GAL Database")
+        sheet = await get_sheet_for_guild(gid, "GAL Database")  # ADD AWAIT
 
         # Update existing user
         if existing:

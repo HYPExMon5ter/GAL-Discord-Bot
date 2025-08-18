@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import time
 from typing import Dict, Any
 
 import aiohttp
@@ -42,7 +43,7 @@ class BotConstants:
 
     # Other settings
     PING_USER = "<@162359821100646401>"
-    CACHE_REFRESH_SECONDS = 600  # 10 minutes
+    # CACHE_REFRESH_SECONDS = 600  # 10 minutes
 
 
 # Legacy constants for backward compatibility
@@ -54,7 +55,9 @@ REGISTERED_ROLE = BotConstants.REGISTERED_ROLE
 ANGEL_ROLE = BotConstants.ANGEL_ROLE
 LOG_CHANNEL_NAME = BotConstants.LOG_CHANNEL_NAME
 PING_USER = BotConstants.PING_USER
-CACHE_REFRESH_SECONDS = BotConstants.CACHE_REFRESH_SECONDS
+
+
+# CACHE_REFRESH_SECONDS = BotConstants.CACHE_REFRESH_SECONDS
 
 
 # Configuration loading with validation
@@ -137,7 +140,13 @@ def embed_from_cfg(key: str, **kwargs) -> discord.Embed:
         description = raw_desc.format(**kwargs) if raw_desc else "\u200b"
     except KeyError as ex:
         missing = str(ex).strip("'")
-        logging.warning(f"Missing format key '{missing}' for embed '{key}'. Available: {list(kwargs.keys())}")
+        # Only warn if we actually have kwargs to format with
+        # Skip warning for known registration placeholders that are added later
+        registration_placeholders = {'spots_remaining', 'max_players', 'total_players',
+                                     'max_teams', 'total_teams', 'teams_remaining'}
+        if missing not in registration_placeholders and kwargs:
+            logging.warning(f"Missing format key '{missing}' for embed '{key}'. Available: {list(kwargs.keys())}")
+        # Return raw description without formatting if keys are missing
         description = raw_desc or "\u200b"
 
     color = hex_to_color(data.get("color", "#3498db"))
@@ -197,7 +206,19 @@ def get_sheet_url_for_environment(mode: str) -> str:
             # If no URL found at all, raise error
             raise ValueError(f"No sheet URL found for mode {mode} (checked {url_key} and sheet_url)")
 
-    logging.info(f"Using {'production' if is_production else 'development'} sheet for mode {mode}")
+    # Only log once per unique mode+env combination within a time window
+    cache_key = f"{mode}_{url_key}"
+    now = time.time()
+
+    # Use a simple in-memory cache to prevent duplicate logs
+    if not hasattr(get_sheet_url_for_environment, "_log_cache"):
+        get_sheet_url_for_environment._log_cache = {}
+
+    last_logged = get_sheet_url_for_environment._log_cache.get(cache_key, 0)
+    if now - last_logged > 60:  # Only log once per minute per mode+env
+        logging.info(f"Using {'production' if is_production else 'development'} sheet for mode {mode}")
+        get_sheet_url_for_environment._log_cache[cache_key] = now
+
     return url
 
 
@@ -347,6 +368,82 @@ def validate_configuration() -> None:
         raise ValueError(error_msg)
 
 
+def merge_config_on_deployment():
+    """
+    Merge new config keys from default without overwriting user customizations.
+    Called during bot startup to ensure all required keys exist.
+    """
+    import os
+
+    # Only run in production
+    if os.getenv("RAILWAY_ENVIRONMENT_NAME") != "production":
+        return
+
+    try:
+        # Load current user config
+        with open("config.yaml", "r", encoding="utf-8") as f:
+            user_config_text = f.read()
+
+        # Parse to check structure
+        import yaml
+        user_config = yaml.safe_load(user_config_text)
+
+        # Define required keys with their default values
+        required_keys = {
+            "cache_refresh_seconds": 600,
+            "current_mode": "doubleup"
+        }
+
+        # Check and add missing root keys
+        modified = False
+        for key, default_value in required_keys.items():
+            if key not in user_config:
+                user_config[key] = default_value
+                modified = True
+                logging.info(f"Added missing config key: {key} = {default_value}")
+
+        # Ensure embed placeholders exist for registration
+        if "embeds" in user_config and "registration" in user_config["embeds"]:
+            reg_desc = user_config["embeds"]["registration"].get("description", "")
+            # Check if placeholders are missing
+            if "{spots_remaining}" not in reg_desc and "{max_players}" not in reg_desc:
+                # Add capacity line if completely missing
+                if "Capacity:" not in reg_desc:
+                    new_desc = reg_desc.rstrip()
+                    if not new_desc.endswith("\n"):
+                        new_desc += "\n"
+                    new_desc += "\n📊 **Capacity:** {spots_remaining} of {max_players} spots available\n"
+                    user_config["embeds"]["registration"]["description"] = new_desc
+                    modified = True
+                    logging.info("Added capacity placeholders to registration embed")
+
+        # Save if modified
+        if modified:
+            # Use single backup file
+            import shutil
+            shutil.copy("config.yaml", "config_backup_latest.yaml")
+
+            # Write merged config
+            with open("config.yaml", "w", encoding="utf-8") as f:
+                yaml.dump(user_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+            logging.info("Config updated with new required keys, backup saved as config_backup_latest.yaml")
+
+            # Reload the config in memory
+            global _FULL_CFG, EMBEDS_CFG, SHEET_CONFIG
+            _FULL_CFG = load_config()
+            EMBEDS_CFG = _FULL_CFG.get("embeds", {})
+            SHEET_CONFIG = _FULL_CFG.get("sheet_configuration", {})
+
+    except Exception as e:
+        logging.error(f"Failed to merge config on deployment: {e}")
+        # Don't crash the bot, just continue with existing config
+
+
 # Validate configuration on import
 validate_configuration()
+
+# Merge any new required keys on production deployment
+merge_config_on_deployment()
+
 logging.info("Configuration loaded and validated successfully")

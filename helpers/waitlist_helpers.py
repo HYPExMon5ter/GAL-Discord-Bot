@@ -5,7 +5,7 @@ import logging
 import os
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Optional, Dict, List, Tuple, Set
+from typing import Optional, Dict, List, Tuple
 
 import discord
 from rapidfuzz import fuzz, process
@@ -484,6 +484,7 @@ class WaitlistManager:
         try:
             from helpers.sheet_helpers import SheetOperations
             from core.views import DMActionView
+            from utils.utils import hyperlink_lolchess_profile  # Add import
 
             guild_id = str(guild.id)
             mode = get_event_mode_for_guild(guild_id)
@@ -654,6 +655,10 @@ class WaitlistManager:
                         # Add registered role
                         print(f"[WAITLIST] Adding registered role...")
                         await RoleManager.add_role(member, "Registered")
+
+                        # HYPERLINK THE IGN - THIS WAS MISSING!
+                        print(f"[WAITLIST] Creating hyperlink for IGN...")
+                        await hyperlink_lolchess_profile(next_user["discord_tag"], guild_id)
 
                         # Send DM notification
                         print(f"[WAITLIST] Sending DM notification...")

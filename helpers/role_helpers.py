@@ -9,6 +9,7 @@ from config import REGISTERED_ROLE, CHECKED_IN_ROLE, ALLOWED_ROLES
 
 class RoleManager:
     """Manages role operations for the GAL bot."""
+
     @staticmethod
     def get_role(guild: discord.Guild, role_name: str) -> Optional[discord.Role]:
         """Get a role by name from guild."""

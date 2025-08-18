@@ -386,6 +386,13 @@ class GALBot(commands.Bot):
         logging.info("Bot shutdown initiated...")
 
         try:
+            # Update all embeds to show bot is offline
+            for guild in self.guilds:
+                try:
+                    await self.update_embeds_for_shutdown(guild)
+                except Exception as e:
+                    logging.error(f"Failed to update shutdown embeds for {guild.name}: {e}")
+
             # Close any additional resources here
             # Clean up aiohttp sessions from riot_api
             try:
@@ -419,6 +426,50 @@ class GALBot(commands.Bot):
 
         except Exception as e:
             logging.error(f"Error during bot shutdown: {e}")
+
+    async def update_embeds_for_shutdown(guild: discord.Guild):
+        """Update registration and check-in embeds to show bot is offline."""
+        from core.persistence import get_persisted_msg
+
+        # Update registration embed
+        reg_chan_id, reg_msg_id = get_persisted_msg(guild.id, "registration")
+        if reg_chan_id and reg_msg_id:
+            try:
+                channel = guild.get_channel(reg_chan_id)
+                if channel:
+                    msg = await channel.fetch_message(reg_msg_id)
+                    offline_embed = discord.Embed(
+                        title="🔴 Bot Offline - Registration Unavailable",
+                        description="The GAL Bot is currently offline for maintenance.\n\n"
+                                    "Registration buttons will not work until the bot returns online.\n"
+                                    "Please try again later.",
+                        color=discord.Color.red()
+                    )
+                    offline_embed.set_footer(text="Bot Status: Offline")
+                    # Remove view so buttons don't show
+                    await msg.edit(embed=offline_embed, view=None)
+            except Exception as e:
+                logging.debug(f"Could not update registration embed for shutdown: {e}")
+
+        # Update check-in embed
+        ci_chan_id, ci_msg_id = get_persisted_msg(guild.id, "checkin")
+        if ci_chan_id and ci_msg_id:
+            try:
+                channel = guild.get_channel(ci_chan_id)
+                if channel:
+                    msg = await channel.fetch_message(ci_msg_id)
+                    offline_embed = discord.Embed(
+                        title="🔴 Bot Offline - Check-In Unavailable",
+                        description="The GAL Bot is currently offline for maintenance.\n\n"
+                                    "Check-in buttons will not work until the bot returns online.\n"
+                                    "Please try again later.",
+                        color=discord.Color.red()
+                    )
+                    offline_embed.set_footer(text="Bot Status: Offline")
+                    # Remove view so buttons don't show
+                    await msg.edit(embed=offline_embed, view=None)
+            except Exception as e:
+                logging.debug(f"Could not update check-in embed for shutdown: {e}")
 
     def run_with_error_handling(self):
         """Run the bot with comprehensive error handling."""

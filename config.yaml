@@ -1,4 +1,42 @@
 # GAL Bot Embed Message Configuration
+
+current_mode: "doubleup"
+cache_refresh_seconds: 600  # 10 minutes
+
+sheet_configuration:
+  normal:
+    # Production sheet URL
+    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Y_NBCYSJvYs3j_xD8IivMU5EdAbTMNAtsU40g7bCQzg/edit"
+    # Development sheet URL (for testing)
+    sheet_url_dev: "https://docs.google.com/spreadsheets/d/YOUR_DEV_NORMAL_SHEET_ID/edit"
+    header_line_num: 2
+    max_players: 32
+    discord_col: "B"
+    pronouns_col: "C"
+    ign_col: "D"
+    alt_ign_col: "E"
+    registered_col: "F"
+    checkin_col: "G"
+
+  doubleup:
+    # Production sheet URL
+    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
+    # Development sheet URL (for testing)
+    sheet_url_dev: "https://docs.google.com/spreadsheets/d/1zQbY95rGf8hEtk4lLiwmWiY2nT0ysWfIjg5B5f0169A/edit"
+    header_line_num: 2
+    max_players: 32
+    discord_col: "B"
+    pronouns_col: "C"
+    ign_col: "D"
+    alt_ign_col: "E"
+    team_col: "I"
+    registered_col: "J"
+    checkin_col: "K"
+
+rich_presence:
+  type: "PLAYING"
+  message: "🛡️ TFT"
+
 # Available variables:
 #   {count}    - Number of members cleared/reset
 #   {role}     - The name of the role or reset operation
@@ -12,16 +50,18 @@ embeds:
     title: "🎉 Registration Is Now **OPEN**! 🎉"
     description: |
       Click the **Register** button below to secure your spot in the Tournament!
-      
+
+      📊 **Capacity:** {spots_remaining} spots available
+
       > *💡 Tip:* You can update your info at any time by clicking **Register** again.
     color: "#43b581"
 
   registration_channel_toggled:
     title: "🔄 Registration Channel Toggled"
     description_visible: "👁️  Registration channel is now **visible** to Angels."
-    description_hidden:  "🙈  Registration channel has been **hidden** from Angels."
+    description_hidden: "🙈  Registration channel has been **hidden** from Angels."
     color_visible: "#2ecc71"
-    color_hidden:  "#e67e22"
+    color_hidden: "#e67e22"
 
   registration_closed:
     title: "⛔ Registration Closed"
@@ -32,9 +72,9 @@ embeds:
     title: "📋 Added to Waitlist"
     description: |
       The tournament is currently full ({max_players} players registered).
-      
+
       ✅ You've been added to the **waitlist** at position #{position}.
-      
+
       If a spot opens up, you'll be automatically registered and notified via DM!
     color: "#f39c12"
 
@@ -42,10 +82,10 @@ embeds:
     title: "🎉 You're Off the Waitlist!"
     description: |
       Great news! A spot opened up and you've been **automatically registered** for the tournament!
-      
+
       ✅ You are now registered
       📍 Don't forget to check in when the check-in channel opens
-      
+
       Use the buttons below to manage your registration.
     color: "#27ae60"
 
@@ -58,10 +98,10 @@ embeds:
     title: "🚫 Maximum Teams Reached"
     description: |
       The tournament has reached the maximum of **{max_teams}** teams.
-      
+
       **{teams_count}** teams have space available. Please select a team from the dropdown below to join an existing team.
-      
-      If you don't want to join any of these teams, you can cancel and wait for a spot to open up.
+
+      If you don't want to join any of these teams, you can add yourself to the waitlist or cancel registration.
     color: "#f39c12"
 
   register_success_normal:
@@ -88,7 +128,7 @@ embeds:
     title: "✅ Check In Is Now **OPEN**!"
     description: |
       🔒 To lock in your spot, click the **Check In** button below.
-  
+
       1. If you haven’t yet registered, head to <#1387614581794537652> and click **Register** first.  
       2. 🎥 Planning to stream? Drop your Twitch/YouTube link in <#717088485080694794>!
     color: "#3498db"
@@ -96,9 +136,9 @@ embeds:
   checkin_channel_toggled:
     title: "🔄 Check In Channel Toggled"
     description_visible: "👁️  Check In channel is now **visible** to Registered Angels."
-    description_hidden:  "🙈  Check In channel has been **hidden** from Registered Angels."
+    description_hidden: "🙈  Check In channel has been **hidden** from Registered Angels."
     color_visible: "#2ecc71"
-    color_hidden:  "#e67e22"
+    color_hidden: "#e67e22"
 
   checkin_closed:
     title: "⛔ Check In Closed"
@@ -178,13 +218,13 @@ embeds:
     description: |
       👋 **Hello Angel!**  
       You're registered for the upcoming Guardian Angel League Tournament but **haven't checked in** yet.
-      
+
       **What to do below:**
       ❌ **Unregister** – Leave the tournament (this will free up your spot)
       ✅ **Check In / 🔒 Check Out** – Lock in or release your spot in the Tournament
-      
+
       💡 **To re-register:** Please visit the registration channel in the GAL Discord server.
-      
+
       Good luck, Angel! See you in the Tournament 🏆
     color: "#3498db"
 
@@ -214,113 +254,6 @@ embeds:
       All registration and check-in logic will follow this setting.
     color: "#2ecc71"
 
-  # Config Management Embeds
-  config_invalid_mode:
-    title: "⚠️ Invalid Mode"
-    description: "'{mode}' is not a valid mode. Please use 'normal' or 'doubleup'."
-    color: "#e74c3c"
-
-  config_invalid_number:
-    title: "⚠️ Invalid Number"
-    description: "Invalid value for **{field}**: {error}"
-    color: "#e74c3c"
-
-  config_edit_success:
-    title: "✅ Configuration Updated"
-    description: |
-      Successfully updated configuration for **{mode}** mode:
-      • Max Players: **{max_players}**
-      • Header Line: **{header_line}**
-      • Cache Refresh: **{cache_refresh}s**
-
-      Backup saved as: `{backup}`
-    color: "#27ae60"
-
-  config_edit_log:
-    title: "📝 Configuration Edited"
-    description: |
-      Configuration was edited by {user}
-
-      **Mode:** {mode}
-      **Changes:** {changes}
-    color: "#3498db"
-
-  config_edit_error:
-    title: "❌ Configuration Error"
-    description: "Failed to update configuration: {error}"
-    color: "#e74c3c"
-
-  config_download_success:
-    title: "📥 Configuration Download"
-    description: "Here's your current configuration file. You can edit it and re-upload using `/gal config` with the upload option."
-    color: "#3498db"
-
-  config_upload_invalid_file:
-    title: "⚠️ Invalid File"
-    description: "Please upload a valid YAML configuration file (.yaml or .yml extension)."
-    color: "#e74c3c"
-
-  config_upload_success:
-    title: "✅ Configuration Uploaded"
-    description: |
-      Configuration file has been uploaded and validated successfully!
-
-      **Backup created:** `{backup_name}`
-      **Status:** Configuration reloaded and all embeds updated
-    color: "#27ae60"
-
-  config_upload_error:
-    title: "❌ Upload Failed"
-    description: |
-      Failed to upload configuration file:
-      {error}
-
-      The original configuration has been preserved.
-    color: "#e74c3c"
-
-  config_backup_created:
-    title: "💾 Backup Created"
-    description: "Configuration backup saved as: `{filename}`"
-    color: "#95a5a6"
-
-  sheet_url_update_success:
-    title: "✅ Sheet URLs Updated"
-    description: |
-      Successfully updated sheet URLs for **{mode}** mode!
-
-      **Environment:** {environment}
-      **Using URL:** {url}
-    color: "#27ae60"
-
-  sheet_url_invalid:
-    title: "⚠️ Invalid Sheet URL"
-    description: |
-      The provided URL doesn't appear to be a valid Google Sheets URL.
-
-      URLs should be in the format:
-      `https://docs.google.com/spreadsheets/d/[SHEET_ID]/edit`
-    color: "#e74c3c"
-
-  config_view_current:
-    title: "📋 Current Configuration"
-    description: |
-      **Mode:** {mode}
-      **Max Players:** {max_players}
-      **Teams Enabled:** {teams_enabled}
-      **Sheet Environment:** {environment}
-      **Cache Refresh:** {cache_refresh}s
-      **Bot Status:** {bot_status}
-    color: "#3498db"
-
-  config_restart_required:
-    title: "🔄 Restart Required"
-    description: |
-      Some configuration changes require a bot restart to take effect:
-      {changes}
-
-      Please restart the bot when convenient.
-    color: "#f39c12"
-
   event_mode_invalid:
     title: "⚠️ Invalid Event Mode"
     description: "That mode isn’t recognized. Allowed: **{allowed}**."
@@ -342,45 +275,8 @@ embeds:
     commands:
       toggle: "🔄 Toggles the registration or check-in channel."
       event: "🎮 View or set the event mode for this guild (normal/doubleup)."
-      config: "⚙️ Edit essential settings or upload/download full configuration."
-      reload: "♻️ Reload the bot configuration, update embeds & rich presence."
+      config: "⚙️ Edit, download, upload, or reload bot configuration."
       help: "❓ Show this help message again."
       registeredlist: "📋 Show the current registration list."
       reminder: "✉️ Send a DM reminder to all unchecked-in users."
       cache: "🔄 Re-cache the data from the sheet."
-
-rich_presence:
-  type: "PLAYING"
-  message: "🛡️ TFT"
-
-current_mode: "doubleup"
-
-sheet_configuration:
-  normal:
-    # Production sheet URL
-    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Y_NBCYSJvYs3j_xD8IivMU5EdAbTMNAtsU40g7bCQzg/edit"
-    # Development sheet URL (for testing)
-    sheet_url_dev: "https://docs.google.com/spreadsheets/d/YOUR_DEV_NORMAL_SHEET_ID/edit"
-    header_line_num: 2
-    max_players: 32
-    discord_col: "B"
-    pronouns_col: "C"
-    ign_col: "D"
-    alt_ign_col: "E"
-    registered_col: "F"
-    checkin_col: "G"
-
-  doubleup:
-    # Production sheet URL
-    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit"
-    # Development sheet URL (for testing)
-    sheet_url_dev: "https://docs.google.com/spreadsheets/d/1zQbY95rGf8hEtk4lLiwmWiY2nT0ysWfIjg5B5f0169A/edit"
-    header_line_num: 2
-    max_players: 32
-    discord_col: "B"
-    pronouns_col: "C"
-    ign_col: "D"
-    alt_ign_col: "E"
-    team_col: "I"
-    registered_col: "J"
-    checkin_col: "K"

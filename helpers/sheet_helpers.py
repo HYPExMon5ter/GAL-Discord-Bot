@@ -9,6 +9,7 @@ from integrations.sheets import retry_until_successful, get_sheet_for_guild, cac
 
 class SheetOperations:
     """Centralized sheet operations with better error handling."""
+
     @staticmethod
     async def update_cell(
             guild_id: str,
@@ -163,7 +164,7 @@ class SheetOperations:
         """
         Clear an entire column to a specific value.
         """
-        sheet = await get_sheet_for_guild(guild_id, worksheet)
+        sheet = await get_sheet_for_guild(guild_id, worksheet)  # ADD AWAIT
         col_idx = col_to_index(column)
 
         # Get all values to determine range

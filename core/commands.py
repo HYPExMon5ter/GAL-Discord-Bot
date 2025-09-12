@@ -12,13 +12,14 @@ from discord import app_commands
 from discord.ext import commands
 
 from config import (
-    embed_from_cfg, BotConstants, LOG_CHANNEL_NAME, get_sheet_settings, _FULL_CFG
+    embed_from_cfg, get_sheet_settings, _FULL_CFG, get_log_channel_name,
+    get_unified_channel_name
 )
 from core.persistence import (
     get_event_mode_for_guild, set_event_mode_for_guild
 )
 from core.views import (
-    PersistentRegisteredListView, DMActionView
+    DMActionView, update_unified_channel
 )
 # Import all helpers
 from helpers import (
@@ -29,7 +30,7 @@ from integrations.sheets import (
     refresh_sheet_cache
 )
 from utils.utils import (
-    toggle_persisted_channel, send_reminder_dms,
+    send_reminder_dms,
 )
 
 
@@ -45,18 +46,18 @@ gal = app_commands.Group(
 )
 
 
-@gal.command(name="toggle", description="Toggles the registration or check-in channel.")
+@gal.command(name="toggle", description="Toggle registration or check-in status.")
 @app_commands.describe(
-    channel="Which channel to toggle (registration or checkin)",
-    silent="Toggle silently without pinging the role (default: False)"
+    system="Which system to toggle (registration or checkin)",
+    silent="Toggle silently without announcements (default: False)"
 )
-@app_commands.choices(channel=[
+@app_commands.choices(system=[
     app_commands.Choice(name="registration", value="registration"),
-    app_commands.Choice(name="checkin", value="checkin")
+    app_commands.Choice(name="checkin", value="checkin"),
+    app_commands.Choice(name="both", value="both")
 ])
-async def toggle(interaction: discord.Interaction, channel: app_commands.Choice[str], silent: bool = False):
-    """Toggle registration or check-in channel visibility."""
-    # Use validator for permission check
+async def toggle(interaction: discord.Interaction, system: app_commands.Choice[str], silent: bool = False):
+    """Toggle registration or check-in status."""
     if not await Validators.validate_and_respond(
             interaction,
             Validators.validate_staff_permission(interaction)
@@ -64,35 +65,66 @@ async def toggle(interaction: discord.Interaction, channel: app_commands.Choice[
         return
 
     try:
-        channel_value = channel.value
+        from core.persistence import persisted, save_persisted
 
-        if channel_value == "registration":
-            await toggle_persisted_channel(
-                interaction,
-                persist_key="registration",
-                channel_name=BotConstants.REGISTRATION_CHANNEL,
-                role_name=BotConstants.ANGEL_ROLE,
-                ping_role=not silent,  # Invert silent flag
-            )
-        elif channel_value == "checkin":
-            await toggle_persisted_channel(
-                interaction,
-                persist_key="checkin",
-                channel_name=BotConstants.CHECK_IN_CHANNEL,
-                role_name=BotConstants.REGISTERED_ROLE,
-                ping_role=not silent,  # Invert silent flag
-            )
-        else:
-            # This shouldn't happen with choices, but just in case
-            await interaction.response.send_message(
-                "Invalid channel type! Use `registration` or `checkin`.",
-                ephemeral=True
-            )
+        guild_id = str(interaction.guild.id)
+        if guild_id not in persisted:
+            persisted[guild_id] = {}
+
+        system_value = system.value
+
+        # Get current states
+        reg_open = persisted[guild_id].get("registration_open", False)
+        ci_open = persisted[guild_id].get("checkin_open", False)
+
+        # Toggle based on selection
+        if system_value == "registration":
+            reg_open = not reg_open
+            persisted[guild_id]["registration_open"] = reg_open
+            status = f"Registration is now {'OPEN' if reg_open else 'CLOSED'}"
+        elif system_value == "checkin":
+            ci_open = not ci_open
+            persisted[guild_id]["checkin_open"] = ci_open
+            status = f"Check-in is now {'OPEN' if ci_open else 'CLOSED'}"
+        else:  # both
+            reg_open = not reg_open
+            ci_open = not ci_open
+            persisted[guild_id]["registration_open"] = reg_open
+            persisted[guild_id]["checkin_open"] = ci_open
+            status = f"Registration: {'OPEN' if reg_open else 'CLOSED'}\nCheck-in: {'OPEN' if ci_open else 'CLOSED'}"
+
+        save_persisted(persisted)
+
+        # Update unified channel
+        await update_unified_channel(interaction.guild)
+        
+        # Handle ping notifications when systems are opened (not when closed)
+        if not silent:
+            await handle_toggle_pings(interaction.guild, system_value, reg_open, ci_open)
+
+        # Send feedback
+        embed = discord.Embed(
+            title="✅ System Toggled",
+            description=status,
+            color=discord.Color.green()
+        )
+
+        await interaction.response.send_message(embed=embed, ephemeral=not silent)
+
+        # Log the change if not silent
+        if not silent:
+            log_channel = discord.utils.get(interaction.guild.text_channels, name=get_log_channel_name())
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="🔄 System Status Changed",
+                    description=f"{status}\n\nChanged by {interaction.user.mention}",
+                    color=discord.Color.blue(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                await log_channel.send(embed=log_embed)
 
     except Exception as e:
-        await ErrorHandler.handle_interaction_error(
-            interaction, e, "Toggle Command"
-        )
+        await ErrorHandler.handle_interaction_error(interaction, e, "Toggle Command")
 
 
 @gal.command(name="event", description="View or set the event mode for this guild (normal/doubleup).")
@@ -138,7 +170,7 @@ async def event(interaction: discord.Interaction, mode: Optional[app_commands.Ch
 
         # Update embeds/views after mode change
         await refresh_sheet_cache(bot=interaction.client)
-        await EmbedHelper.update_all_guild_embeds(guild)
+        await update_unified_channel(guild)
 
     except Exception as e:
         await ErrorHandler.handle_interaction_error(interaction, e, "Event Command")
@@ -213,8 +245,8 @@ async def registeredlist(interaction: discord.Interaction):
         # Send with the persistent view that includes reminder button
         await interaction.followup.send(
             embed=embed,
-            ephemeral=False,
-            view=PersistentRegisteredListView(interaction.guild)
+            ephemeral=False  # ,
+            # view=PersistentRegisteredListView(interaction.guild)
         )
 
     except Exception as e:
@@ -268,12 +300,12 @@ async def cache(interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         start_time = time.perf_counter()
 
-        # Refresh cache
+        # Refresh cache (this will also update unified channels automatically)
         updated_users, total_users = await refresh_sheet_cache(bot=interaction.client)
         elapsed = time.perf_counter() - start_time
 
-        # Update all embeds
-        embed_results = await EmbedHelper.update_all_guild_embeds(interaction.guild)
+        # The unified channel is already updated by refresh_sheet_cache, so we don't need to call it again
+        embed_success = True
 
         embed = embed_from_cfg(
             "cache",
@@ -283,11 +315,10 @@ async def cache(interaction: discord.Interaction):
         )
 
         # Add embed update info if available
-        if embed_results:
-            successful_updates = sum(1 for success in embed_results.values() if success)
+        if embed_success is not None:
             embed.add_field(
                 name="Embed Updates",
-                value=f"{successful_updates}/{len(embed_results)} embeds updated",
+                value=f"{'✅ Success' if embed_success else '❌ Failed'}",
                 inline=True
             )
 
@@ -470,7 +501,7 @@ async def config_cmd(
                     await interaction.followup.send(embed=embed, ephemeral=True)
 
                     # Log to bot-log channel with revert button
-                    log_channel = discord.utils.get(interaction.guild.text_channels, name=LOG_CHANNEL_NAME)
+                    log_channel = discord.utils.get(interaction.guild.text_channels, name=get_log_channel_name())
                     if log_channel:
                         # Clear old revert buttons first
                         await clear_old_config_views(log_channel)
@@ -1475,6 +1506,69 @@ async def command_error_handler(interaction: discord.Interaction, error: app_com
                 await interaction.response.send_message(embed=fallback_embed, ephemeral=True)
         except:
             pass  # Give up if we can't even send a fallback
+
+
+async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open: bool, ci_open: bool):
+    """
+    Handle ping notifications when registration or check-in is opened.
+    
+    Args:
+        guild: The Discord guild
+        system_value: The system being toggled ("registration", "checkin", or "both")
+        reg_open: Whether registration is currently open
+        ci_open: Whether check-in is currently open
+    """
+    try:
+        # Get the unified channel
+        channel_name = get_unified_channel_name()
+        unified_channel = discord.utils.get(guild.text_channels, name=channel_name)
+        
+        if not unified_channel:
+            logging.warning(f"Unified channel '{channel_name}' not found in guild {guild.name}")
+            return
+        
+        # Get role names from config
+        from config import _FULL_CFG
+        roles_config = _FULL_CFG.get("roles", {})
+        angel_role_name = roles_config.get("angel_role", "Angels")
+        registered_role_name = roles_config.get("registered_role", "Registered")
+        
+        messages_to_delete = []
+        
+        # Handle registration ping (ping Angels when registration opens)
+        if (system_value in ["registration", "both"]) and reg_open:
+            angel_role = discord.utils.get(guild.roles, name=angel_role_name)
+            if angel_role:
+                ping_msg = await unified_channel.send(f"🎫 **Registration is now OPEN!** {angel_role.mention}")
+                messages_to_delete.append(ping_msg)
+            else:
+                logging.warning(f"Angel role '{angel_role_name}' not found in guild {guild.name}")
+        
+        # Handle check-in ping (ping Registered role when check-in opens)
+        if (system_value in ["checkin", "both"]) and ci_open:
+            registered_role = discord.utils.get(guild.roles, name=registered_role_name)
+            if registered_role:
+                ping_msg = await unified_channel.send(f"✅ **Check-in is now OPEN!** {registered_role.mention}")
+                messages_to_delete.append(ping_msg)
+            else:
+                logging.warning(f"Registered role '{registered_role_name}' not found in guild {guild.name}")
+        
+        # Delete ping messages after 5 seconds
+        if messages_to_delete:
+            import asyncio
+            await asyncio.sleep(5)
+            for msg in messages_to_delete:
+                try:
+                    await msg.delete()
+                except discord.NotFound:
+                    pass  # Message already deleted
+                except discord.Forbidden:
+                    logging.warning(f"Missing permissions to delete ping message in {guild.name}")
+                except Exception as e:
+                    logging.error(f"Error deleting ping message: {e}")
+                    
+    except Exception as e:
+        logging.error(f"Error handling toggle pings for guild {guild.name}: {e}")
 
 
 # Setup function for the commands module

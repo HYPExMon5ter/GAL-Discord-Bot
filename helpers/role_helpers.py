@@ -1,10 +1,11 @@
 # helpers/role_helpers.py
+
 import logging
 from typing import Optional, List
 
 import discord
 
-from config import REGISTERED_ROLE, CHECKED_IN_ROLE, ALLOWED_ROLES
+from config import get_allowed_roles, get_registered_role, get_checked_in_role
 
 
 class RoleManager:
@@ -24,13 +25,24 @@ class RoleManager:
     @staticmethod
     def has_any_allowed_role(member: discord.Member) -> bool:
         """Check if member has any staff/allowed role."""
-        return any(role.name in ALLOWED_ROLES for role in member.roles)
+        allowed_roles = get_allowed_roles()
+        return any(role.name in allowed_roles for role in member.roles)
 
     @staticmethod
     def has_allowed_role_from_interaction(interaction: discord.Interaction) -> bool:
         """Check interaction.user's roles for permission."""
         member = getattr(interaction, "user", getattr(interaction, "author", None))
         return hasattr(member, "roles") and RoleManager.has_any_allowed_role(member)
+
+    @staticmethod
+    def is_registered(member: discord.Member) -> bool:
+        """Check if member is registered."""
+        return RoleManager.has_role(member, get_registered_role())
+
+    @staticmethod
+    def is_checked_in(member: discord.Member) -> bool:
+        """Check if member is checked in."""
+        return RoleManager.has_role(member, get_checked_in_role())
 
     @staticmethod
     async def add_role(member: discord.Member, role_name: str) -> bool:
@@ -77,16 +89,6 @@ class RoleManager:
         return len(roles_to_remove)
 
     @staticmethod
-    def is_registered(member: discord.Member) -> bool:
-        """Check if member is registered."""
-        return RoleManager.has_role(member, REGISTERED_ROLE)
-
-    @staticmethod
-    def is_checked_in(member: discord.Member) -> bool:
-        """Check if member is checked in."""
-        return RoleManager.has_role(member, CHECKED_IN_ROLE)
-
-    @staticmethod
     async def sync_user_roles(member: discord.Member, is_registered: bool, is_checked_in: bool) -> None:
         """
         Sync member's roles based on their registration/check-in status.
@@ -94,15 +96,15 @@ class RoleManager:
         """
         try:
             # Get the role objects
-            reg_role = RoleManager.get_role(member.guild, REGISTERED_ROLE)
-            ci_role = RoleManager.get_role(member.guild, CHECKED_IN_ROLE)
+            reg_role = RoleManager.get_role(member.guild, get_registered_role())
+            ci_role = RoleManager.get_role(member.guild, get_checked_in_role())
 
             if not reg_role:
-                logging.warning(f"Registered role '{REGISTERED_ROLE}' not found in guild {member.guild.name}")
+                logging.warning(f"Registered role '{get_registered_role()}' not found in guild {member.guild.name}")
                 return
 
             if not ci_role:
-                logging.warning(f"Checked-in role '{CHECKED_IN_ROLE}' not found in guild {member.guild.name}")
+                logging.warning(f"Checked-in role '{get_checked_in_role()}' not found in guild {member.guild.name}")
                 return
 
             # Track what changes we're making for logging
@@ -112,10 +114,10 @@ class RoleManager:
             has_reg_role = reg_role in member.roles
             if is_registered and not has_reg_role:
                 await member.add_roles(reg_role)
-                changes.append(f"Added {REGISTERED_ROLE}")
+                changes.append(f"Added {get_registered_role()}")
             elif not is_registered and has_reg_role:
                 await member.remove_roles(reg_role)
-                changes.append(f"Removed {REGISTERED_ROLE}")
+                changes.append(f"Removed {get_registered_role()}")
 
             # Handle checked-in role (can't be checked in without being registered)
             has_ci_role = ci_role in member.roles
@@ -125,10 +127,10 @@ class RoleManager:
 
             if should_have_ci and not has_ci_role:
                 await member.add_roles(ci_role)
-                changes.append(f"Added {CHECKED_IN_ROLE}")
+                changes.append(f"Added {get_checked_in_role()}")
             elif not should_have_ci and has_ci_role:
                 await member.remove_roles(ci_role)
-                changes.append(f"Removed {CHECKED_IN_ROLE}")
+                changes.append(f"Removed {get_checked_in_role()}")
 
             # Log changes if any were made
             if changes:

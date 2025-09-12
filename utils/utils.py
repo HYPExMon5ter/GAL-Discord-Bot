@@ -4,15 +4,13 @@ import asyncio
 import logging
 import re
 import urllib.parse
-from datetime import datetime
 from typing import List, Optional, Callable
-from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
 
 from config import (
-    embed_from_cfg, get_sheet_settings, CHECKED_IN_ROLE, REGISTRATION_CHANNEL, CHECK_IN_CHANNEL
+    embed_from_cfg, get_sheet_settings, get_checked_in_role
 )
 from core.persistence import get_event_mode_for_guild
 from integrations.sheets import (
@@ -41,90 +39,6 @@ def has_allowed_role_from_interaction(interaction: discord.Interaction) -> bool:
     """Check interaction.user's roles for permission."""
     from helpers import RoleManager
     return RoleManager.has_allowed_role_from_interaction(interaction)
-
-
-async def toggle_persisted_channel(
-        interaction: discord.Interaction,
-        persist_key: str,
-        channel_name: str,
-        role_name: str,
-        ping_role: bool = True,
-) -> None:
-    """
-    Universal "open/close channel + update embed" helper.
-    """
-    try:
-        # Lazy imports to break circularity
-        from core.events import schedule_channel_open
-        from core.views import (
-            create_persisted_embed,
-            RegistrationView,
-            CheckInView,
-            update_registration_embed,
-            update_checkin_embed,
-        )
-        from helpers import ChannelManager, ErrorHandler, EmbedHelper
-
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-        guild = interaction.guild
-        if not guild:
-            raise UtilsError("Command must be used in a guild")
-
-        channel = ChannelManager.get_channel(guild, channel_name)
-        role = discord.utils.get(guild.roles, name=role_name)
-
-        if not channel or not role:
-            await interaction.followup.send(
-                f"Could not find channel `{channel_name}` or role `{role_name}`.",
-                ephemeral=True
-            )
-            return
-
-        # Toggle visibility
-        was_open = ChannelManager.is_channel_open(channel, role)
-        new_open = not was_open
-
-        if new_open:
-            # Use schedule_channel_open for immediate open but mark as manual
-            await schedule_channel_open(
-                interaction.client,
-                guild,
-                channel_name,
-                role_name,
-                datetime.now(ZoneInfo("UTC")),
-                ping_role=ping_role,
-                is_scheduled_event=False  # This is a manual toggle, not scheduled
-            )
-        else:
-            # Close the channel
-            await ChannelManager.set_channel_visibility(channel, role, False, False)
-
-            # Clear any scheduled times
-            from core.persistence import set_schedule
-            if channel_name == REGISTRATION_CHANNEL:
-                set_schedule(guild.id, "registration_open", None)
-                set_schedule(guild.id, "registration_close", None)
-            elif channel_name == CHECK_IN_CHANNEL:
-                set_schedule(guild.id, "checkin_open", None)
-                set_schedule(guild.id, "checkin_close", None)
-
-        # Force update ALL embeds after channel state change
-        await EmbedHelper.update_all_guild_embeds(guild)
-
-        # Send feedback
-        feedback = embed_from_cfg(f"{persist_key}_channel_toggled", visible=new_open)
-        await interaction.followup.send(embed=feedback, ephemeral=True)
-
-        # Refresh DM action views - DO NOT resolve members during toggle
-        await update_dm_action_views(guild)
-
-    except Exception as e:
-        from helpers import ErrorHandler
-        await ErrorHandler.handle_interaction_error(
-            interaction, e, "Channel Toggle",
-            f"Failed to toggle {channel_name} channel"
-        )
 
 
 def resolve_member(guild: discord.Guild, discord_tag: str) -> Optional[discord.Member]:
@@ -299,7 +213,7 @@ async def toggle_checkin_for_member(
         # Validate user is registered
         if not RoleManager.is_registered(member):
             await interaction.followup.send(
-                embed=embed_from_cfg("checkin_requires_registration"),
+                embed=embed_from_cfg("registration_required"),
                 ephemeral=True
             )
             return
@@ -313,9 +227,9 @@ async def toggle_checkin_for_member(
         if success:
             # Update Discord role
             if success_key == "checked_in":
-                await RoleManager.add_role(member, CHECKED_IN_ROLE)
+                await RoleManager.add_role(member, get_checked_in_role())
             else:
-                await RoleManager.remove_role(member, CHECKED_IN_ROLE)
+                await RoleManager.remove_role(member, get_checked_in_role())
 
         # Send feedback
         embed_key = success_key if success else "error"
@@ -381,15 +295,17 @@ async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
             logging.debug(f"IGN became empty after cleaning: {ign}")
             return
 
-        # Build lolchess URL
+        # Build lolchess URL - correct format: https://lolchess.gg/profile/na/name-tag/
         name, _, tag = ign_clean.partition("#")
         name_encoded = urllib.parse.quote(name.strip(), safe="-")
-
-        path = f"/player/na/{name_encoded}"
+        
+        # Use profile path and format with dash instead of slash
         if tag:
-            path += f"/{urllib.parse.quote(tag.strip(), safe='-')}"
-
-        profile_url = f"https://lolchess.gg{path}/"
+            formatted_name = f"{name_encoded}-{urllib.parse.quote(tag.strip(), safe='-')}"
+        else:
+            formatted_name = name_encoded
+            
+        profile_url = f"https://lolchess.gg/profile/na/{formatted_name}/"
 
         # Verify profile exists
         async with aiohttp.ClientSession() as session:

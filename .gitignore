@@ -20,3 +20,6 @@ gal_bot.log
 # Data storage
 persisted_views.json
 waitlist_data.json
+
+# Temp
+.claude

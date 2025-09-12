@@ -6,7 +6,6 @@ Utility functions for the GAL Discord Bot.
 from .utils import (
     has_allowed_role,
     has_allowed_role_from_interaction,
-    toggle_persisted_channel,
     resolve_member,
     send_reminder_dms,
     toggle_checkin_for_member,
@@ -17,7 +16,6 @@ from .utils import (
 __all__ = [
     'has_allowed_role',
     'has_allowed_role_from_interaction',
-    'toggle_persisted_channel',
     'resolve_member',
     'send_reminder_dms',
     'toggle_checkin_for_member',

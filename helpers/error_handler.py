@@ -6,7 +6,7 @@ from typing import Optional
 
 import discord
 
-from config import embed_from_cfg, LOG_CHANNEL_NAME, PING_USER
+from config import embed_from_cfg, get_log_channel_name, get_ping_user
 
 
 class ErrorHandler:
@@ -76,37 +76,6 @@ class ErrorHandler:
             print(f"[ERROR-HANDLER] Could not send error message to user {user}")
 
     @staticmethod
-    async def _log_to_channel(
-            guild: discord.Guild,
-            message: str,
-            error_id: str
-    ) -> None:
-        """Log error to designated log channel."""
-        log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
-        if not log_channel:
-            return
-
-        # Split message if too long
-        if len(message) > 3900:
-            message = message[:3900] + "...\n[Truncated]"
-
-        embed = discord.Embed(
-            title=f"🚨 Error Report: {error_id}",
-            description=f"```\n{message}\n```",
-            color=discord.Color.red(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.set_footer(text="GAL Bot Error Handler")
-
-        try:
-            await log_channel.send(
-                content=PING_USER,
-                embed=embed
-            )
-        except Exception as e:
-            print(f"[ERROR-HANDLER] Failed to log to channel: {e}")
-
-    @staticmethod
     def wrap_callback(context: str):
         """
         Decorator to wrap interaction callbacks with error handling.
@@ -161,13 +130,44 @@ class ErrorHandler:
             )
 
     @staticmethod
+    async def _log_to_channel(
+            guild: discord.Guild,
+            message: str,
+            error_id: str
+    ) -> None:
+        """Log error to designated log channel."""
+        log_channel = discord.utils.get(guild.text_channels, name=get_log_channel_name())
+        if not log_channel:
+            return
+
+        # Split message if too long
+        if len(message) > 3900:
+            message = message[:3900] + "...\n[Truncated]"
+
+        embed = discord.Embed(
+            title=f"🚨 Error Report: {error_id}",
+            description=f"```\n{message}\n```",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_footer(text="GAL Bot Error Handler")
+
+        try:
+            await log_channel.send(
+                content=get_ping_user(),
+                embed=embed
+            )
+        except Exception as e:
+            print(f"[ERROR-HANDLER] Failed to log to channel: {e}")
+
+    @staticmethod
     async def log_warning(
             guild: discord.Guild,
             message: str,
             context: str = "Warning"
     ) -> None:
         """Log a warning message to the log channel."""
-        log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+        log_channel = discord.utils.get(guild.text_channels, name=get_log_channel_name())
         if not log_channel:
             return
 
@@ -191,7 +191,7 @@ class ErrorHandler:
             context: str = "Info"
     ) -> None:
         """Log an info message to the log channel."""
-        log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+        log_channel = discord.utils.get(guild.text_channels, name=get_log_channel_name())
         if not log_channel:
             return
 

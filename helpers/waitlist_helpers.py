@@ -10,7 +10,7 @@ from typing import Optional, Dict, List, Tuple
 import discord
 from rapidfuzz import fuzz, process
 
-from config import embed_from_cfg, get_sheet_settings, LOG_CHANNEL_NAME, DATABASE_URL
+from config import embed_from_cfg, get_sheet_settings, DATABASE_URL, get_log_channel_name
 from core.persistence import get_event_mode_for_guild
 from helpers.error_handler import ErrorHandler
 from helpers.role_helpers import RoleManager
@@ -230,7 +230,7 @@ class WaitlistManager:
             team_name,
             team_list,
             scorer=fuzz.ratio,
-            score_cutoff=75
+            score_cutoff=80
         )
 
         if result:
@@ -637,7 +637,9 @@ class WaitlistManager:
                             next_user["discord_tag"],
                             next_user["ign"],
                             guild_id=guild_id,
-                            team_name=next_user.get("team_name")
+                            team_name=next_user.get("team_name"),
+                            alt_igns=next_user.get("alt_igns"),
+                            pronouns=next_user.get("pronouns")
                         )
 
                         # Update additional fields
@@ -669,19 +671,18 @@ class WaitlistManager:
                             if deleted > 0:
                                 logging.debug(f"Cleared {deleted} previous DMs for {next_user['discord_tag']}")
 
-                            # Send new DM
+                            # Send new DM with channel button
+                            from core.views import WaitlistRegistrationDMView
                             dm_embed = embed_from_cfg("waitlist_registered")
-                            await member.send(
-                                embed=dm_embed,
-                                view=DMActionView(guild, member)
-                            )
+                            dm_view = WaitlistRegistrationDMView(guild)
+                            await member.send(embed=dm_embed, view=dm_view)
                         except discord.Forbidden:
                             logging.debug(f"Could not DM {next_user['discord_tag']} - DMs disabled")
                         except Exception as dm_error:
                             logging.warning(f"Failed to DM {next_user['discord_tag']}: {dm_error}")
 
                         # Log to bot-log channel
-                        log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+                        log_channel = discord.utils.get(guild.text_channels, name=get_log_channel_name())
                         if log_channel:
                             try:
                                 team_info = f" for team **{next_user.get('team_name')}**" if next_user.get(
@@ -718,8 +719,8 @@ class WaitlistManager:
                 print(f"[WAITLIST] Registered {len(registered_users)} users from waitlist")
 
                 # Update embeds after successful registrations
-                from helpers import EmbedHelper
-                await EmbedHelper.update_all_guild_embeds(guild)
+                from core.components_traditional import setup_unified_channel
+                await setup_unified_channel(guild)
             else:
                 print(f"[WAITLIST] No users registered from waitlist")
 
@@ -745,3 +746,18 @@ class WaitlistManager:
         except Exception as e:
             logging.error(f"Error getting waitlist length: {e}")
             return 0
+
+    @staticmethod
+    async def get_all_waitlist_entries(guild_id: str):
+        """Get all waitlist entries for a guild."""
+        if not guild_id:
+            return []
+
+        try:
+            all_data = WaitlistManager._load_waitlist_data()
+            if guild_id not in all_data:
+                return []
+            return all_data[guild_id].get("waitlist", [])
+        except Exception as e:
+            logging.error(f"Error getting all waitlist entries: {e}")
+            return []

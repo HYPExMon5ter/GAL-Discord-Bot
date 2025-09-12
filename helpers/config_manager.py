@@ -92,9 +92,8 @@ class ConfigManager:
         # Check required embed keys
         required_embeds = [
             "registration", "registration_closed", "checkin", "checkin_closed",
-            "permission_denied", "error", "unregister_success", "unregister_not_registered",
-            "checkin_requires_registration", "already_checked_in", "already_checked_out",
-            "checked_in", "checked_out"
+            "permission_denied", "error", "unregister_success", "registration_required",
+            "already_checked_in", "already_checked_out", "checked_in", "checked_out"
         ]
         for key in required_embeds:
             if key not in EMBEDS_CFG:
@@ -146,7 +145,7 @@ class ConfigManager:
         """
         Reload config and update all necessary components.
         """
-        from helpers import EmbedHelper
+        from core.components_traditional import setup_unified_channel
 
         results = {
             "config_reload": False,
@@ -167,7 +166,7 @@ class ConfigManager:
 
             # Update embeds for all guilds
             for guild in bot.guilds:
-                guild_results = await EmbedHelper.update_all_guild_embeds(guild)
-                results["embeds_updated"][guild.name] = guild_results
+                guild_success = await setup_unified_channel(guild)
+                results["embeds_updated"][guild.name] = {"unified": guild_success}
 
         return results

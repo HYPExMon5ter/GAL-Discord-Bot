@@ -1,13 +1,12 @@
 # helpers/validation_helpers.py
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import discord
 
 from config import embed_from_cfg, get_sheet_settings
 from core.persistence import get_event_mode_for_guild
 from integrations.sheets import cache_lock, sheet_cache
-from .channel_helpers import ChannelManager
 from .role_helpers import RoleManager
 from .sheet_helpers import SheetOperations
 
@@ -147,7 +146,7 @@ class Validators:
         is_registered = RoleManager.is_registered(member)
 
         if require_registered and not is_registered:
-            return ValidationError("checkin_requires_registration")
+            return ValidationError("registration_required")
 
         if require_not_registered and is_registered:
             return ValidationError("already_registered")
@@ -187,10 +186,8 @@ class Validators:
                 view = None
 
                 # Add appropriate action button based on error type
-                from core.views import QuickRegisterView, QuickCheckOutView, QuickCheckInView, AlreadyCheckedInView
-                if validation.embed_key == "unregister_not_registered":
-                    view = QuickRegisterView()
-                elif validation.embed_key == "checkin_requires_registration":
+                from core.views import QuickRegisterView, QuickCheckInView, AlreadyCheckedInView
+                if validation.embed_key == "registration_required":
                     view = QuickRegisterView()
                 elif validation.embed_key == "already_checked_in":
                     view = AlreadyCheckedInView()
@@ -211,48 +208,6 @@ class Validators:
                     )
                 return False
         return True
-
-    @staticmethod
-    def validate_channel_and_role(
-            guild: discord.Guild,
-            channel_name: str,
-            role_name: str
-    ) -> Tuple[Optional[discord.TextChannel], Optional[discord.Role], Optional[ValidationError]]:
-        """
-        Validate that both channel and role exist.
-        """
-        channel = ChannelManager.get_channel(guild, channel_name)
-        role = RoleManager.get_role(guild, role_name)
-
-        if not channel or not role:
-            error = ValidationError(
-                "channel_role_not_found",
-                channel=channel_name,
-                role=role_name
-            )
-            return None, None, error
-
-        return channel, role, None
-
-    @staticmethod
-    def validate_channel_open(
-            guild: discord.Guild,
-            channel_type: str
-    ) -> Optional[ValidationError]:
-        """
-        Validate that a channel is open.
-        """
-        channel, role = ChannelManager.get_channel_and_role(guild, channel_type)
-        if not channel or not role:
-            return ValidationError(
-                "channel_not_found",
-                channel_type=channel_type
-            )
-
-        if not ChannelManager.is_channel_open(channel, role):
-            return ValidationError(f"{channel_type}_closed")
-
-        return None
 
     @staticmethod
     def validate_event_mode(mode: str) -> Optional[ValidationError]:

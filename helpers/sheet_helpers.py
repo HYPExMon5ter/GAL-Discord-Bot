@@ -66,26 +66,19 @@ class SheetOperations:
             return None
 
         # Safely unpack with defaults
-        parts = list(cache_data) + [None] * (6 - len(cache_data))
-        row, ign, registered, checked_in, team, alt_ign = parts[:6]
+        parts = list(cache_data) + [None] * (7 - len(cache_data))
+        row, ign, registered, checked_in, team, alt_ign, pronouns = parts[:7]
 
         mode = get_event_mode_for_guild(guild_id)
         cfg = get_sheet_settings(mode)
 
-        # Get pronouns from sheet
-        pronouns = ""
-        try:
-            sheet = await get_sheet_for_guild(guild_id)
-            cell = await retry_until_successful(sheet.acell, f"{cfg['pronouns_col']}{row}")
-            pronouns = cell.value or ""
-        except:
-            pass
+        # Pronouns are now cached, no need to fetch from sheet
 
         return {
             "row": row,
             "ign": ign or "",
             "alt_ign": alt_ign or "",
-            "pronouns": pronouns,
+            "pronouns": pronouns or "",
             "registered": str(registered).upper() == "TRUE",
             "checked_in": str(checked_in).upper() == "TRUE",
             "team": team if mode == "doubleup" else None,

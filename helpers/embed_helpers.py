@@ -2,11 +2,11 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Callable, Dict, List
+from typing import Optional, Callable, List
 
 import discord
 
-from config import embed_from_cfg, LOG_CHANNEL_NAME, PING_USER
+from config import embed_from_cfg, get_log_channel_name, get_ping_user
 from core.persistence import get_persisted_msg
 
 
@@ -14,7 +14,7 @@ async def log_error(bot, guild, message, level="Error"):
     """Log error to bot-log channel or console."""
     log_channel = None
     if guild:
-        log_channel = discord.utils.get(guild.text_channels, name=LOG_CHANNEL_NAME)
+        log_channel = discord.utils.get(guild.text_channels, name=get_log_channel_name())
 
     embed = embed_from_cfg("error")
     embed.description = message
@@ -24,7 +24,7 @@ async def log_error(bot, guild, message, level="Error"):
     if log_channel:
         try:
             await log_channel.send(
-                content=PING_USER if level == "Error" else None,
+                content=get_ping_user() if level == "Error" else None,
                 embed=embed
             )
         except Exception as e:
@@ -60,36 +60,21 @@ class EmbedHelper:
             await update_func(channel, msg_id, guild)
             return True
         except Exception as e:
-            await log_error(None, guild, f"[{error_context.upper()}] Failed to update {persist_key} embed: {e}")
+            # Use config-based log channel
+            log_channel = discord.utils.get(guild.text_channels, name=get_log_channel_name())
+            if log_channel:
+                try:
+                    error_embed = discord.Embed(
+                        title="❌ Embed Update Error",
+                        description=f"[{error_context.upper()}] Failed to update {persist_key} embed: {e}",
+                        color=discord.Color.red(),
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    await log_channel.send(embed=error_embed)
+                except:
+                    pass
+            logging.error(f"[{error_context.upper()}] Failed to update {persist_key} embed: {e}")
             return False
-
-    @staticmethod
-    async def update_all_guild_embeds(guild: discord.Guild) -> Dict[str, bool]:
-        """
-        Update all live embeds for a guild.
-        """
-        # Import here to avoid circular imports
-        from core.views import update_registration_embed, update_checkin_embed
-
-        results = {}
-
-        # Update registration embed
-        results['registration'] = await EmbedHelper.update_persisted_embed(
-            guild,
-            "registration",
-            update_registration_embed,
-            "registration update"
-        )
-
-        # Update check-in embed
-        results['checkin'] = await EmbedHelper.update_persisted_embed(
-            guild,
-            "checkin",
-            update_checkin_embed,
-            "checkin update"
-        )
-
-        return results
 
     @staticmethod
     async def create_persisted_embed(
@@ -274,6 +259,27 @@ class EmbedHelper:
         return lines
 
     @staticmethod
+    def create_progress_bar(current: int, maximum: int, length: int = 20) -> str:
+        """
+        Create a visual progress bar using emoji.
+        
+        Args:
+            current: Current value (e.g., registered players)
+            maximum: Maximum value (e.g., max players) 
+            length: Length of the progress bar in characters (default: 20)
+            
+        Returns:
+            String with green filled squares and white empty squares
+        """
+        if maximum == 0:
+            return "⬜" * length
+            
+        percentage = min(100, (current / maximum) * 100)
+        filled_length = int(length * percentage / 100)
+        
+        return "🟩" * filled_length + "⬜" * (length - filled_length)
+
+    @staticmethod
     def build_checkin_list_lines(checked_in_users: List[tuple], mode: str) -> List[str]:
         """
         Build formatted lines showing ALL registered users with check-in status.
@@ -289,7 +295,7 @@ class EmbedHelper:
             # Group by team
             teams = {}
             for tag, user_data in checked_in_users:
-                # user_data is the full tuple (row, ign, reg, ci, team, alt)
+                # user_data is the full tuple (row, ign, reg, ci, team, alt, pronouns)
                 team_name = user_data[4] if len(user_data) > 4 else "No Team"
                 if not team_name:
                     team_name = "No Team"
@@ -359,3 +365,24 @@ class EmbedHelper:
             lines.append("```")
 
         return lines
+
+    @staticmethod
+    def create_progress_bar(current: int, maximum: int, length: int = 20) -> str:
+        """
+        Create a visual progress bar using emoji.
+        
+        Args:
+            current: Current value (e.g., registered players)
+            maximum: Maximum value (e.g., max players) 
+            length: Length of the progress bar in characters (default: 20)
+            
+        Returns:
+            String with green filled squares and white empty squares
+        """
+        if maximum == 0:
+            return "⬜" * length
+            
+        percentage = min(100, (current / maximum) * 100)
+        filled_length = int(length * percentage / 100)
+        
+        return "🟩" * filled_length + "⬜" * (length - filled_length)

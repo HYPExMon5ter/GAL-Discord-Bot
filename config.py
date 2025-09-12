@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import aiohttp
 import discord
@@ -25,42 +25,7 @@ APPLICATION_ID = os.getenv("APPLICATION_ID")
 if not APPLICATION_ID:
     raise ValueError("APPLICATION_ID environment variable is required")
 
-
-# Bot constants - centralized for easier maintenance
-class BotConstants:
-    """Centralized bot configuration constants."""
-
-    # Roles
-    ALLOWED_ROLES = ["Admin", "Moderator", "GAL Helper"]
-    REGISTERED_ROLE = "Registered"
-    CHECKED_IN_ROLE = "Checked In"
-    ANGEL_ROLE = "Angels"
-
-    # Channels
-    CHECK_IN_CHANNEL = "✔check-in"
-    REGISTRATION_CHANNEL = "🎫registration"
-    LOG_CHANNEL_NAME = "bot-log"
-
-    # Other settings
-    PING_USER = "<@162359821100646401>"
-    # CACHE_REFRESH_SECONDS = 600  # 10 minutes
-
-
-# Legacy constants for backward compatibility
-ALLOWED_ROLES = BotConstants.ALLOWED_ROLES
-CHECK_IN_CHANNEL = BotConstants.CHECK_IN_CHANNEL
-REGISTRATION_CHANNEL = BotConstants.REGISTRATION_CHANNEL
-CHECKED_IN_ROLE = BotConstants.CHECKED_IN_ROLE
-REGISTERED_ROLE = BotConstants.REGISTERED_ROLE
-ANGEL_ROLE = BotConstants.ANGEL_ROLE
-LOG_CHANNEL_NAME = BotConstants.LOG_CHANNEL_NAME
-PING_USER = BotConstants.PING_USER
-
-
-# CACHE_REFRESH_SECONDS = BotConstants.CACHE_REFRESH_SECONDS
-
-
-# Configuration loading with validation
+# Load configuration
 def load_config() -> Dict[str, Any]:
     """Load and validate configuration from config.yaml."""
     try:
@@ -68,7 +33,7 @@ def load_config() -> Dict[str, Any]:
             config = yaml.safe_load(f)
 
         # Validate required sections
-        required_sections = ["embeds", "sheet_configuration"]
+        required_sections = ["embeds", "sheet_configuration", "channels", "roles"]
         for section in required_sections:
             if section not in config:
                 raise ValueError(f"Missing required configuration section: {section}")
@@ -93,6 +58,42 @@ EMBEDS_CFG = _FULL_CFG.get("embeds", {})
 SHEET_CONFIG = _FULL_CFG.get("sheet_configuration", {})
 
 
+# Role configuration from config
+def get_allowed_roles() -> List[str]:
+    """Get allowed roles from config."""
+    return _FULL_CFG.get("roles", {}).get("allowed_roles", ["Admin", "Moderator", "GAL Helper"])
+
+
+def get_registered_role() -> str:
+    """Get registered role name from config."""
+    return _FULL_CFG.get("roles", {}).get("registered_role", "Registered")
+
+
+def get_checked_in_role() -> str:
+    """Get checked-in role name from config."""
+    return _FULL_CFG.get("roles", {}).get("checked_in_role", "Checked In")
+
+
+def get_angel_role() -> str:
+    """Get angel role name from config."""
+    return _FULL_CFG.get("roles", {}).get("angel_role", "Angels")
+
+
+def get_ping_user() -> str:
+    """Get ping user from config."""
+    return _FULL_CFG.get("ping_user", "<@162359821100646401>")
+
+
+def get_log_channel_name() -> str:
+    """Get log channel name from config."""
+    return _FULL_CFG.get("channels", {}).get("log_channel", "bot-log")
+
+
+def get_unified_channel_name() -> str:
+    """Get unified channel name from config."""
+    return _FULL_CFG.get("channels", {}).get("unified_channel", "🎫registration")
+
+
 def hex_to_color(s: str) -> discord.Color:
     """Convert hex string to Discord Color object."""
     try:
@@ -105,13 +106,6 @@ def hex_to_color(s: str) -> discord.Color:
 def embed_from_cfg(key: str, **kwargs) -> discord.Embed:
     """
     Create Discord embed from configuration with error handling.
-
-    Args:
-        key: Configuration key for the embed
-        **kwargs: Variables to format in the embed text
-
-    Returns:
-        discord.Embed: Configured embed object
     """
     data = EMBEDS_CFG.get(key, {})
 
@@ -329,8 +323,7 @@ def validate_configuration() -> None:
 
     # Check required embed keys (basic ones only)
     required_embeds = [
-        "registration", "registration_closed", "checkin", "checkin_closed",
-        "permission_denied", "error", "checked_in", "checked_out"
+        "permission_denied", "error"
     ]
 
     missing_embeds = [key for key in required_embeds if key not in EMBEDS_CFG]

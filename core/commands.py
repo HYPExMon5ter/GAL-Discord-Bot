@@ -1575,6 +1575,12 @@ async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open:
 async def setup(bot: commands.Bot):
     """Setup function to add the command group to the bot."""
     try:
+        # Check if command already exists to prevent duplicates
+        existing_commands = [cmd.name for cmd in bot.tree.get_commands()]
+        if "gal" in existing_commands:
+            logging.warning("GAL command already exists in tree - skipping add")
+            return
+            
         bot.tree.add_command(gal)
         logging.info("GAL command group added to bot tree")
     except Exception as e:

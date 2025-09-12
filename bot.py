@@ -12,6 +12,7 @@ from discord.ext import commands
 from config import DISCORD_TOKEN, APPLICATION_ID
 from core.commands import setup as setup_commands
 from core.events import setup_events
+from helpers.environment_helpers import EnvironmentHelper
 
 
 # Configure logging with better formatting
@@ -123,14 +124,21 @@ class GALBot(commands.Bot):
         try:
             logging.info("Starting bot setup...")
 
+            # Log pre-setup command state
+            pre_setup_commands = [cmd.name for cmd in self.tree.get_commands()]
+            logging.info(f"Commands in tree before setup: {pre_setup_commands}")
+
             # Setup commands - this adds them to the tree but doesn't sync
             await setup_commands(self)
+            
+            # Log post-setup command state
+            post_setup_commands = [cmd.name for cmd in self.tree.get_commands()]
+            logging.info(f"Commands in tree after setup: {post_setup_commands}")
 
             # Use lock to prevent concurrent syncing
             async with self._sync_lock:
                 # Determine environment and sync strategy
-                dev_guild_id = os.getenv("DEV_GUILD_ID")
-                is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+                is_production, dev_guild_id = EnvironmentHelper.get_environment_info()
 
                 logging.info("Preparing to sync commands...")
 
@@ -151,12 +159,13 @@ class GALBot(commands.Bot):
                             logging.warning(f"Could not clear dev guild commands: {e}")
 
                     # Single global sync
+                    logging.info("Starting global command sync...")
                     synced = await self.tree.sync()
                     logging.info(f"Production mode: Synced {len(synced)} commands globally")
 
                     # List the synced commands
                     for cmd in synced:
-                        logging.debug(f"  - Synced command: {cmd.name}")
+                        logging.info(f"  - Synced command: {cmd.name} (ID: {cmd.id})")
 
                     self._commands_synced = True
 
@@ -173,13 +182,13 @@ class GALBot(commands.Bot):
                             self.tree.copy_global_to(guild=dev_guild)
 
                             # Single sync to the specific guild
-                            logging.info(f"Syncing commands to dev guild {dev_guild_id}...")
+                            logging.info(f"Starting guild command sync to {dev_guild_id}...")
                             synced = await self.tree.sync(guild=dev_guild)
                             logging.info(f"Development mode: Synced {len(synced)} commands to guild {dev_guild_id}")
 
                             # List the synced commands
                             for cmd in synced:
-                                logging.debug(f"  - Synced command: {cmd.name}")
+                                logging.info(f"  - Synced command: {cmd.name} (ID: {cmd.id})")
 
                             self._commands_synced = True
 
@@ -207,8 +216,7 @@ class GALBot(commands.Bot):
             # Reduced wait time since we're more efficient now
             await asyncio.sleep(1)
 
-            dev_guild_id = os.getenv("DEV_GUILD_ID")
-            is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+            is_production, dev_guild_id = EnvironmentHelper.get_environment_info()
 
             if dev_guild_id and not is_production:
                 # Check guild commands
@@ -310,8 +318,7 @@ class GALBot(commands.Bot):
             async with self._sync_lock:
                 if not self._commands_synced:
                     logging.info("Re-syncing commands after reconnect...")
-                    dev_guild_id = os.getenv("DEV_GUILD_ID")
-                    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+                    is_production, dev_guild_id = EnvironmentHelper.get_environment_info()
 
                     if dev_guild_id and not is_production:
                         try:
@@ -339,7 +346,7 @@ class GALBot(commands.Bot):
             logging.info(f"  - {guild.name} ({guild.id}) - {guild.member_count} members")
 
         # Log environment info
-        env_type = "Production" if os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production" else "Development"
+        env_type = EnvironmentHelper.get_environment_type()
         logging.info(f"Running in {env_type} mode")
 
         # Verify commands are accessible
@@ -516,15 +523,15 @@ def main():
     logging.info("=" * 60)
 
     # Log environment
-    env_type = "Production" if os.getenv("RAILWAY_ENVIRONMENT") == "production" else "Development"
-    logging.info(f"Environment: {env_type}")
-
-    if os.getenv("DEV_GUILD_ID"):
-        logging.info(f"Development Guild ID: {os.getenv('DEV_GUILD_ID')}")
+    EnvironmentHelper.log_environment_info()
 
     # Validate environment
     if not DISCORD_TOKEN:
         logging.error("DISCORD_TOKEN environment variable is required")
+        sys.exit(1)
+        
+    if not EnvironmentHelper.validate_environment():
+        logging.error("Environment validation failed")
         sys.exit(1)
 
     try:

@@ -539,11 +539,11 @@ class ViewListButton(discord.ui.Button):
         embed.set_footer(text=" | ".join(footer_parts))
 
         # Create view with reminder button if user has allowed roles
-        view = None
         if RoleManager.has_allowed_role_from_interaction(interaction):
             view = PlayerListView()
-
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 class PlayerListView(discord.ui.View):

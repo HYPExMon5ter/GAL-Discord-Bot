@@ -30,7 +30,7 @@ tournament:
 sheet_configuration:
   normal:
     # Production sheet URL
-    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Ba07_3Tdv7Z2HwHdSyJYGVSxJGJRGVzF6pI2mi_cxWA"
+    sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Ba07_3Tdv7Z2HwHdSyJYGVSxJGJRGVzF6pI2mi_cxWA/edit"
     # Development sheet URL (for testing)
     sheet_url_dev: "https://docs.google.com/spreadsheets/d/11HCjgHxIpJ8yBFShMkaDVdLnjRx9v59G8Qqj47f74Fo/edit"
     # Line number the header is located at

@@ -4,7 +4,6 @@ import json
 import os
 import re
 import urllib.parse
-from typing import Optional
 
 import aiohttp
 
@@ -42,7 +41,7 @@ def build_tactics_tools_url(ign: str) -> str:
 async def tactics_tools_get_latest_placement(
         ign: str,
         guild_id: str
-) -> Optional[int]:
+) -> int | None:
     """
     Fetch the player's most recent TFT placement from metatft.com
     """

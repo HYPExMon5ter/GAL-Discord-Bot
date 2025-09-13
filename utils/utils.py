@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 import urllib.parse
-from typing import List, Optional, Callable
+from typing import List, Callable
 
 import aiohttp
 import discord
@@ -28,20 +28,8 @@ class MemberNotFoundError(UtilsError):
     pass
 
 
-# Backward compatibility functions
-def has_allowed_role(member: discord.Member) -> bool:
-    """Check if a member has any of the staff roles."""
-    from helpers import RoleManager
-    return RoleManager.has_any_allowed_role(member)
 
-
-def has_allowed_role_from_interaction(interaction: discord.Interaction) -> bool:
-    """Check interaction.user's roles for permission."""
-    from helpers import RoleManager
-    return RoleManager.has_allowed_role_from_interaction(interaction)
-
-
-def resolve_member(guild: discord.Guild, discord_tag: str) -> Optional[discord.Member]:
+def resolve_member(guild: discord.Guild, discord_tag: str) -> discord.Member | None:
     """
     Find a Member in guild by tag, name, or display name.
     """

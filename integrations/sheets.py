@@ -7,7 +7,7 @@ import logging
 import os
 import random
 import time
-from typing import Optional, Tuple, Union, Dict, Any
+from typing import Tuple, Union, Dict, Any
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -74,7 +74,7 @@ except Exception as e:
     client = None
 
 
-async def get_sheet_for_guild(guild_id: str, worksheet: Optional[str] = None):
+async def get_sheet_for_guild(guild_id: str, worksheet: str | None = None):
     """
     Open the correct Google Sheet with proper error handling.
     """
@@ -544,10 +544,10 @@ async def cache_refresh_loop(bot):
 async def find_or_register_user(
         discord_tag: str,
         ign: str,
-        guild_id: Optional[str] = None,
-        team_name: Optional[str] = None,
-        alt_igns: Optional[str] = None,
-        pronouns: Optional[str] = None
+        guild_id: str | None = None,
+        team_name: str | None = None,
+        alt_igns: str | None = None,
+        pronouns: str | None = None
 ) -> int:
     """
     Find existing user or register new user with comprehensive error handling.
@@ -701,7 +701,7 @@ async def find_or_register_user(
 
 async def unregister_user(
         discord_tag: str,
-        guild_id: Optional[str] = None
+        guild_id: str | None = None
 ) -> bool:
     """
     Completely remove user from sheet with proper error handling.
@@ -773,7 +773,7 @@ async def unregister_user(
 
 async def mark_checked_in_async(
         discord_tag: str,
-        guild_id: Optional[str] = None
+        guild_id: str | None = None
 ) -> bool:
     """
     Mark user as checked in with proper validation.
@@ -783,7 +783,7 @@ async def mark_checked_in_async(
 
 async def unmark_checked_in_async(
         discord_tag: str,
-        guild_id: Optional[str] = None
+        guild_id: str | None = None
 ) -> bool:
     """
     Mark user as not checked in.
@@ -794,7 +794,7 @@ async def unmark_checked_in_async(
 async def _update_checkin_status(
         discord_tag: str,
         checked_in: bool,
-        guild_id: Optional[str] = None
+        guild_id: str | None = None
 ) -> bool:
     """
     Internal function to update check-in status.

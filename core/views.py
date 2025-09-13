@@ -13,7 +13,7 @@ from core.persistence import (
     get_event_mode_for_guild, )
 from helpers import (
     RoleManager, SheetOperations, Validators,
-    ErrorHandler, sheet_helpers, ValidationError
+    ErrorHandler, ValidationError
 )
 from helpers.embed_helpers import log_error
 from integrations.sheets import (

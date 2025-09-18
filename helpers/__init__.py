@@ -15,7 +15,7 @@ from .waitlist_helpers import WaitlistManager
 
 __all__ = [
     'ConfigManager',
-    'EmbedHelper', 
+    'EmbedHelper',
     'EnvironmentHelper',
     'ErrorHandler',
     'RoleManager',

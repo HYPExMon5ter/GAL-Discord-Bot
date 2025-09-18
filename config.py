@@ -18,12 +18,12 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 if not DISCORD_TOKEN:
     raise ValueError("DISCORD_TOKEN environment variable is required")
 
-RIOT_API_KEY = os.getenv("RIOT_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL")
 APPLICATION_ID = os.getenv("APPLICATION_ID")
 
 if not APPLICATION_ID:
     raise ValueError("APPLICATION_ID environment variable is required")
+
 
 # Load configuration
 def load_config() -> Dict[str, Any]:
@@ -72,11 +72,6 @@ def get_registered_role() -> str:
 def get_checked_in_role() -> str:
     """Get checked-in role name from config."""
     return _FULL_CFG.get("roles", {}).get("checked_in_role", "Checked In")
-
-
-def get_angel_role() -> str:
-    """Get angel role name from config."""
-    return _FULL_CFG.get("roles", {}).get("angel_role", "Angels")
 
 
 def get_ping_user() -> str:
@@ -308,13 +303,6 @@ async def update_gal_command_ids(bot) -> None:
         logging.error(f"Failed to update GAL command IDs: {e}")
     except Exception as e:
         logging.error(f"Unexpected error updating GAL command IDs: {e}")
-
-
-def get_cmd_id(name: str) -> int:
-    """
-    Get command ID for help system.
-    """
-    return GAL_COMMAND_IDS.get(name, 0)
 
 
 def validate_configuration() -> None:

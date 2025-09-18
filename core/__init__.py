@@ -13,7 +13,6 @@ from .persistence import (
     set_persisted_msg
 )
 from .views import (
-    DMActionView,
     update_live_embeds
 )
 
@@ -24,6 +23,5 @@ __all__ = [
     'set_event_mode_for_guild',
     'get_persisted_msg',
     'set_persisted_msg',
-    'DMActionView',
     'update_live_embeds'
 ]

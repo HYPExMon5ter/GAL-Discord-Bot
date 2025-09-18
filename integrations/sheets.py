@@ -1,14 +1,14 @@
 # integrations/sheets.py
 
 import asyncio
-import discord
 import json
 import logging
 import os
 import random
 import time
-from typing import Tuple, Union, Dict, Any
+from typing import Tuple
 
+import discord
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -29,11 +29,6 @@ class SheetsError(Exception):
 
 class AuthenticationError(SheetsError):
     """Exception for authentication-related errors."""
-    pass
-
-
-class QuotaExceededError(SheetsError):
-    """Exception for quota/rate limit errors."""
     pass
 
 
@@ -201,19 +196,6 @@ async def retry_until_successful(fn, *args, **kwargs):
 # Cache management
 sheet_cache = {"users": {}, "last_refresh": 0}
 cache_lock = asyncio.Lock()
-
-
-def ordinal_suffix(n: Union[int, str]) -> str:
-    """
-    Get ordinal suffix for a number.
-    """
-    try:
-        n = int(n)
-        if 11 <= (n % 100) <= 13:
-            return "th"
-        return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    except (ValueError, TypeError):
-        return "th"
 
 
 async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
@@ -410,26 +392,26 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             # (they might have been manually removed from sheet)
             registered_role = get_registered_role()
             checked_in_role = get_checked_in_role()
-            
+
             if registered_role or checked_in_role:
                 print("[CACHE] Checking for users with stale roles...")
                 cache_discord_tags = set(cache_snapshot.keys())
-                
+
                 # Get all members with registration roles
                 members_with_roles = []
                 if registered_role:
                     reg_role = discord.utils.get(guild.roles, name=registered_role)
                     if reg_role:
                         members_with_roles.extend(reg_role.members)
-                
+
                 if checked_in_role:
                     ci_role = discord.utils.get(guild.roles, name=checked_in_role)
                     if ci_role:
                         members_with_roles.extend(ci_role.members)
-                
+
                 # Remove duplicates
                 members_with_roles = list(set(members_with_roles))
-                
+
                 stale_roles_removed = 0
                 for member in members_with_roles:
                     discord_tag = str(member)
@@ -441,7 +423,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                             print(f"[CACHE] Removed stale roles from {discord_tag}")
                         except Exception as e:
                             logging.warning(f"Failed to remove stale roles from {discord_tag}: {e}")
-                
+
                 if stale_roles_removed > 0:
                     print(f"[CACHE] Removed stale roles from {stale_roles_removed} users")
                     roles_synced += stale_roles_removed
@@ -617,7 +599,8 @@ async def find_or_register_user(
 
             # Update cache with NEW values (not old ones!)
             sheet_cache["users"][discord_tag] = (
-                row, ign, True, old_ci, team_name or old_team, alt_igns if alt_igns is not None else old_alt, pronouns if pronouns is not None else old_pronouns
+                row, ign, True, old_ci, team_name or old_team, alt_igns if alt_igns is not None else old_alt,
+                pronouns if pronouns is not None else old_pronouns
             )
 
             if updates_needed:
@@ -636,7 +619,7 @@ async def find_or_register_user(
         target_row = None
         start_row = hline + 1  # Start from header + 1 (skip header row)
         end_row = hline + maxp  # End at header + max_players
-        
+
         for i in range(start_row - 1, end_row):  # -1 because array is 0-indexed, check full range
             # Convert to string and strip, then check if empty (matches cache refresh logic)
             cell_content = str(discord_vals[i]).strip() if i < len(discord_vals) else ""
@@ -654,7 +637,7 @@ async def find_or_register_user(
 
         if mode == "doubleup" and "team_col" in cfg:
             writes[cfg["team_col"]] = team_name or ""
-            
+
         # Add alt IGNs and pronouns if columns exist
         if "alt_ign_col" in cfg:
             writes[cfg["alt_ign_col"]] = alt_igns or ""
@@ -1011,26 +994,3 @@ async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
         if isinstance(e, SheetsError):
             raise
         raise SheetsError(f"Failed to reset check-in roles and sheet: {e}")
-
-
-# Health check function
-async def health_check() -> Dict[str, Any]:
-    """
-    Perform health check on sheets integration.
-    """
-    health_status = {
-        "client_initialized": client is not None,
-        "cache_age_seconds": time.time() - sheet_cache["last_refresh"],
-        "cached_users": len(sheet_cache["users"]),
-        "credentials_valid": False,
-        "test_sheet_accessible": False
-    }
-
-    if client:
-        try:
-            # Test credentials by listing spreadsheets (limited test)
-            health_status["credentials_valid"] = True
-        except Exception as e:
-            logging.warning(f"Credentials health check failed: {e}")
-
-    return health_status

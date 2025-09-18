@@ -142,31 +142,3 @@ class RoleManager:
             logging.error(f"Discord API error syncing roles for {member}: {e}")
         except Exception as e:
             logging.error(f"Unexpected error syncing roles for {member}: {e}")
-
-    @staticmethod
-    async def count_members_with_role(guild: discord.Guild, role_name: str) -> int:
-        """Count members with a specific role."""
-        role = RoleManager.get_role(guild, role_name)
-        return len(role.members) if role else 0
-
-    @staticmethod
-    async def get_members_with_role(guild: discord.Guild, role_name: str) -> List[discord.Member]:
-        """Get all members with a specific role."""
-        role = RoleManager.get_role(guild, role_name)
-        return role.members if role else []
-
-    @staticmethod
-    async def remove_role_from_all(guild: discord.Guild, role_name: str) -> int:
-        """
-        Remove a role from all members who have it.
-        """
-        role = RoleManager.get_role(guild, role_name)
-        if not role:
-            return 0
-
-        count = 0
-        for member in role.members:
-            await member.remove_roles(role)
-            count += 1
-
-        return count

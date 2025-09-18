@@ -135,44 +135,6 @@ class Validators:
         return None
 
     @staticmethod
-    def validate_registration_status(
-            member: discord.Member,
-            require_registered: bool = True,
-            require_not_registered: bool = False
-    ) -> Optional[ValidationError]:
-        """
-        Validate member's registration status.
-        """
-        is_registered = RoleManager.is_registered(member)
-
-        if require_registered and not is_registered:
-            return ValidationError("registration_required")
-
-        if require_not_registered and is_registered:
-            return ValidationError("already_registered")
-
-        return None
-
-    @staticmethod
-    def validate_checkin_status(
-            member: discord.Member,
-            require_checked_in: bool = False,
-            require_not_checked_in: bool = False
-    ) -> Optional[ValidationError]:
-        """
-        Validate member's check-in status.
-        """
-        is_checked_in = RoleManager.is_checked_in(member)
-
-        if require_checked_in and not is_checked_in:
-            return ValidationError("not_checked_in")
-
-        if require_not_checked_in and is_checked_in:
-            return ValidationError("already_checked_in")
-
-        return None
-
-    @staticmethod
     async def validate_and_respond(
             interaction: discord.Interaction,
             *validations: Optional[ValidationError]
@@ -208,16 +170,3 @@ class Validators:
                     )
                 return False
         return True
-
-    @staticmethod
-    def validate_event_mode(mode: str) -> Optional[ValidationError]:
-        """
-        Validate event mode value.
-        """
-        valid_modes = ["normal", "doubleup"]
-        if mode.lower() not in valid_modes:
-            return ValidationError(
-                "event_mode_invalid",
-                allowed=" or ".join(valid_modes)
-            )
-        return None

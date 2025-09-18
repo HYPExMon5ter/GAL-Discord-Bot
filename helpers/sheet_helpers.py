@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Tuple, Any
 
-from config import get_sheet_settings, col_to_index
+from config import get_sheet_settings
 from core.persistence import get_event_mode_for_guild
 from integrations.sheets import retry_until_successful, get_sheet_for_guild, cache_lock, sheet_cache
 
@@ -148,64 +148,6 @@ class SheetOperations:
         return teams
 
     @staticmethod
-    async def clear_column(
-            guild_id: str,
-            column: str,
-            value: Any = False,  # Default to boolean False
-            worksheet: str = "GAL Database"
-    ) -> int:
-        """
-        Clear an entire column to a specific value.
-        """
-        sheet = await get_sheet_for_guild(guild_id, worksheet)  # ADD AWAIT
-        col_idx = col_to_index(column)
-
-        # Get all values to determine range
-        vals = await retry_until_successful(sheet.col_values, col_idx)
-
-        # Build range and update
-        cell_list = await retry_until_successful(
-            sheet.range,
-            f"{column}1:{column}{len(vals)}"
-        )
-
-        for cell in cell_list:
-            cell.value = value
-
-        await retry_until_successful(sheet.update_cells, cell_list)
-
-        # Return count excluding header rows
-        cfg = get_sheet_settings(get_event_mode_for_guild(guild_id))
-        return max(0, len(vals) - cfg["header_line_num"])
-
-    @staticmethod
-    async def find_empty_row(
-            guild_id: str,
-            start_row: int,
-            max_row: int,
-            check_column: str = None
-    ) -> Optional[int]:
-        """
-        Find the first empty row within a range.
-        """
-        mode = get_event_mode_for_guild(guild_id)
-        cfg = get_sheet_settings(mode)
-
-        if check_column is None:
-            check_column = cfg["discord_col"]
-
-        sheet = await get_sheet_for_guild(guild_id)
-        col_idx = col_to_index(check_column)
-
-        vals = await retry_until_successful(sheet.col_values, col_idx)
-
-        for row in range(start_row, min(len(vals) + 1, max_row + 1)):
-            if row > len(vals) or not vals[row - 1].strip():
-                return row
-
-        return None
-
-    @staticmethod
     async def get_all_registered_users(guild_id: str) -> List[Tuple[str, str, str]]:
         """
         Get all registered users with their info.
@@ -221,33 +163,3 @@ class SheetOperations:
                     users.append((discord_tag, ign, team))
 
         return users
-
-    @staticmethod
-    async def get_all_checked_in_users(guild_id: str) -> List[Tuple[str, tuple]]:
-        """
-        Get all checked-in users with their full cache data.
-        """
-        users = []
-
-        async with cache_lock:
-            for discord_tag, tpl in sheet_cache["users"].items():
-                if str(tpl[2]).upper() == "TRUE" and str(tpl[3]).upper() == "TRUE":
-                    users.append((discord_tag, tpl))
-
-        return users
-
-    @staticmethod
-    def is_true(value: Any) -> bool:
-        """Check if a value represents TRUE in the sheet."""
-        return str(value).strip().upper() == "TRUE"
-
-    @staticmethod
-    async def get_user_by_ign(guild_id: str, ign: str) -> Optional[Dict[str, Any]]:
-        """
-        Find a user by their IGN.
-        """
-        async with cache_lock:
-            for discord_tag, tpl in sheet_cache["users"].items():
-                if tpl[1].lower() == ign.lower():
-                    return await SheetOperations.get_user_data(discord_tag, guild_id)
-        return None

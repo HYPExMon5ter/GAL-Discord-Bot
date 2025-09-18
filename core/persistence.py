@@ -355,23 +355,6 @@ def set_schedule(guild_id: Union[str, int], key: str, dtstr: Optional[str]) -> N
     save_persisted(persisted)
 
 
-def migrate_legacy_format() -> None:
-    """Migrate legacy persisted message format to new format."""
-    changed = False
-
-    for gid, data in persisted.items():
-        for key in ["registration", "checkin"]:
-            val = data.get(key)
-            if isinstance(val, int):
-                data[key] = [None, val]
-                changed = True
-                logging.info(f"Migrated legacy format for guild {gid}, key {key}")
-
-    if changed:
-        save_persisted(persisted)
-        logging.info("Completed migration of legacy persisted message format")
-
-
 def cleanup_old_data(days: int = 30) -> None:
     """
     Clean up old persisted data (only works with database).
@@ -428,12 +411,6 @@ def get_guild_statistics() -> Dict[str, int]:
 
     return stats
 
-
-# Run migration on import if needed
-try:
-    migrate_legacy_format()
-except Exception as e:
-    logging.error(f"Failed to run migration: {e}")
 
 # Log initialization
 logging.info(f"Persistence system initialized. Stats: {get_guild_statistics()}")

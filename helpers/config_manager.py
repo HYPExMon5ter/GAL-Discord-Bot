@@ -1,6 +1,6 @@
 # helpers/config_manager.py
 
-from typing import Dict, Any
+from typing import Dict
 
 import discord
 import yaml
@@ -36,16 +36,6 @@ class ConfigManager:
             return False
 
     @staticmethod
-    def get_embed_config(key: str) -> Dict[str, Any]:
-        """Get embed configuration by key."""
-        return EMBEDS_CFG.get(key, {})
-
-    @staticmethod
-    def get_sheet_config(mode: str) -> Dict[str, Any]:
-        """Get sheet configuration for a specific mode."""
-        return SHEET_CONFIG.get(mode, SHEET_CONFIG.get("normal", {}))
-
-    @staticmethod
     def get_rich_presence() -> tuple[discord.ActivityType, str]:
         """
         Get rich presence configuration.
@@ -79,66 +69,10 @@ class ConfigManager:
         await bot.change_presence(activity=activity)
 
     @staticmethod
-    def validate_config() -> Dict[str, list[str]]:
-        """
-        Validate configuration for common issues.
-        """
-        issues = {
-            "embeds": [],
-            "sheet_configuration": [],
-            "general": []
-        }
-
-        # Check required embed keys
-        required_embeds = [
-            "registration", "registration_closed", "checkin", "checkin_closed",
-            "permission_denied", "error", "unregister_success", "registration_required",
-            "already_checked_in", "already_checked_out", "checked_in", "checked_out"
-        ]
-        for key in required_embeds:
-            if key not in EMBEDS_CFG:
-                issues["embeds"].append(f"Missing required embed: {key}")
-
-        # Check sheet configuration
-        for mode in ["normal", "doubleup"]:
-            if mode not in SHEET_CONFIG:
-                issues["sheet_configuration"].append(f"Missing mode: {mode}")
-            else:
-                mode_cfg = SHEET_CONFIG[mode]
-                required_fields = [
-                    "sheet_url", "header_line_num", "max_players",
-                    "discord_col", "ign_col", "registered_col", "checkin_col"
-                ]
-                if mode == "doubleup":
-                    required_fields.append("team_col")
-
-                for field in required_fields:
-                    if field not in mode_cfg:
-                        issues["sheet_configuration"].append(
-                            f"Missing field '{field}' in {mode} mode"
-                        )
-
-        # Remove empty sections
-        return {k: v for k, v in issues.items() if v}
-
-    @staticmethod
     def get_command_help() -> Dict[str, str]:
         """Get command help descriptions from config."""
         help_cfg = EMBEDS_CFG.get("help", {})
         return help_cfg.get("commands", {})
-
-    @staticmethod
-    def update_embed_template(key: str, **kwargs) -> None:
-        """
-        Update an embed template in memory (not persisted to file).
-        Useful for dynamic embed updates.
-        """
-        if key not in EMBEDS_CFG:
-            EMBEDS_CFG[key] = {}
-
-        for field, value in kwargs.items():
-            if field in ["title", "description", "color"]:
-                EMBEDS_CFG[key][field] = value
 
     @staticmethod
     async def reload_and_update_all(bot: discord.Client) -> Dict[str, bool]:

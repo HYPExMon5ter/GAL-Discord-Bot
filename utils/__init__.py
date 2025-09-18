@@ -6,16 +6,12 @@ Utility functions for the GAL Discord Bot.
 from .utils import (
     resolve_member,
     send_reminder_dms,
-    toggle_checkin_for_member,
-    update_dm_action_views,
     hyperlink_lolchess_profile, UtilsError, MemberNotFoundError
 )
 
 __all__ = [
     'resolve_member',
     'send_reminder_dms',
-    'toggle_checkin_for_member',
-    'update_dm_action_views',
     'hyperlink_lolchess_profile',
     'UtilsError',
     'MemberNotFoundError'

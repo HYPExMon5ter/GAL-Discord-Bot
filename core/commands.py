@@ -13,14 +13,12 @@ from discord.ext import commands
 
 from config import (
     embed_from_cfg, get_sheet_settings, _FULL_CFG, get_log_channel_name,
-    get_unified_channel_name
+    get_unified_channel_name, get_registered_role, get_checked_in_role
 )
 from core.persistence import (
     get_event_mode_for_guild, set_event_mode_for_guild
 )
-from core.views import (
-    DMActionView, update_unified_channel
-)
+from core.components_traditional import update_unified_channel
 # Import all helpers
 from helpers import (
     RoleManager, Validators,
@@ -97,7 +95,7 @@ async def toggle(interaction: discord.Interaction, system: app_commands.Choice[s
 
         # Update unified channel
         await update_unified_channel(interaction.guild)
-        
+
         # Handle ping notifications when systems are opened (not when closed)
         if not silent:
             await handle_toggle_pings(interaction.guild, system_value, reg_open, ci_open)
@@ -109,19 +107,9 @@ async def toggle(interaction: discord.Interaction, system: app_commands.Choice[s
             color=discord.Color.green()
         )
 
-        await interaction.response.send_message(embed=embed, ephemeral=not silent)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        # Log the change if not silent
-        if not silent:
-            log_channel = discord.utils.get(interaction.guild.text_channels, name=get_log_channel_name())
-            if log_channel:
-                log_embed = discord.Embed(
-                    title="🔄 System Status Changed",
-                    description=f"{status}\n\nChanged by {interaction.user.mention}",
-                    color=discord.Color.blue(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                await log_channel.send(embed=log_embed)
+        # Note: Removed log channel logging to reduce spam - ping notifications provide sufficient feedback
 
     except Exception as e:
         await ErrorHandler.handle_interaction_error(interaction, e, "Toggle Command")
@@ -186,7 +174,7 @@ async def registeredlist(interaction: discord.Interaction):
         return
 
     try:
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=True)
         guild_id = str(interaction.guild.id)
         mode = get_event_mode_for_guild(guild_id)
 
@@ -204,7 +192,7 @@ async def registeredlist(interaction: discord.Interaction):
                 description="*No registered players found.*",
                 color=discord.Color.blurple()
             )
-            await interaction.followup.send(embed=embed, ephemeral=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         # Use the same helper as check-in to build lines
@@ -243,11 +231,13 @@ async def registeredlist(interaction: discord.Interaction):
         embed.set_footer(text=" • ".join(footer_parts))
 
         # Send with the persistent view that includes reminder button
-        await interaction.followup.send(
-            embed=embed,
-            ephemeral=False  # ,
-            # view=PersistentRegisteredListView(interaction.guild)
-        )
+        if RoleManager.has_allowed_role_from_interaction(interaction):
+            # Import the view from components_traditional
+            from core.components_traditional import PlayerListView
+            view = PlayerListView()
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     except Exception as e:
         await ErrorHandler.handle_interaction_error(interaction, e, "Registered List Command")
@@ -263,25 +253,89 @@ async def reminder(interaction: discord.Interaction):
         return
 
     try:
-        await interaction.response.defer(ephemeral=False)
+        await interaction.response.defer(ephemeral=True)
 
+        guild_id = str(interaction.guild.id)
+
+        # Get registered users who aren't checked in (same logic as ReminderButton)
+        from helpers.sheet_helpers import SheetOperations
+        registered_users = await SheetOperations.get_all_registered_users(guild_id)
+        unchecked_users = []
+
+        reg_role = discord.utils.get(interaction.guild.roles, name=get_registered_role())
+        ci_role = discord.utils.get(interaction.guild.roles, name=get_checked_in_role())
+
+        if reg_role and ci_role:
+            for member in reg_role.members:
+                if ci_role not in member.roles:
+                    unchecked_users.append(member)
+
+        if not unchecked_users:
+            embed = discord.Embed(
+                title="✅ All Checked In",
+                description="All registered users are already checked in!",
+                color=discord.Color.green()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        # Send DMs using existing helper
+        from core.views import WaitlistRegistrationDMView
         dm_embed = embed_from_cfg("reminder_dm")
-        guild = interaction.guild
 
-        # Use existing helper
-        dmmed = await send_reminder_dms(
+        sent_dms = await send_reminder_dms(
             client=interaction.client,
-            guild=guild,
+            guild=interaction.guild,
             dm_embed=dm_embed,
-            view_cls=DMActionView
+            view_cls=WaitlistRegistrationDMView
+        )
+        sent_count = len(sent_dms)
+
+        # Send single ephemeral confirmation with user mentions
+        final_embed = discord.Embed(
+            title="✅ Reminder Complete",
+            description=f"Successfully sent DMs to **{sent_count}/{len(unchecked_users)}** users.",
+            color=discord.Color.green()
         )
 
-        # Summarize results
-        count = len(dmmed)
-        users_list = "\n".join(dmmed) if dmmed else "No users could be DM'd."
-        public_embed = embed_from_cfg("reminder_public", count=count, users=users_list)
+        if sent_count > 0:
+            # Create list of user mentions for those who received DMs
+            reminded_mentions = []
+            for dm_info in sent_dms:
+                # Extract discord_tag from the format "DisplayName (`discord_tag`)"
+                # dm_info looks like "UserDisplayName (`user#1234`)"
+                if "(`" in dm_info and "`)" in dm_info:
+                    start = dm_info.find("(`") + 2
+                    end = dm_info.find("`)")
+                    discord_tag = dm_info[start:end]
 
-        await interaction.followup.send(embed=public_embed, ephemeral=False)
+                    # Find the member by discord tag to get their mention
+                    for member in unchecked_users:
+                        if str(member) == discord_tag:
+                            reminded_mentions.append(member.mention)
+                            break
+
+            # Show up to 10 mentions, then summarize the rest
+            if len(reminded_mentions) <= 10:
+                mention_text = "\n".join(reminded_mentions)
+            else:
+                mention_text = "\n".join(reminded_mentions[:10])
+                mention_text += f"\n... and {len(reminded_mentions) - 10} more"
+
+            final_embed.add_field(
+                name="Reminded Users",
+                value=mention_text,
+                inline=False
+            )
+
+        if sent_count < len(unchecked_users):
+            final_embed.add_field(
+                name="Note",
+                value=f"{len(unchecked_users) - sent_count} user(s) could not be reached (DMs disabled)",
+                inline=False
+            )
+
+        await interaction.followup.send(embed=final_embed, ephemeral=True)
 
     except Exception as e:
         await ErrorHandler.handle_interaction_error(interaction, e, "Reminder Command")
@@ -393,13 +447,13 @@ async def config_cmd(
 
             # Send with the configuration menu view
             view = ConfigMenuView(current_mode)
-            message = await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
             # Store message reference for timeout handling
-            if hasattr(message, 'message'):
-                view.message = message.message
-            else:
+            try:
                 view.message = await interaction.original_response()
+            except (discord.NotFound, discord.HTTPException):
+                pass  # If we can't get the message reference, timeout handling will just fail gracefully
 
         elif action_value == "download":
             # Send current config.yaml as a file
@@ -537,7 +591,7 @@ async def config_cmd(
                 await interaction.followup.send(
                     embed=discord.Embed(
                         title="❌ Invalid YAML",
-                        description=f"The file contains invalid YAML syntax:\n```{str(e)[:200]}```",
+                        description=f"The file contains invalid YAML syntax:\n```{str(e)[:150]}```",
                         color=discord.Color.red()
                     ),
                     ephemeral=True
@@ -546,7 +600,7 @@ async def config_cmd(
                 await interaction.followup.send(
                     embed=discord.Embed(
                         title="❌ Upload Failed",
-                        description=f"Failed to process the uploaded file:\n```{str(e)[:200]}```",
+                        description=f"Failed to process the uploaded file:\n```{str(e)[:150]}```",
                         color=discord.Color.red()
                     ),
                     ephemeral=True
@@ -608,7 +662,7 @@ async def config_cmd(
                 await interaction.followup.send(
                     embed=discord.Embed(
                         title="❌ Reload Error",
-                        description=f"Error reloading configuration:\n```{str(e)[:200]}```",
+                        description=f"Error reloading configuration:\n```{str(e)[:150]}```",
                         color=discord.Color.red()
                     ),
                     ephemeral=True
@@ -632,10 +686,9 @@ class ConfigMenuView(discord.ui.View):
 
         # Try to edit the message to show buttons as disabled
         try:
-            # We need to store the message reference when sending
-            if hasattr(self, 'message'):
+            if hasattr(self, 'message') and self.message:
                 await self.message.edit(view=self)
-        except:
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             pass  # Message might be deleted or we don't have permissions
 
     @discord.ui.button(label="⚙️ General Settings", style=discord.ButtonStyle.primary, row=0)
@@ -736,7 +789,7 @@ class ConfigMenuView(discord.ui.View):
             await interaction.followup.send(
                 embed=discord.Embed(
                     title="❌ Reload Error",
-                    description=f"Error reloading configuration:\n```{str(e)[:200]}```",
+                    description=f"Error reloading configuration:\n```{str(e)[:150]}```",
                     color=discord.Color.red()
                 ),
                 ephemeral=True
@@ -844,16 +897,15 @@ class GeneralConfigModal(discord.ui.Modal):
         # Get cache refresh from root config, not from constants
         current_cache_refresh = _FULL_CFG.get("cache_refresh_seconds", 600)
 
-        # Event Mode
-        self.mode_input = discord.ui.TextInput(
-            label="Event Mode",
-            placeholder="Enter 'normal' or 'doubleup'",
-            default=current_mode,
-            required=True,
-            min_length=6,
-            max_length=10
+        # Bot Status Message (at the top)
+        self.bot_status_input = discord.ui.TextInput(
+            label="Bot Status Message",
+            placeholder="Message shown in bot's Discord status",
+            default=presence_cfg.get("message", "🛡️ TFT"),
+            required=False,
+            max_length=128
         )
-        self.add_item(self.mode_input)
+        self.add_item(self.bot_status_input)
 
         # Max Players
         self.max_players_input = discord.ui.TextInput(
@@ -885,28 +937,33 @@ class GeneralConfigModal(discord.ui.Modal):
         )
         self.add_item(self.cache_refresh_input)
 
-        # Bot Status
-        self.bot_status_input = discord.ui.TextInput(
-            label="Bot Status Message",
-            placeholder="Message shown in bot's Discord status",
-            default=presence_cfg.get("message", "🛡️ TFT"),
+
+        # Alt IGN Column
+        self.alt_ign_col_input = discord.ui.TextInput(
+            label="Alternative IGN Column",
+            placeholder="Column letter (e.g., E)",
+            default=settings.get("alt_ign_col", "E"),
             required=False,
-            max_length=128
+            max_length=3
         )
-        self.add_item(self.bot_status_input)
+        self.add_item(self.alt_ign_col_input)
 
     async def on_submit(self, interaction: discord.Interaction):
+        updates = {
+            "bot_status": self.bot_status_input.value.strip(),
+            "max_players": self.max_players_input.value,
+            "header_line": self.header_line_input.value,
+            "cache_refresh": self.cache_refresh_input.value
+        }
+
+        if self.alt_ign_col_input.value:
+            updates["alt_ign_col"] = self.alt_ign_col_input.value.strip().upper()
+
         await handle_config_update(
             interaction,
             self,
             update_type="general",
-            updates={
-                "mode": self.mode_input.value.strip().lower(),
-                "max_players": self.max_players_input.value,
-                "header_line": self.header_line_input.value,
-                "cache_refresh": self.cache_refresh_input.value,
-                "bot_status": self.bot_status_input.value.strip()
-            }
+            updates=updates
         )
 
 
@@ -971,6 +1028,16 @@ class ColumnConfigModal(discord.ui.Modal):
             )
             self.add_item(self.team_col_input)
 
+        # Pronouns Column (for both modes now)
+        self.pronouns_col_input = discord.ui.TextInput(
+            label="Pronouns Column",
+            placeholder="Column letter (e.g., C)",
+            default=settings.get("pronouns_col", "C"),
+            required=False,
+            max_length=3
+        )
+        self.add_item(self.pronouns_col_input)
+
     async def on_submit(self, interaction: discord.Interaction):
         columns = {
             "discord_col": self.discord_col_input.value.strip().upper(),
@@ -981,6 +1048,10 @@ class ColumnConfigModal(discord.ui.Modal):
 
         if self.mode == "doubleup":
             columns["team_col"] = self.team_col_input.value.strip().upper()
+
+        # Add pronouns column for both modes
+        if hasattr(self, 'pronouns_col_input') and self.pronouns_col_input.value:
+            columns["pronouns_col"] = self.pronouns_col_input.value.strip().upper()
 
         await handle_config_update(
             interaction,
@@ -1000,73 +1071,63 @@ class SheetConfigModal(discord.ui.Modal):
         # Get current settings
         settings = get_sheet_settings(current_mode)
 
-        # Mode selector (to edit URLs for different modes)
-        self.mode_select = discord.ui.TextInput(
-            label="Mode to Edit",
-            placeholder="'normal' or 'doubleup'",
-            default=current_mode,
-            required=True,
-            min_length=6,
-            max_length=10
-        )
-        self.add_item(self.mode_select)
 
-        # Production URL
-        prod_url = settings.get("sheet_url_prod", settings.get("sheet_url", ""))
-        self.prod_url_input = discord.ui.TextInput(
-            label="Production Sheet URL",
+        # Get settings for both modes
+        from config import SHEET_CONFIG
+        normal_settings = SHEET_CONFIG.get("normal", {})
+        doubleup_settings = SHEET_CONFIG.get("doubleup", {})
+
+        # Normal Mode - Production URL
+        normal_prod_url = normal_settings.get("sheet_url_prod", normal_settings.get("sheet_url", ""))
+        self.normal_prod_url_input = discord.ui.TextInput(
+            label="Normal Mode - Production Sheet URL",
             placeholder="https://docs.google.com/spreadsheets/d/.../edit",
-            default=prod_url,
+            default=normal_prod_url,
             required=True,
             style=discord.TextStyle.long
         )
-        self.add_item(self.prod_url_input)
+        self.add_item(self.normal_prod_url_input)
 
-        # Development URL
-        dev_url = settings.get("sheet_url_dev", settings.get("sheet_url", ""))
-        self.dev_url_input = discord.ui.TextInput(
-            label="Development Sheet URL",
+        # Normal Mode - Development URL
+        normal_dev_url = normal_settings.get("sheet_url_dev", normal_settings.get("sheet_url", ""))
+        self.normal_dev_url_input = discord.ui.TextInput(
+            label="Normal Mode - Development Sheet URL",
             placeholder="https://docs.google.com/spreadsheets/d/.../edit",
-            default=dev_url,
+            default=normal_dev_url,
             required=True,
             style=discord.TextStyle.long
         )
-        self.add_item(self.dev_url_input)
+        self.add_item(self.normal_dev_url_input)
 
-        # Pronouns Column (bonus field since we have room)
-        self.pronouns_col_input = discord.ui.TextInput(
-            label="Pronouns Column (optional)",
-            placeholder="Column letter (e.g., C)",
-            default=settings.get("pronouns_col", "C"),
-            required=False,
-            max_length=3
+        # Doubleup Mode - Production URL
+        doubleup_prod_url = doubleup_settings.get("sheet_url_prod", doubleup_settings.get("sheet_url", ""))
+        self.doubleup_prod_url_input = discord.ui.TextInput(
+            label="Doubleup Mode - Production Sheet URL",
+            placeholder="https://docs.google.com/spreadsheets/d/.../edit",
+            default=doubleup_prod_url,
+            required=True,
+            style=discord.TextStyle.long
         )
-        self.add_item(self.pronouns_col_input)
+        self.add_item(self.doubleup_prod_url_input)
 
-        # Alt IGN Column (bonus field)
-        self.alt_ign_col_input = discord.ui.TextInput(
-            label="Alternative IGN Column (optional)",
-            placeholder="Column letter (e.g., E)",
-            default=settings.get("alt_ign_col", "E"),
-            required=False,
-            max_length=3
+        # Doubleup Mode - Development URL
+        doubleup_dev_url = doubleup_settings.get("sheet_url_dev", doubleup_settings.get("sheet_url", ""))
+        self.doubleup_dev_url_input = discord.ui.TextInput(
+            label="Doubleup Mode - Development Sheet URL",
+            placeholder="https://docs.google.com/spreadsheets/d/.../edit",
+            default=doubleup_dev_url,
+            required=True,
+            style=discord.TextStyle.long
         )
-        self.add_item(self.alt_ign_col_input)
+        self.add_item(self.doubleup_dev_url_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        mode_to_edit = self.mode_select.value.strip().lower()
-
         updates = {
-            "mode": mode_to_edit,
-            "sheet_url_prod": self.prod_url_input.value.strip(),
-            "sheet_url_dev": self.dev_url_input.value.strip()
+            "normal_prod_url": self.normal_prod_url_input.value.strip(),
+            "normal_dev_url": self.normal_dev_url_input.value.strip(),
+            "doubleup_prod_url": self.doubleup_prod_url_input.value.strip(),
+            "doubleup_dev_url": self.doubleup_dev_url_input.value.strip()
         }
-
-        if self.pronouns_col_input.value:
-            updates["pronouns_col"] = self.pronouns_col_input.value.strip().upper()
-
-        if self.alt_ign_col_input.value:
-            updates["alt_ign_col"] = self.alt_ign_col_input.value.strip().upper()
 
         await handle_config_update(
             interaction,
@@ -1080,8 +1141,20 @@ class ConfigRevertView(discord.ui.View):
     """View for reverting configuration changes."""
 
     def __init__(self, backup_name: str = "config_backup_latest.yaml"):
-        super().__init__(timeout=None)  # Persistent view
+        super().__init__(timeout=3600)  # 1 hour timeout instead of persistent
         self.backup_name = backup_name
+
+    async def on_timeout(self):
+        """Disable the revert button when timed out."""
+        for item in self.children:
+            item.disabled = True
+
+        try:
+            # Try to edit the message to show the button as disabled
+            if hasattr(self, 'message') and self.message:
+                await self.message.edit(view=self)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
 
     @discord.ui.button(label="🔄 Revert to Backup", style=discord.ButtonStyle.danger, custom_id="revert_config")
     async def revert_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1157,7 +1230,7 @@ class ConfigRevertView(discord.ui.View):
             await interaction.followup.send(
                 embed=discord.Embed(
                     title="❌ Revert Error",
-                    description=f"Error reverting configuration:\n```{str(e)[:200]}```",
+                    description=f"Error reverting configuration:\n```{str(e)[:150]}```",
                     color=discord.Color.red()
                 ),
                 ephemeral=True
@@ -1221,13 +1294,15 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
     backup_name = "config_backup_latest.yaml"
 
     try:
+        if not os.path.exists("config.yaml"):
+            raise FileNotFoundError("config.yaml not found")
         shutil.copy("config.yaml", backup_name)
         logging.debug(f"Created backup: {backup_name}")
     except Exception as e:
         await interaction.response.send_message(
             embed=discord.Embed(
                 title="❌ Backup Failed",
-                description=f"Could not create backup: {str(e)}",
+                description=f"Could not create backup: {str(e)[:150]}",
                 color=discord.Color.red()
             ),
             ephemeral=True
@@ -1251,13 +1326,20 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
 
         if update_type == "general":
             # Validate and update general settings
-            new_mode = updates["mode"]
-            if new_mode not in ["normal", "doubleup"]:
-                raise ValueError(f"Invalid mode: {new_mode}")
+            try:
+                max_players = int(updates["max_players"])
+            except ValueError:
+                raise ValueError(f"Max players must be a number, got: '{updates['max_players']}'")
 
-            max_players = int(updates["max_players"])
-            header_line = int(updates["header_line"])
-            cache_refresh = int(updates["cache_refresh"])
+            try:
+                header_line = int(updates["header_line"])
+            except ValueError:
+                raise ValueError(f"Header line must be a number, got: '{updates['header_line']}'")
+
+            try:
+                cache_refresh = int(updates["cache_refresh"])
+            except ValueError:
+                raise ValueError(f"Cache refresh must be a number, got: '{updates['cache_refresh']}'")
 
             if not (1 <= max_players <= 9999):
                 raise ValueError("Max players must be between 1 and 9999")
@@ -1266,8 +1348,8 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             if not (60 <= cache_refresh <= 86400):
                 raise ValueError("Cache refresh must be between 60 and 86400 seconds")
 
-            # Update config
-            config_section = full_config["sheet_configuration"][new_mode]
+            # Update config for current mode
+            config_section = full_config["sheet_configuration"][current_mode]
             config_section["max_players"] = max_players
             config_section["header_line_num"] = header_line
 
@@ -1280,10 +1362,9 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
                     full_config["rich_presence"] = {}
                 full_config["rich_presence"]["message"] = updates["bot_status"]
 
-            # Update mode if changed
-            if new_mode != current_mode:
-                set_event_mode_for_guild(guild_id, new_mode)
-                changes.append(f"Mode: {current_mode} → {new_mode}")
+            # Handle optional column fields
+            if "alt_ign_col" in updates:
+                config_section["alt_ign_col"] = updates["alt_ign_col"]
 
             changes.extend([
                 f"Max Players: {max_players}",
@@ -1294,11 +1375,17 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             if updates["bot_status"]:
                 changes.append(f"Bot Status: {updates['bot_status']}")
 
+            if "alt_ign_col" in updates:
+                changes.append(f"Alt IGN Column: {updates['alt_ign_col']}")
+
             # Update in-memory config
             from config import SHEET_CONFIG, _FULL_CFG
-            SHEET_CONFIG[new_mode]["max_players"] = max_players
-            SHEET_CONFIG[new_mode]["header_line_num"] = header_line
+            SHEET_CONFIG[current_mode]["max_players"] = max_players
+            SHEET_CONFIG[current_mode]["header_line_num"] = header_line
             _FULL_CFG["cache_refresh_seconds"] = cache_refresh
+
+            if "alt_ign_col" in updates:
+                SHEET_CONFIG[current_mode]["alt_ign_col"] = updates["alt_ign_col"]
 
         elif update_type == "columns":
             # Validate and update column mappings
@@ -1321,49 +1408,55 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
                 changes.append(f"  • {readable_name}: {col_value}")
 
         elif update_type == "sheets":
-            # Validate and update sheet URLs
-            mode_to_edit = updates.get("mode", current_mode)
-            if mode_to_edit not in ["normal", "doubleup"]:
-                raise ValueError(f"Invalid mode: {mode_to_edit}")
-
+            # Validate and update sheet URLs for all modes/environments
             # Validate URLs
-            for url in [updates["sheet_url_prod"], updates["sheet_url_dev"]]:
+            for url_key, url in updates.items():
                 if not url.startswith("https://docs.google.com/spreadsheets/"):
-                    raise ValueError("Invalid Google Sheets URL format")
+                    raise ValueError(f"Invalid Google Sheets URL format for {url_key}")
 
-            # Update config
-            config_section = full_config["sheet_configuration"][mode_to_edit]
-            config_section["sheet_url_prod"] = updates["sheet_url_prod"]
-            config_section["sheet_url_dev"] = updates["sheet_url_dev"]
+            # Update config for both modes
+            normal_config = full_config["sheet_configuration"]["normal"]
+            doubleup_config = full_config["sheet_configuration"]["doubleup"]
 
-            if "pronouns_col" in updates:
-                config_section["pronouns_col"] = updates["pronouns_col"]
-            if "alt_ign_col" in updates:
-                config_section["alt_ign_col"] = updates["alt_ign_col"]
+            normal_config["sheet_url_prod"] = updates["normal_prod_url"]
+            normal_config["sheet_url_dev"] = updates["normal_dev_url"]
+            doubleup_config["sheet_url_prod"] = updates["doubleup_prod_url"]
+            doubleup_config["sheet_url_dev"] = updates["doubleup_dev_url"]
 
             # Update in-memory
             from config import SHEET_CONFIG
-            SHEET_CONFIG[mode_to_edit]["sheet_url_prod"] = updates["sheet_url_prod"]
-            SHEET_CONFIG[mode_to_edit]["sheet_url_dev"] = updates["sheet_url_dev"]
+            SHEET_CONFIG["normal"]["sheet_url_prod"] = updates["normal_prod_url"]
+            SHEET_CONFIG["normal"]["sheet_url_dev"] = updates["normal_dev_url"]
+            SHEET_CONFIG["doubleup"]["sheet_url_prod"] = updates["doubleup_prod_url"]
+            SHEET_CONFIG["doubleup"]["sheet_url_dev"] = updates["doubleup_dev_url"]
 
-            if "pronouns_col" in updates:
-                SHEET_CONFIG[mode_to_edit]["pronouns_col"] = updates["pronouns_col"]
-            if "alt_ign_col" in updates:
-                SHEET_CONFIG[mode_to_edit]["alt_ign_col"] = updates["alt_ign_col"]
+            changes.extend([
+                "Updated Normal Mode sheet URLs",
+                "Updated Doubleup Mode sheet URLs"
+            ])
 
-            changes.append(f"Updated {mode_to_edit} mode sheet URLs")
-            if "pronouns_col" in updates:
-                changes.append(f"Pronouns Column: {updates['pronouns_col']}")
-            if "alt_ign_col" in updates:
-                changes.append(f"Alt IGN Column: {updates['alt_ign_col']}")
+        # Save updated config with formatting preserved (use temp file for atomicity)
+        import tempfile
+        temp_config_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, encoding="utf-8") as temp_f:
+                temp_config_path = temp_f.name
+                if yaml_handler:
+                    yaml_handler.dump(full_config, temp_f)
+                else:
+                    yaml_fallback.dump(full_config, temp_f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-        # Save updated config with formatting preserved
-        if yaml_handler:
-            with open("config.yaml", "w", encoding="utf-8") as f:
-                yaml_handler.dump(full_config, f)
-        else:
-            with open("config.yaml", "w", encoding="utf-8") as f:
-                yaml_fallback.dump(full_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            # Atomically replace the config file
+            shutil.move(temp_config_path, "config.yaml")
+            temp_config_path = None  # Successfully moved
+        except Exception as e:
+            # Clean up temp file if something went wrong
+            if temp_config_path and os.path.exists(temp_config_path):
+                try:
+                    os.remove(temp_config_path)
+                except:
+                    pass
+            raise e
 
         # Try to reload
         try:
@@ -1422,9 +1515,9 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             shutil.copy(backup_name, "config.yaml")
             from helpers import ConfigManager
             await ConfigManager.reload_and_update_all(interaction.client)
-            error_msg = f"❌ Error: {str(e)[:200]}\n\n✅ Configuration restored from backup"
+            error_msg = f"❌ Error: {str(e)[:150]}\n\n✅ Configuration restored from backup"
         except:
-            error_msg = f"❌ Error: {str(e)[:200]}\n\n📁 Manual restore needed from backup"
+            error_msg = f"❌ Error: {str(e)[:150]}\n\n📁 Manual restore needed from backup"
 
         await interaction.followup.send(
             embed=discord.Embed(
@@ -1522,19 +1615,19 @@ async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open:
         # Get the unified channel
         channel_name = get_unified_channel_name()
         unified_channel = discord.utils.get(guild.text_channels, name=channel_name)
-        
+
         if not unified_channel:
             logging.warning(f"Unified channel '{channel_name}' not found in guild {guild.name}")
             return
-        
+
         # Get role names from config
         from config import _FULL_CFG
         roles_config = _FULL_CFG.get("roles", {})
         angel_role_name = roles_config.get("angel_role", "Angels")
         registered_role_name = roles_config.get("registered_role", "Registered")
-        
+
         messages_to_delete = []
-        
+
         # Handle registration ping (ping Angels when registration opens)
         if (system_value in ["registration", "both"]) and reg_open:
             angel_role = discord.utils.get(guild.roles, name=angel_role_name)
@@ -1543,7 +1636,7 @@ async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open:
                 messages_to_delete.append(ping_msg)
             else:
                 logging.warning(f"Angel role '{angel_role_name}' not found in guild {guild.name}")
-        
+
         # Handle check-in ping (ping Registered role when check-in opens)
         if (system_value in ["checkin", "both"]) and ci_open:
             registered_role = discord.utils.get(guild.roles, name=registered_role_name)
@@ -1552,7 +1645,7 @@ async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open:
                 messages_to_delete.append(ping_msg)
             else:
                 logging.warning(f"Registered role '{registered_role_name}' not found in guild {guild.name}")
-        
+
         # Delete ping messages after 5 seconds
         if messages_to_delete:
             import asyncio
@@ -1566,7 +1659,7 @@ async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open:
                     logging.warning(f"Missing permissions to delete ping message in {guild.name}")
                 except Exception as e:
                     logging.error(f"Error deleting ping message: {e}")
-                    
+
     except Exception as e:
         logging.error(f"Error handling toggle pings for guild {guild.name}: {e}")
 
@@ -1580,7 +1673,7 @@ async def setup(bot: commands.Bot):
         if "gal" in existing_commands:
             logging.warning("GAL command already exists in tree - skipping add")
             return
-            
+
         bot.tree.add_command(gal)
         logging.info("GAL command group added to bot tree")
     except Exception as e:

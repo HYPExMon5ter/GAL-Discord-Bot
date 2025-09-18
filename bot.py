@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import os
 import signal
 import sys
 
@@ -130,7 +129,7 @@ class GALBot(commands.Bot):
 
             # Setup commands - this adds them to the tree but doesn't sync
             await setup_commands(self)
-            
+
             # Log post-setup command state
             post_setup_commands = [cmd.name for cmd in self.tree.get_commands()]
             logging.info(f"Commands in tree after setup: {post_setup_commands}")
@@ -394,12 +393,7 @@ class GALBot(commands.Bot):
 
         try:
             # Close any additional resources here
-            try:
-                from integrations.riot_api import cleanup_sessions
-                await cleanup_sessions()
-                logging.info("Cleaned up riot API sessions")
-            except Exception as e:
-                logging.error(f"Error cleaning up riot API sessions: {e}")
+            logging.info("All resources cleaned up successfully")
 
             # Clean up any database connections
             try:
@@ -529,7 +523,7 @@ def main():
     if not DISCORD_TOKEN:
         logging.error("DISCORD_TOKEN environment variable is required")
         sys.exit(1)
-        
+
     if not EnvironmentHelper.validate_environment():
         logging.error("Environment validation failed")
         sys.exit(1)

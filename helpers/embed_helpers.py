@@ -2,12 +2,11 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Callable, List
+from typing import List
 
 import discord
 
 from config import embed_from_cfg, get_log_channel_name, get_ping_user
-from core.persistence import get_persisted_msg
 
 
 async def log_error(bot, guild, message, level="Error"):
@@ -38,227 +37,6 @@ class EmbedHelper:
     """Helper class for managing Discord embeds."""
 
     @staticmethod
-    async def update_persisted_embed(
-            guild: discord.Guild,
-            persist_key: str,
-            update_func: Callable,
-            error_context: str = "embed update"
-    ) -> bool:
-        """
-        Generic helper to update any persisted embed.
-        """
-        chan_id, msg_id = get_persisted_msg(guild.id, persist_key)
-
-        if not chan_id or not msg_id:
-            return False
-
-        channel = guild.get_channel(chan_id)
-        if not channel:
-            return False
-
-        try:
-            await update_func(channel, msg_id, guild)
-            return True
-        except Exception as e:
-            # Use config-based log channel
-            log_channel = discord.utils.get(guild.text_channels, name=get_log_channel_name())
-            if log_channel:
-                try:
-                    error_embed = discord.Embed(
-                        title="❌ Embed Update Error",
-                        description=f"[{error_context.upper()}] Failed to update {persist_key} embed: {e}",
-                        color=discord.Color.red(),
-                        timestamp=datetime.now(timezone.utc)
-                    )
-                    await log_channel.send(embed=error_embed)
-                except:
-                    pass
-            logging.error(f"[{error_context.upper()}] Failed to update {persist_key} embed: {e}")
-            return False
-
-    @staticmethod
-    async def create_persisted_embed(
-            guild: discord.Guild,
-            channel: discord.TextChannel,
-            embed: discord.Embed,
-            view: discord.ui.View,
-            persist_key: str,
-            pin: bool = True,
-            announce_pin: bool = True
-    ) -> Optional[discord.Message]:
-        """
-        Create and persist an embed message.
-        """
-        from core.persistence import set_persisted_msg
-
-        try:
-            msg = await channel.send(embed=embed, view=view)
-            set_persisted_msg(guild.id, persist_key, channel.id, msg.id)
-
-            if pin:
-                await msg.pin()
-                if announce_pin:
-                    # Delete the "pinned a message" system message
-                    async for m in channel.history(limit=5):
-                        if m.type == discord.MessageType.pins_add:
-                            try:
-                                await m.delete()
-                                break
-                            except:
-                                pass
-
-            return msg
-        except Exception as e:
-            await log_error(None, guild, f"[CREATE-EMBED-ERROR] Failed to create {persist_key} embed: {e}")
-            return None
-
-    @staticmethod
-    async def refresh_dm_views_for_users(
-            guild: discord.Guild,
-            discord_tags: Optional[List[str]] = None
-    ) -> int:
-        """
-        Refresh DM action views for specified users or all cached users.
-        """
-        from integrations.sheets import sheet_cache, cache_lock
-        from core.views import DMActionView
-        from config import embed_from_cfg
-
-        if discord_tags is None:
-            async with cache_lock:
-                discord_tags = list(sheet_cache["users"].keys())
-
-        updated = 0
-        rem_embed = embed_from_cfg("reminder_dm")
-        rem_title = rem_embed.title
-
-        for discord_tag in discord_tags:
-            # Import resolve_member locally to avoid circular import
-            from utils.utils import resolve_member
-
-            member = resolve_member(guild, discord_tag)
-            if not member:
-                # User not in server, skip
-                continue
-
-            try:
-                dm = await member.create_dm()
-                async for msg in dm.history(limit=50):
-                    if msg.author == guild.me and msg.embeds:
-                        e = msg.embeds[0]
-                        if e.title == rem_title:
-                            await msg.edit(view=DMActionView(guild, member))
-                            updated += 1
-                            break
-            except Exception:
-                # Silently continue - user may have DMs disabled
-                pass
-
-        return updated
-
-    @staticmethod
-    def build_registration_list_lines(users: List[tuple], mode: str) -> List[str]:
-        """
-        Build formatted lines for registration list display with team completeness sorting.
-        Full teams (2+ members) are shown first, then partial teams.
-        """
-        import random
-
-        lines = []
-
-        if mode == "doubleup":
-            # Group users by team
-            teams_data = {}
-            for tag, ign, team in users:
-                team_key = team or "No Team"
-                if team_key not in teams_data:
-                    teams_data[team_key] = []
-                teams_data[team_key].append((tag, ign))
-
-            # Separate teams into categories
-            full_teams = []  # Teams with 2+ members
-            partial_teams = []  # Teams with 1 member
-            no_team = None  # The "No Team" group
-
-            for team_name, members in teams_data.items():
-                if team_name == "No Team":
-                    no_team = (team_name, members)
-                elif len(members) >= 2:
-                    full_teams.append((team_name, members))
-                else:
-                    partial_teams.append((team_name, members))
-
-            # Sort each category by team name
-            full_teams.sort(key=lambda x: x[0].lower())
-            partial_teams.sort(key=lambda x: x[0].lower())
-
-            # Combine in order: full teams first, then partial teams, then no team
-            sorted_teams = full_teams + partial_teams
-            if no_team:
-                sorted_teams.append(no_team)
-
-            # Emoji management for visual distinction
-            team_emojis = ["🔴", "🔵", "🟢", "🟡", "🟣", "🟠", "⚪", "⚫", "🟤",
-                           "💙", "💚", "💛", "💜", "🧡", "❤️", "🤍", "🖤", "🤎"]
-            used_emojis = []
-            team_emoji_map = {}
-
-            # Build the display lines
-            for i, (team, members) in enumerate(sorted_teams):
-                # Assign emoji for this team
-                if team not in team_emoji_map:
-                    # If we've used all emojis, start recycling intelligently
-                    if len(used_emojis) >= len(team_emojis):
-                        # Get the emoji used by previous team to avoid
-                        avoid_emojis = []
-
-                        # Check previous team's emoji
-                        if i > 0:
-                            prev_team = sorted_teams[i - 1][0]
-                            if prev_team in team_emoji_map:
-                                avoid_emojis.append(team_emoji_map[prev_team])
-
-                        # Also avoid the next few recently used
-                        avoid_emojis.extend(used_emojis[-3:])
-
-                        # Pick a random emoji that's not in the avoid list
-                        available = [e for e in team_emojis if e not in avoid_emojis]
-                        if not available:  # Fallback if somehow all are to be avoided
-                            available = team_emojis
-
-                        emoji = random.choice(available)
-                    else:
-                        # First time through, use emojis in order
-                        emoji = team_emojis[len(used_emojis)]
-
-                    team_emoji_map[team] = emoji
-                    used_emojis.append(emoji)
-
-                emoji = team_emoji_map[team]
-
-                # Format team header
-                lines.append(f"{emoji} **{team}**")
-
-                # Add team members
-                lines.append("```css")
-                for tag, ign in members:
-                    lines.append(f"{tag} | {ign}")
-                lines.append("```")
-
-        else:
-            # Normal mode - simple list
-            lines.append("```css")
-            lines.append("# Registered Players")
-            lines.append("=" * 40)
-
-            for i, (tag, ign, _) in enumerate(users, 1):
-                lines.append(f"{i:2d}. {tag} | {ign}")
-
-            lines.append("```")
-
-        return lines
-
-    @staticmethod
     def create_progress_bar(current: int, maximum: int, length: int = 20) -> str:
         """
         Create a visual progress bar using emoji.
@@ -273,10 +51,10 @@ class EmbedHelper:
         """
         if maximum == 0:
             return "⬜" * length
-            
+
         percentage = min(100, (current / maximum) * 100)
         filled_length = int(length * percentage / 100)
-        
+
         return "🟩" * filled_length + "⬜" * (length - filled_length)
 
     @staticmethod
@@ -365,24 +143,3 @@ class EmbedHelper:
             lines.append("```")
 
         return lines
-
-    @staticmethod
-    def create_progress_bar(current: int, maximum: int, length: int = 20) -> str:
-        """
-        Create a visual progress bar using emoji.
-        
-        Args:
-            current: Current value (e.g., registered players)
-            maximum: Maximum value (e.g., max players) 
-            length: Length of the progress bar in characters (default: 20)
-            
-        Returns:
-            String with green filled squares and white empty squares
-        """
-        if maximum == 0:
-            return "⬜" * length
-            
-        percentage = min(100, (current / maximum) * 100)
-        filled_length = int(length * percentage / 100)
-        
-        return "🟩" * filled_length + "⬜" * (length - filled_length)

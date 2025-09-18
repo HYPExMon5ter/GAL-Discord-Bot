@@ -76,25 +76,6 @@ class ErrorHandler:
             print(f"[ERROR-HANDLER] Could not send error message to user {user}")
 
     @staticmethod
-    def wrap_callback(context: str):
-        """
-        Decorator to wrap interaction callbacks with error handling.
-        """
-
-        def decorator(func):
-            async def wrapper(self, interaction: discord.Interaction):
-                try:
-                    return await func(self, interaction)
-                except Exception as e:
-                    await ErrorHandler.handle_interaction_error(
-                        interaction, e, context
-                    )
-
-            return wrapper
-
-        return decorator
-
-    @staticmethod
     async def handle_command_error(
             interaction: discord.Interaction,
             error: Exception

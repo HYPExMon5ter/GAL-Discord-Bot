@@ -5,7 +5,7 @@ import logging
 import os
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List
 
 import discord
 from rapidfuzz import fuzz, process
@@ -441,35 +441,6 @@ class WaitlistManager:
             raise WaitlistError(f"Failed to update waitlist entry: {e}")
 
     @staticmethod
-    async def _get_team_status(team_name: str, guild_id: str) -> Tuple[int, int]:
-        """
-        Get the current member count and available spots for a team.
-
-        Returns:
-            Tuple of (current_members, available_spots)
-        """
-        if not team_name:
-            return 0, 0
-
-        mode = get_event_mode_for_guild(guild_id)
-        if mode != "doubleup":
-            return 0, 0
-
-        cfg = get_sheet_settings(mode)
-        max_per_team = cfg.get("max_per_team", 2)
-
-        # Count current team members
-        team_count = 0
-        async with cache_lock:
-            for tag, tpl in sheet_cache["users"].items():
-                if str(tpl[2]).upper() == "TRUE" and len(tpl) > 4 and tpl[4]:
-                    if tpl[4].lower() == team_name.lower():
-                        team_count += 1
-
-        available_spots = max_per_team - team_count
-        return team_count, available_spots
-
-    @staticmethod
     async def process_waitlist(guild: discord.Guild) -> List[Dict]:
         """
         Process the waitlist with smart team pairing and priority logic.
@@ -483,7 +454,7 @@ class WaitlistManager:
 
         try:
             from helpers.sheet_helpers import SheetOperations
-            from core.views import DMActionView
+            from core.views import WaitlistRegistrationDMView
             from utils.utils import hyperlink_lolchess_profile  # Add import
 
             guild_id = str(guild.id)

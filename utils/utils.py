@@ -4,13 +4,13 @@ import asyncio
 import logging
 import re
 import urllib.parse
-from typing import List, Callable
+from typing import List
 
 import aiohttp
 import discord
 
 from config import (
-    embed_from_cfg, get_sheet_settings, get_checked_in_role
+    get_sheet_settings
 )
 from core.persistence import get_event_mode_for_guild
 from integrations.sheets import (
@@ -26,7 +26,6 @@ class UtilsError(Exception):
 class MemberNotFoundError(UtilsError):
     """Exception for when a Discord member cannot be found."""
     pass
-
 
 
 def resolve_member(guild: discord.Guild, discord_tag: str) -> discord.Member | None:
@@ -149,7 +148,7 @@ async def send_reminder_dms(
                         logging.debug(f"Cleared {deleted} previous DMs for {discord_tag}")
 
                     # Send new DM
-                    view = view_cls(guild, member)
+                    view = view_cls(guild)
                     await member.send(embed=dm_embed, view=view)
                     dmmed.append(f"{member} (`{discord_tag}`)")
 
@@ -172,85 +171,6 @@ async def send_reminder_dms(
 
     except Exception as e:
         raise UtilsError(f"Failed to send reminder DMs: {e}")
-
-
-async def toggle_checkin_for_member(
-        interaction: discord.Interaction,
-        checkin_fn: Callable,
-        success_key: str,
-) -> None:
-    """
-    Toggle check-in status for a member.
-    """
-    try:
-        # Import here to avoid circular import
-        from core.views import update_checkin_embed
-        from helpers import RoleManager, ErrorHandler, EmbedHelper
-
-        logging.debug(f"Toggle check-in: fn={checkin_fn.__name__} user={interaction.user} guild={interaction.guild.id}")
-
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True, thinking=True)
-
-        guild = interaction.guild
-        member = interaction.user
-
-        if not guild or not member:
-            raise UtilsError("Guild and member are required")
-
-        # Validate user is registered
-        if not RoleManager.is_registered(member):
-            await interaction.followup.send(
-                embed=embed_from_cfg("registration_required"),
-                ephemeral=True
-            )
-            return
-
-        # Perform sheet operation
-        discord_tag = str(member)
-        success = await checkin_fn(discord_tag, guild_id=str(guild.id))
-
-        logging.debug(f"Check-in operation result: {success}")
-
-        if success:
-            # Update Discord role
-            if success_key == "checked_in":
-                await RoleManager.add_role(member, get_checked_in_role())
-            else:
-                await RoleManager.remove_role(member, get_checked_in_role())
-
-        # Send feedback
-        embed_key = success_key if success else "error"
-        response_embed = embed_from_cfg(embed_key)
-        await interaction.followup.send(embed=response_embed, ephemeral=True)
-
-        # Update persisted embed
-        if success:
-            await EmbedHelper.update_persisted_embed(
-                guild,
-                "checkin",
-                lambda ch, mid, g: update_checkin_embed(ch, mid, g),
-                "checkin update"
-            )
-
-    except Exception as e:
-        from helpers import ErrorHandler
-        await ErrorHandler.handle_interaction_error(
-            interaction, e, "Check-in Toggle",
-            "Failed to update check-in status"
-        )
-
-
-async def update_dm_action_views(guild: discord.Guild) -> None:
-    """
-    Refresh DM action views for all users.
-    """
-    try:
-        from helpers import EmbedHelper
-        # Skip member resolution during channel toggles
-        await EmbedHelper.refresh_dm_views_for_users(guild)
-    except Exception as e:
-        logging.error(f"Failed to update DM action views for guild {guild.id}: {e}")
 
 
 async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
@@ -286,13 +206,13 @@ async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
         # Build lolchess URL - correct format: https://lolchess.gg/profile/na/name-tag/
         name, _, tag = ign_clean.partition("#")
         name_encoded = urllib.parse.quote(name.strip(), safe="-")
-        
+
         # Use profile path and format with dash instead of slash
         if tag:
             formatted_name = f"{name_encoded}-{urllib.parse.quote(tag.strip(), safe='-')}"
         else:
             formatted_name = name_encoded
-            
+
         profile_url = f"https://lolchess.gg/profile/na/{formatted_name}/"
 
         # Verify profile exists

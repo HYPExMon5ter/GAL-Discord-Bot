@@ -13,9 +13,8 @@ from rapidfuzz import fuzz
 from config import (
     embed_from_cfg, update_gal_command_ids, get_log_channel_name, get_unified_channel_name, _FULL_CFG
 )
-from helpers.environment_helpers import EnvironmentHelper
-from helpers.schedule_helpers import ScheduleHelper
 from core.persistence import set_schedule, persisted, save_persisted
+from helpers.schedule_helpers import ScheduleHelper
 
 # In-memory caches for events
 scheduled_event_cache: dict = {}
@@ -89,14 +88,14 @@ async def schedule_system_open(
     if unified_channel:
         roles_config = _FULL_CFG.get("roles", {})
         now_timestamp = datetime.now(ZoneInfo("UTC")).timestamp()
-        
+
         # Check if we recently pinged for this guild (within 30 seconds)
         last_ping = recent_pings.get(guild.id, 0)
         if now_timestamp - last_ping < 30:
             logging.info(f"Skipping ping for {system_type} in {guild.name} - recently pinged")
         else:
             ping_sent = False
-            
+
             if system_type == "registration" and roles_config.get("ping_on_registration_open", True):
                 # Ping Angels role when registration opens
                 angel_role_name = roles_config.get("angel_role", "Angels")
@@ -112,7 +111,7 @@ async def schedule_system_open(
                         pass
                 else:
                     logging.warning(f"Angel role '{angel_role_name}' not found in guild {guild.name}")
-                    
+
             elif system_type == "checkin" and roles_config.get("ping_on_checkin_open", True):
                 # Ping Registered role when check-in opens
                 registered_role_name = roles_config.get("registered_role", "Registered")
@@ -128,11 +127,11 @@ async def schedule_system_open(
                         pass
                 else:
                     logging.warning(f"Registered role '{registered_role_name}' not found in guild {guild.name}")
-            
+
             # Update last ping time if we sent a ping
             if ping_sent:
                 recent_pings[guild.id] = now_timestamp
-                
+
                 # Clean up old entries (older than 5 minutes) to prevent memory leaks
                 cutoff = now_timestamp - 300  # 5 minutes
                 recent_pings.clear()  # Simple cleanup - clear all since we only care about recent pings
@@ -215,12 +214,12 @@ async def _handle_event_schedule(bot, event, is_edit: bool):
     # Persist both times
     set_schedule(guild.id, f"{etype}_open", open_time.isoformat() if open_time else None)
     set_schedule(guild.id, f"{etype}_close", close_time.isoformat() if close_time else None)
-    
+
     # Validate schedule times and log warnings
     try:
         reg_open_ts, reg_close_ts, ci_open_ts, ci_close_ts = ScheduleHelper.get_all_schedule_times(guild.id)
         validation = ScheduleHelper.validate_schedule_times(reg_open_ts, reg_close_ts, ci_open_ts, ci_close_ts)
-        
+
         if not validation["is_valid"]:
             for warning in validation["warnings"]:
                 logging.warning(f"Schedule validation for {guild.name} ({guild.id}): {warning}")
@@ -339,7 +338,7 @@ def setup_events(bot: commands.Bot):
                                 guild_id = str(guild.id)
                                 if guild_id not in persisted:
                                     persisted[guild_id] = {}
-                                
+
                                 current_state = persisted[guild_id].get("registration_open", False)
                                 if not current_state:
                                     # Event hasn't been processed yet
@@ -349,7 +348,8 @@ def setup_events(bot: commands.Bot):
                                 else:
                                     # Already processed, clear the schedule to prevent loops
                                     set_schedule(guild.id, "registration_open", None)
-                                    logging.info(f"Registration already open for {guild.name} - cleared schedule to prevent loops")
+                                    logging.info(
+                                        f"Registration already open for {guild.name} - cleared schedule to prevent loops")
                         except Exception as e:
                             logging.error(f"Failed to restore registration open schedule: {e}")
 
@@ -370,7 +370,7 @@ def setup_events(bot: commands.Bot):
                                 guild_id = str(guild.id)
                                 if guild_id not in persisted:
                                     persisted[guild_id] = {}
-                                
+
                                 current_state = persisted[guild_id].get("registration_open", False)
                                 if current_state:
                                     # Event hasn't been processed yet - should be closed
@@ -380,7 +380,8 @@ def setup_events(bot: commands.Bot):
                                 else:
                                     # Already processed, clear the schedule to prevent loops
                                     set_schedule(guild.id, "registration_close", None)
-                                    logging.info(f"Registration already closed for {guild.name} - cleared schedule to prevent loops")
+                                    logging.info(
+                                        f"Registration already closed for {guild.name} - cleared schedule to prevent loops")
                         except Exception as e:
                             logging.error(f"Failed to restore registration close schedule: {e}")
 
@@ -405,7 +406,7 @@ def setup_events(bot: commands.Bot):
                                 guild_id = str(guild.id)
                                 if guild_id not in persisted:
                                     persisted[guild_id] = {}
-                                
+
                                 current_state = persisted[guild_id].get("checkin_open", False)
                                 if not current_state:
                                     # Event hasn't been processed yet
@@ -415,7 +416,8 @@ def setup_events(bot: commands.Bot):
                                 else:
                                     # Already processed, clear the schedule to prevent loops
                                     set_schedule(guild.id, "checkin_open", None)
-                                    logging.info(f"Check-in already open for {guild.name} - cleared schedule to prevent loops")
+                                    logging.info(
+                                        f"Check-in already open for {guild.name} - cleared schedule to prevent loops")
                         except Exception as e:
                             logging.error(f"Failed to restore check-in open schedule: {e}")
 
@@ -436,7 +438,7 @@ def setup_events(bot: commands.Bot):
                                 guild_id = str(guild.id)
                                 if guild_id not in persisted:
                                     persisted[guild_id] = {}
-                                
+
                                 current_state = persisted[guild_id].get("checkin_open", False)
                                 if current_state:
                                     # Event hasn't been processed yet - should be closed
@@ -446,7 +448,8 @@ def setup_events(bot: commands.Bot):
                                 else:
                                     # Already processed, clear the schedule to prevent loops
                                     set_schedule(guild.id, "checkin_close", None)
-                                    logging.info(f"Check-in already closed for {guild.name} - cleared schedule to prevent loops")
+                                    logging.info(
+                                        f"Check-in already closed for {guild.name} - cleared schedule to prevent loops")
                         except Exception as e:
                             logging.error(f"Failed to restore check-in close schedule: {e}")
 

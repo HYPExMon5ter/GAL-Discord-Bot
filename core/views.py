@@ -486,6 +486,20 @@ class WaitlistTeamChoiceView(discord.ui.View):
         self.existing_position = existing_position
         self.from_management = from_management
 
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item):
+        """Handle errors in the view components."""
+        from helpers.embed_helpers import log_error
+        await log_error(interaction.client, self.guild, f"WaitlistTeamChoiceView error: {error}")
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "An error occurred while processing your request. Please try again.",
+                    ephemeral=True
+                )
+        except Exception:
+            pass
+
     @discord.ui.button(label="Use Suggested", style=discord.ButtonStyle.success)
     async def use_suggested(self, interaction, button):
         for item in self.children:
@@ -680,12 +694,19 @@ class RegistrationModal(discord.ui.Modal):
         self.bypass_similarity = bypass_similarity
         self.update_management_interface = update_management_interface
 
+        # Dynamic input field creation
+        self._setup_input_fields(team_field, default_ign, default_alt_igns, default_team, default_pronouns)
+
+    def _setup_input_fields(self, team_field: bool, default_ign: str, default_alt_igns: str,
+                            default_team: str, default_pronouns: str):
+        """Setup input fields dynamically based on configuration."""
         # In-Game Name
         self.ign_input = discord.ui.TextInput(
             label="In-Game Name",
             placeholder="Enter your TFT IGN",
             required=True,
-            default=default_ign or ""
+            default=default_ign or "",
+            max_length=50
         )
         self.add_item(self.ign_input)
 
@@ -694,7 +715,8 @@ class RegistrationModal(discord.ui.Modal):
             label="Alternative IGN(s)",
             placeholder="Comma-separated alt IGNs (optional)",
             required=False,
-            default=default_alt_igns or ""
+            default=default_alt_igns or "",
+            max_length=200
         )
         self.add_item(self.alt_ign_input)
 
@@ -715,9 +737,26 @@ class RegistrationModal(discord.ui.Modal):
             label="Pronouns",
             placeholder="e.g. She/Her, He/Him, They/Them",
             required=False,
-            default=default_pronouns or ""
+            default=default_pronouns or "",
+            max_length=50
         )
         self.add_item(self.pronouns_input)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        """Handle errors in the modal submission."""
+        from helpers.embed_helpers import log_error
+        guild = getattr(self, 'guild', None) or interaction.guild
+        await log_error(interaction.client, guild, f"RegistrationModal error: {error}")
+
+        try:
+            if not interaction.response.is_done():
+                from config import embed_from_cfg
+                await interaction.response.send_message(
+                    embed=embed_from_cfg("error"),
+                    ephemeral=True
+                )
+        except Exception:
+            pass
 
     async def on_submit(self, interaction: discord.Interaction):
         guild = interaction.guild
@@ -878,21 +917,31 @@ class TeamSelectionView(discord.ui.View):
         self.team_name = team_name  # Store original team name
         self.selected_team = None
 
-        # Add dropdown with available teams
-        self.team_select = discord.ui.Select(
-            placeholder="Choose a team to join...",
-            options=[
-                discord.SelectOption(label=team, value=team)
-                for team in teams_with_space[:25]  # Discord limit is 25 options
-            ]
-        )
-        self.team_select.callback = self.team_selected
-        self.add_item(self.team_select)
+        # Add dropdown with available teams (dynamic creation)
+        self._setup_team_select(teams_with_space)
+        self._setup_action_buttons()
 
+    def _setup_team_select(self, teams_with_space):
+        """Setup team selection dropdown dynamically."""
+        if teams_with_space:
+            self.team_select = discord.ui.Select(
+                placeholder="Choose a team to join...",
+                options=[
+                    discord.SelectOption(label=team, value=team)
+                    for team in teams_with_space[:25]  # Discord limit is 25 options
+                ],
+                custom_id="team_selection_dropdown"
+            )
+            self.team_select.callback = self.team_selected
+            self.add_item(self.team_select)
+
+    def _setup_action_buttons(self):
+        """Setup action buttons dynamically."""
         # Add waitlist button (green)
         self.waitlist_btn = discord.ui.Button(
             label="Add to Waitlist",
-            style=discord.ButtonStyle.success
+            style=discord.ButtonStyle.success,
+            custom_id="team_selection_waitlist"
         )
         self.waitlist_btn.callback = self.waitlist_clicked
         self.add_item(self.waitlist_btn)
@@ -900,10 +949,26 @@ class TeamSelectionView(discord.ui.View):
         # Add cancel button (red)
         self.cancel_btn = discord.ui.Button(
             label="Cancel",
-            style=discord.ButtonStyle.danger
+            style=discord.ButtonStyle.danger,
+            custom_id="team_selection_cancel"
         )
         self.cancel_btn.callback = self.cancel_clicked
         self.add_item(self.cancel_btn)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item):
+        """Handle errors in the view components."""
+        from helpers.embed_helpers import log_error
+        guild = getattr(self.reg_modal, 'guild', None) or interaction.guild
+        await log_error(interaction.client, guild, f"TeamSelectionView error: {error}")
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "An error occurred while processing your selection. Please try again.",
+                    ephemeral=True
+                )
+        except Exception:
+            pass
 
     async def team_selected(self, interaction: discord.Interaction):
         """Handle team selection from dropdown."""

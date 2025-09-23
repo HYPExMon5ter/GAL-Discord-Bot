@@ -89,12 +89,110 @@ def get_unified_channel_name() -> str:
     return _FULL_CFG.get("channels", {}).get("unified_channel", "🎫registration")
 
 
+# Onboarding configuration helpers
+def get_onboard_config() -> Dict[str, Any]:
+    """Get onboard configuration from config."""
+    return _FULL_CFG.get("onboard", {})
+
+
+def get_onboard_main_channel() -> str:
+    """Get onboard main channel name from config."""
+    return get_onboard_config().get("main_channel", "welcome")
+
+
+def get_onboard_review_channel() -> str:
+    """Get onboard review channel name from config."""
+    return get_onboard_config().get("review_channel", "onboard-review")
+
+
+def get_onboard_approval_role() -> str:
+    """Get role to assign on onboard approval from config."""
+    return get_onboard_config().get("role_on_approve", "Angels")
+
+
+def onboard_embed_from_cfg(key: str, **kwargs) -> discord.Embed:
+    """
+    Create Discord embed from onboard configuration.
+    """
+    onboard_cfg = get_onboard_config()
+    embed_data = onboard_cfg.get("embeds", {}).get(key, {})
+
+    if not embed_data:
+        logging.warning(f"No onboard embed configuration found for key: {key}")
+        return discord.Embed(
+            title="Configuration Error",
+            description="Onboard embed not found",
+            color=discord.Color.red()
+        )
+
+    # Get title
+    raw_title = embed_data.get("title", "")
+    title = raw_title.format(**kwargs) if raw_title else ""
+
+    # Get description
+    raw_desc = embed_data.get("description", "")
+    try:
+        description = raw_desc.format(**kwargs) if raw_desc else "\u200b"
+    except KeyError as ex:
+        missing = str(ex).strip("'")
+        if kwargs:
+            logging.warning(
+                f"Missing format key '{missing}' for onboard embed '{key}'. Available: {list(kwargs.keys())}")
+        description = raw_desc or "\u200b"
+
+    # Get footer
+    raw_footer = embed_data.get("footer", "")
+    footer = raw_footer.format(**kwargs) if raw_footer else None
+
+    # Get color
+    color = hex_to_color(embed_data.get("color", "#3498db"))
+
+    # Create embed
+    embed = discord.Embed(title=title, description=description, color=color)
+    if footer:
+        embed.set_footer(text=footer)
+
+    return embed
+
+
 def hex_to_color(s: str) -> discord.Color:
-    """Convert hex string to Discord Color object."""
+    """Convert hex string to Discord Color object with Discord.py v2 constants support."""
+    # First try Discord.py v2 color constants for common colors
+    color_map = {
+        "red": discord.Color.red(),
+        "blue": discord.Color.blue(),
+        "green": discord.Color.green(),
+        "purple": discord.Color.purple(),
+        "magenta": discord.Color.magenta(),
+        "gold": discord.Color.gold(),
+        "orange": discord.Color.orange(),
+        "blurple": discord.Color.blurple(),
+        "greyple": discord.Color.greyple(),
+        "dark_theme": discord.Color.dark_theme(),
+        "yellow": discord.Color.yellow(),
+        "pink": discord.Color.brand_red(),
+        "teal": discord.Color.teal(),
+        "dark_red": discord.Color.dark_red(),
+        "dark_blue": discord.Color.dark_blue(),
+        "dark_green": discord.Color.dark_green(),
+        "dark_purple": discord.Color.dark_purple(),
+        "dark_magenta": discord.Color.dark_magenta(),
+        "dark_gold": discord.Color.dark_gold(),
+        "dark_orange": discord.Color.dark_orange(),
+        "dark_teal": discord.Color.dark_teal(),
+        "darker_grey": discord.Color.darker_grey(),
+        "light_grey": discord.Color.light_grey()
+    }
+
+    # Check if it's a named color constant
+    if s and s.lower() in color_map:
+        return color_map[s.lower()]
+
+    # Fall back to hex parsing
     try:
         return discord.Color(int(s.lstrip("#"), 16))
     except (ValueError, TypeError):
-        logging.warning(f"Invalid color hex: {s}, using default blue")
+        logging.warning(f"Invalid color hex: {s}, using default blurple")
         return discord.Color.blurple()
 
 

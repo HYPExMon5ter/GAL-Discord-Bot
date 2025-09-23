@@ -89,56 +89,127 @@ class RoleManager:
         return len(roles_to_remove)
 
     @staticmethod
-    async def sync_user_roles(member: discord.Member, is_registered: bool, is_checked_in: bool) -> None:
+    async def bulk_role_update(member: discord.Member, add_roles: List[str], remove_roles: List[str]) -> dict:
         """
-        Sync member's roles based on their registration/check-in status.
-        This ensures Discord roles always match the sheet data.
+        Efficiently update multiple roles in one API call using Discord.py v2 features.
+
+        Args:
+            member: The Discord member to update
+            add_roles: List of role names to add
+            remove_roles: List of role names to remove
+
+        Returns:
+            dict: Summary of changes made
         """
         try:
-            # Get the role objects
-            reg_role = RoleManager.get_role(member.guild, get_registered_role())
-            ci_role = RoleManager.get_role(member.guild, get_checked_in_role())
+            guild = member.guild
+            current_roles = set(member.roles)
+
+            # Get role objects for roles to add
+            roles_to_add = []
+            for role_name in add_roles:
+                role = RoleManager.get_role(guild, role_name)
+                if role and role not in current_roles:
+                    roles_to_add.append(role)
+
+            # Get role objects for roles to remove
+            roles_to_remove = []
+            for role_name in remove_roles:
+                role = RoleManager.get_role(guild, role_name)
+                if role and role in current_roles:
+                    roles_to_remove.append(role)
+
+            # Calculate new role set efficiently
+            new_roles = (current_roles | set(roles_to_add)) - set(roles_to_remove)
+
+            # Only make API call if there are actual changes
+            if new_roles != current_roles:
+                await member.edit(roles=list(new_roles))
+
+                return {
+                    "success": True,
+                    "added": [role.name for role in roles_to_add],
+                    "removed": [role.name for role in roles_to_remove],
+                    "changes_made": len(roles_to_add) + len(roles_to_remove)
+                }
+            else:
+                return {
+                    "success": True,
+                    "added": [],
+                    "removed": [],
+                    "changes_made": 0
+                }
+
+        except discord.Forbidden:
+            logging.error(f"Missing permissions to update roles for {member}")
+            return {"success": False, "error": "Missing permissions"}
+        except discord.HTTPException as e:
+            logging.error(f"Discord API error updating roles for {member}: {e}")
+            return {"success": False, "error": f"API error: {e}"}
+        except Exception as e:
+            logging.error(f"Unexpected error updating roles for {member}: {e}")
+            return {"success": False, "error": f"Unexpected error: {e}"}
+
+    @staticmethod
+    async def sync_user_roles(member: discord.Member, is_registered: bool, is_checked_in: bool) -> None:
+        """
+        Sync member's roles based on their registration/check-in status using optimized bulk operations.
+        This ensures Discord roles always match the sheet data with minimal API calls.
+        """
+        try:
+            # Get the role names
+            reg_role_name = get_registered_role()
+            ci_role_name = get_checked_in_role()
+
+            # Verify roles exist
+            reg_role = RoleManager.get_role(member.guild, reg_role_name)
+            ci_role = RoleManager.get_role(member.guild, ci_role_name)
 
             if not reg_role:
-                logging.warning(f"Registered role '{get_registered_role()}' not found in guild {member.guild.name}")
+                logging.warning(f"Registered role '{reg_role_name}' not found in guild {member.guild.name}")
                 return
 
             if not ci_role:
-                logging.warning(f"Checked-in role '{get_checked_in_role()}' not found in guild {member.guild.name}")
+                logging.warning(f"Checked-in role '{ci_role_name}' not found in guild {member.guild.name}")
                 return
 
-            # Track what changes we're making for logging
-            changes = []
-
-            # Handle registered role
+            # Determine current role state
             has_reg_role = reg_role in member.roles
-            if is_registered and not has_reg_role:
-                await member.add_roles(reg_role)
-                changes.append(f"Added {get_registered_role()}")
-            elif not is_registered and has_reg_role:
-                await member.remove_roles(reg_role)
-                changes.append(f"Removed {get_registered_role()}")
-
-            # Handle checked-in role (can't be checked in without being registered)
             has_ci_role = ci_role in member.roles
 
-            # Logic: User should have checked-in role ONLY if both registered AND checked in
+            # Determine desired role state
             should_have_ci = is_registered and is_checked_in
 
+            # Build role changes for bulk update
+            add_roles = []
+            remove_roles = []
+
+            # Handle registered role
+            if is_registered and not has_reg_role:
+                add_roles.append(reg_role_name)
+            elif not is_registered and has_reg_role:
+                remove_roles.append(reg_role_name)
+
+            # Handle checked-in role (can only be checked in if registered)
             if should_have_ci and not has_ci_role:
-                await member.add_roles(ci_role)
-                changes.append(f"Added {get_checked_in_role()}")
+                add_roles.append(ci_role_name)
             elif not should_have_ci and has_ci_role:
-                await member.remove_roles(ci_role)
-                changes.append(f"Removed {get_checked_in_role()}")
+                remove_roles.append(ci_role_name)
 
-            # Log changes if any were made
-            if changes:
-                logging.debug(f"Role sync for {member}: {', '.join(changes)}")
+            # Use bulk update for efficiency (single API call)
+            if add_roles or remove_roles:
+                result = await RoleManager.bulk_role_update(member, add_roles, remove_roles)
 
-        except discord.Forbidden:
-            logging.error(f"Missing permissions to sync roles for {member}")
-        except discord.HTTPException as e:
-            logging.error(f"Discord API error syncing roles for {member}: {e}")
+                if result["success"] and result["changes_made"] > 0:
+                    changes = []
+                    if result["added"]:
+                        changes.append(f"Added: {', '.join(result['added'])}")
+                    if result["removed"]:
+                        changes.append(f"Removed: {', '.join(result['removed'])}")
+
+                    logging.debug(f"Role sync for {member}: {' | '.join(changes)}")
+                elif not result["success"]:
+                    logging.error(f"Failed to sync roles for {member}: {result.get('error', 'Unknown error')}")
+
         except Exception as e:
             logging.error(f"Unexpected error syncing roles for {member}: {e}")

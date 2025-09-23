@@ -5,6 +5,38 @@ channels:
   unified_channel: "🎫tourney-registration"  # Single channel for all registration/check-in
   log_channel: "bot-log"  # Bot logging channel
 
+# Onboarding system configuration
+onboard:
+  main_channel: "welcome"           # Channel name for main onboard embed (will auto-create)
+  review_channel: "onboard-review"  # Staff channel name for submission review (will auto-create)
+  role_on_approve: "Angels"         # Role to assign when onboarding is approved
+  embeds:
+    main:
+      title: "🌸 Welcome to Guardian Angel League!"
+      description: "We're an inclusive community focused on creating a safe space for everyone. Please complete our onboarding process before joining the community."
+      footer: "Thank you for being here 💜"
+      color: "#f8c8dc"
+    review:
+      title: "📝 New Onboarding Submission"
+      footer: "Staff Review Required"
+      color: "#3498db"
+    approved:
+      title: "✅ Welcome to the Community!"
+      description: "Your onboarding has been approved! You now have access to the server. Welcome to Guardian Angel League! 🌸"
+      color: "#27ae60"
+    denied:
+      title: "❌ Onboarding Not Approved"
+      description: "Your submission was reviewed but not approved at this time."
+      color: "#e74c3c"
+    already_approved:
+      title: "✅ Already Approved"
+      description: "You already have access to the server! Welcome Angel! 💜"
+      color: "#27ae60"
+    pending_review:
+      title: "⏳ Submission Pending"
+      description: "Your onboarding submission is currently being reviewed by our staff. Please wait for approval."
+      color: "#f39c12"
+
 # Role configuration
 roles:
   allowed_roles:
@@ -298,3 +330,4 @@ embeds:
       registeredlist: "📋 Show the current registration list."
       reminder: "✉️ Send a DM reminder to all unchecked-in users."
       cache: "🔄 Re-cache the data from the sheet."
+      onboard: "🌸 Manage the onboarding system (setup, stats, refresh)."

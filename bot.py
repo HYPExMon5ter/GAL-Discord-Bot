@@ -86,12 +86,14 @@ class GALBot(commands.Bot):
 
     def __init__(self):
         """Initialize the bot with proper configuration."""
-        intents = discord.Intents.default()
-        intents.guilds = True
-        intents.members = True
-        intents.messages = True
-        intents.message_content = True
-        intents.guild_scheduled_events = True
+        # Use Discord.py v2 modernized intents constructor
+        intents = discord.Intents(
+            guilds=True,
+            members=True,
+            messages=True,
+            message_content=True,
+            guild_scheduled_events=True
+        )
 
         # Validate required environment variables
         if not APPLICATION_ID:
@@ -202,6 +204,9 @@ class GALBot(commands.Bot):
 
             # Setup event handlers
             setup_events(self)
+
+            # Initialize onboard system
+            await self._setup_onboard_system()
 
             logging.info("Bot setup completed successfully")
 
@@ -371,6 +376,8 @@ class GALBot(commands.Bot):
         except Exception as e:
             logging.error(f"Failed to initialize data for new guild {guild.id}: {e}")
 
+        # Note: Channel setup is handled in the main on_ready event in events.py
+
     async def on_guild_remove(self, guild: discord.Guild):
         """Called when the bot is removed from a guild."""
         logging.info(f"Removed from guild: {guild.name} ({guild.id})")
@@ -382,6 +389,16 @@ class GALBot(commands.Bot):
     async def on_error(self, event_method: str, *args, **kwargs):
         """Handle general bot errors."""
         logging.error(f"Error in event {event_method}", exc_info=True)
+
+    async def _setup_onboard_system(self):
+        """Setup onboard system during bot initialization."""
+        try:
+            # Note: Persistent view registration now happens in on_ready event
+            # when guilds are actually available
+            logging.info("Onboard system setup deferred to on_ready event")
+        except Exception as e:
+            logging.error(f"Failed to setup onboard system: {e}")
+
 
     async def close(self):
         """Cleanup when the bot is shutting down."""

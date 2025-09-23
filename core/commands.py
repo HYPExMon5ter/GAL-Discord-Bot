@@ -3,7 +3,6 @@
 import logging
 import os
 import time
-from datetime import timezone, datetime
 from typing import Optional, Dict, Any
 
 import discord
@@ -15,10 +14,10 @@ from config import (
     embed_from_cfg, get_sheet_settings, _FULL_CFG, get_log_channel_name,
     get_unified_channel_name, get_registered_role, get_checked_in_role
 )
+from core.components_traditional import update_unified_channel
 from core.persistence import (
     get_event_mode_for_guild, set_event_mode_for_guild
 )
-from core.components_traditional import update_unified_channel
 # Import all helpers
 from helpers import (
     RoleManager, Validators,
@@ -97,8 +96,9 @@ async def toggle(interaction: discord.Interaction, system: app_commands.Choice[s
         await update_unified_channel(interaction.guild)
 
         # Handle ping notifications when systems are opened (not when closed)
+        # Only ping for manual toggles, not scheduled events (to prevent duplicates)
         if not silent:
-            await handle_toggle_pings(interaction.guild, system_value, reg_open, ci_open)
+            await handle_toggle_pings(interaction.guild, system_value, reg_open, ci_open, is_manual=True)
 
         # Send feedback
         embed = discord.Embed(
@@ -514,7 +514,6 @@ async def config_cmd(
                 pass
 
             # Create single backup
-            from datetime import datetime
             import shutil
             backup_name = "config_backup_latest.yaml"
             shutil.copy("config.yaml", backup_name)
@@ -564,7 +563,7 @@ async def config_cmd(
                             title="📝 Configuration Uploaded",
                             description=f"Configuration was uploaded by {interaction.user.mention}",
                             color=discord.Color.blue(),
-                            timestamp=datetime.now(timezone.utc)
+                            timestamp=discord.utils.utcnow()
                         )
 
                         # Add revert view to new message
@@ -1210,7 +1209,7 @@ class ConfigRevertView(discord.ui.View):
                     title="🔄 Configuration Reverted",
                     description=f"Configuration was reverted by {interaction.user.mention}",
                     color=discord.Color.orange(),
-                    timestamp=datetime.now(timezone.utc)
+                    timestamp=discord.utils.utcnow()
                 )
                 await interaction.channel.send(embed=log_embed)
 
@@ -1261,7 +1260,6 @@ async def clear_old_config_views(log_channel: discord.TextChannel):
 
 async def handle_config_update(interaction: discord.Interaction, modal, update_type: str, updates: dict):
     """Shared handler for all config modal updates with backup/restore."""
-    from datetime import datetime, timezone
     import shutil
     import os
     import glob
@@ -1494,7 +1492,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
                     title=f"⚙️ Configuration Updated ({update_type.title()})",
                     description=f"Updated by {interaction.user.mention}",
                     color=discord.Color.blue(),
-                    timestamp=datetime.now(timezone.utc)
+                    timestamp=discord.utils.utcnow()
                 )
 
                 # Add revert view to new message
@@ -1527,6 +1525,133 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             ),
             ephemeral=True
         )
+
+
+@gal.command(name="onboard", description="Manage the onboarding system.")
+@app_commands.describe(
+    action="Action to perform (setup, stats, refresh)"
+)
+@app_commands.choices(action=[
+    app_commands.Choice(name="setup", value="setup"),
+    app_commands.Choice(name="stats", value="stats"),
+    app_commands.Choice(name="refresh", value="refresh")
+])
+async def onboard_cmd(interaction: discord.Interaction, action: app_commands.Choice[str]):
+    """Manage the onboarding system."""
+    if not await Validators.validate_and_respond(
+            interaction,
+            Validators.validate_staff_permission(interaction)
+    ):
+        return
+
+    try:
+        action_value = action.value
+
+        if action_value == "setup":
+            # Set up onboard channels and embed
+            from core.onboard import setup_onboard_channel
+
+            await interaction.response.defer(ephemeral=True)
+
+            success = await setup_onboard_channel(interaction.guild, interaction.client)
+
+            if success:
+                embed = discord.Embed(
+                    title="✅ Onboard System Setup",
+                    description="Onboard channels and embed have been set up successfully!",
+                    color=discord.Color.green(),
+                    timestamp=discord.utils.utcnow()
+                )
+            else:
+                embed = discord.Embed(
+                    title="❌ Setup Failed",
+                    description="Failed to set up onboard system. Check bot permissions and logs.",
+                    color=discord.Color.red(),
+                    timestamp=discord.utils.utcnow()
+                )
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        elif action_value == "stats":
+            # Show onboarding statistics
+            from helpers.onboard_helpers import OnboardManager
+            from config import get_onboard_approval_role
+
+            pending_submissions = OnboardManager.get_pending_submissions()
+            pending_count = len(pending_submissions)
+
+            # Count approved members (those with Angels role)
+            approval_role_name = get_onboard_approval_role()
+            approval_role = discord.utils.get(interaction.guild.roles, name=approval_role_name)
+            approved_count = len(approval_role.members) if approval_role else 0
+
+            embed = discord.Embed(
+                title="📊 Onboarding Statistics",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+
+            embed.add_field(
+                name="⏳ Pending Submissions",
+                value=str(pending_count),
+                inline=True
+            )
+
+            embed.add_field(
+                name="✅ Approved Members",
+                value=str(approved_count),
+                inline=True
+            )
+
+            if pending_count > 0:
+                pending_list = []
+                for user_id, data in list(pending_submissions.items())[:5]:  # Show max 5
+                    member = interaction.guild.get_member(user_id)
+                    if member:
+                        pending_list.append(f"• {member.mention}")
+                    else:
+                        pending_list.append(f"• <@{user_id}> (left server)")
+
+                if len(pending_submissions) > 5:
+                    pending_list.append(f"• ... and {len(pending_submissions) - 5} more")
+
+                embed.add_field(
+                    name="Recent Pending",
+                    value="\n".join(pending_list) if pending_list else "None",
+                    inline=False
+                )
+
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        elif action_value == "refresh":
+            # Refresh onboard embed and rebuild state
+            from core.onboard import setup_onboard_channel
+            from helpers.onboard_helpers import rebuild_pending_submissions_from_history
+            from config import get_onboard_review_channel
+
+            await interaction.response.defer(ephemeral=True)
+
+            # Rebuild state from review channel
+            review_channel_name = get_onboard_review_channel()
+            review_channel = discord.utils.get(interaction.guild.text_channels, name=review_channel_name)
+
+            if review_channel:
+                await rebuild_pending_submissions_from_history(review_channel)
+
+            # Refresh the setup
+            success = await setup_onboard_channel(interaction.guild, interaction.client)
+
+            embed = discord.Embed(
+                title="🔄 Onboard System Refreshed",
+                description="Onboard system has been refreshed and state rebuilt from message history.",
+                color=discord.Color.green() if success else discord.Color.orange(),
+                timestamp=discord.utils.utcnow()
+            )
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        await ErrorHandler.handle_interaction_error(interaction, e, "Onboard Command")
 
 
 @gal.command(name="help", description="Shows this help message.")
@@ -1563,20 +1688,49 @@ async def help_cmd(interaction: discord.Interaction):
         await ErrorHandler.handle_interaction_error(interaction, e, "Help Command")
 
 
-# Error handlers for the command group
+# Enhanced error handlers using Discord.py v2 features
 @toggle.error
 @event.error
 @registeredlist.error
 @reminder.error
 @cache.error
 @config_cmd.error
+@onboard_cmd.error
 @help_cmd.error
 async def command_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    """Global error handler for all GAL commands."""
+    """Enhanced global error handler for all GAL commands using Discord.py v2 features."""
     try:
+        # Handle specific Discord.py v2 error types
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message(
                 embed=embed_from_cfg("permission_denied"),
+                ephemeral=True
+            )
+        elif isinstance(error, app_commands.CommandSignatureMismatch):
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Command Signature Error",
+                    description="There was an issue with the command parameters. Please try again.",
+                    color=discord.Color.red()
+                ),
+                ephemeral=True
+            )
+        elif isinstance(error, app_commands.TransformerError):
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Parameter Error",
+                    description=f"Invalid parameter: {str(error)}",
+                    color=discord.Color.red()
+                ),
+                ephemeral=True
+            )
+        elif isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="⏰ Command Cooldown",
+                    description=f"This command is on cooldown. Try again in {error.retry_after:.1f} seconds.",
+                    color=discord.Color.orange()
+                ),
                 ephemeral=True
             )
         else:
@@ -1585,13 +1739,15 @@ async def command_error_handler(interaction: discord.Interaction, error: app_com
 
     except Exception as handler_error:
         logging.error(f"Error in command error handler: {handler_error}")
-        # Fallback error message
+        # Enhanced fallback error message
         try:
             fallback_embed = discord.Embed(
-                title="❌ Command Error",
-                description="An unexpected error occurred. Please try again later.",
-                color=discord.Color.red()
+                title="❌ Unexpected Error",
+                description="An unexpected error occurred. Please try again later or contact support.",
+                color=discord.Color.red(),
+                timestamp=discord.utils.utcnow()
             )
+            fallback_embed.set_footer(text="Error ID available in logs")
 
             if interaction.response.is_done():
                 await interaction.followup.send(embed=fallback_embed, ephemeral=True)
@@ -1601,17 +1757,22 @@ async def command_error_handler(interaction: discord.Interaction, error: app_com
             pass  # Give up if we can't even send a fallback
 
 
-async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open: bool, ci_open: bool):
+async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open: bool, ci_open: bool,
+                              is_manual: bool = False):
     """
     Handle ping notifications when registration or check-in is opened.
-    
+
     Args:
         guild: The Discord guild
         system_value: The system being toggled ("registration", "checkin", or "both")
         reg_open: Whether registration is currently open
         ci_open: Whether check-in is currently open
+        is_manual: Whether this is a manual toggle (vs scheduled event)
     """
     try:
+        # Import the recent_pings tracker from events.py to prevent duplicates
+        from core.events import recent_pings
+
         # Get the unified channel
         channel_name = get_unified_channel_name()
         unified_channel = discord.utils.get(guild.text_channels, name=channel_name)
@@ -1626,25 +1787,41 @@ async def handle_toggle_pings(guild: discord.Guild, system_value: str, reg_open:
         angel_role_name = roles_config.get("angel_role", "Angels")
         registered_role_name = roles_config.get("registered_role", "Registered")
 
+        # Check spam prevention (same as in events.py)
+        now_timestamp = discord.utils.utcnow().timestamp()
+        last_ping = recent_pings.get(guild.id, 0)
+        if now_timestamp - last_ping < 30:
+            logging.info(f"Skipping ping for {system_value} in {guild.name} - recently pinged (within 30s)")
+            return
+
         messages_to_delete = []
+        ping_sent = False
 
         # Handle registration ping (ping Angels when registration opens)
         if (system_value in ["registration", "both"]) and reg_open:
-            angel_role = discord.utils.get(guild.roles, name=angel_role_name)
-            if angel_role:
-                ping_msg = await unified_channel.send(f"🎫 **Registration is now OPEN!** {angel_role.mention}")
-                messages_to_delete.append(ping_msg)
-            else:
-                logging.warning(f"Angel role '{angel_role_name}' not found in guild {guild.name}")
+            if roles_config.get("ping_on_registration_open", True):
+                angel_role = discord.utils.get(guild.roles, name=angel_role_name)
+                if angel_role:
+                    ping_msg = await unified_channel.send(f"🎫 **Registration is now OPEN!** {angel_role.mention}")
+                    messages_to_delete.append(ping_msg)
+                    ping_sent = True
+                else:
+                    logging.warning(f"Angel role '{angel_role_name}' not found in guild {guild.name}")
 
         # Handle check-in ping (ping Registered role when check-in opens)
         if (system_value in ["checkin", "both"]) and ci_open:
-            registered_role = discord.utils.get(guild.roles, name=registered_role_name)
-            if registered_role:
-                ping_msg = await unified_channel.send(f"✅ **Check-in is now OPEN!** {registered_role.mention}")
-                messages_to_delete.append(ping_msg)
-            else:
-                logging.warning(f"Registered role '{registered_role_name}' not found in guild {guild.name}")
+            if roles_config.get("ping_on_checkin_open", True):
+                registered_role = discord.utils.get(guild.roles, name=registered_role_name)
+                if registered_role:
+                    ping_msg = await unified_channel.send(f"✅ **Check-in is now OPEN!** {registered_role.mention}")
+                    messages_to_delete.append(ping_msg)
+                    ping_sent = True
+                else:
+                    logging.warning(f"Registered role '{registered_role_name}' not found in guild {guild.name}")
+
+        # Update last ping time if we sent a ping
+        if ping_sent:
+            recent_pings[guild.id] = now_timestamp
 
         # Delete ping messages after 5 seconds
         if messages_to_delete:

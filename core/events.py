@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime  # Only needed for fromisoformat parsing
 from zoneinfo import ZoneInfo
 
 import discord
@@ -45,7 +45,7 @@ async def schedule_system_open(
         is_scheduled_event: bool = True
 ):
     """Schedule a system to open at a specific time."""
-    now = datetime.now(ZoneInfo("UTC"))
+    now = discord.utils.utcnow()
     wait = (open_time - now).total_seconds()
     if wait > 0:
         await asyncio.sleep(wait)
@@ -87,7 +87,7 @@ async def schedule_system_open(
     unified_channel = discord.utils.get(guild.text_channels, name=get_unified_channel_name())
     if unified_channel:
         roles_config = _FULL_CFG.get("roles", {})
-        now_timestamp = datetime.now(ZoneInfo("UTC")).timestamp()
+        now_timestamp = discord.utils.utcnow().timestamp()
 
         # Check if we recently pinged for this guild (within 30 seconds)
         last_ping = recent_pings.get(guild.id, 0)
@@ -148,7 +148,7 @@ async def schedule_system_close(
         is_scheduled_event: bool = True
 ):
     """Schedule a system to close at a specific time."""
-    now = datetime.now(ZoneInfo("UTC"))
+    now = discord.utils.utcnow()
     wait = (close_time - now).total_seconds()
     if wait > 0:
         await asyncio.sleep(wait)
@@ -226,7 +226,7 @@ async def _handle_event_schedule(bot, event, is_edit: bool):
     except Exception as e:
         logging.error(f"Failed to validate schedule times for {guild.name}: {e}")
 
-    now = datetime.now(ZoneInfo("UTC"))
+    now = discord.utils.utcnow()
 
     # Schedule open
     if open_time and open_time > now:
@@ -313,7 +313,17 @@ def setup_events(bot: commands.Bot):
                         logging.warning(f"⚠️ Failed to setup unified channel for {guild.name}")
 
                     # ----------------------------------------
-                    # 2c. Restore Scheduled Events (if any)
+                    # 2c. Setup Onboard System
+                    # ----------------------------------------
+                    from core.onboard import setup_onboard_channel
+                    onboard_success = await setup_onboard_channel(guild, bot)
+                    if onboard_success:
+                        logging.info(f"✅ Setup onboard system for {guild.name}")
+                    else:
+                        logging.warning(f"⚠️ Failed to setup onboard system for {guild.name}")
+
+                    # ----------------------------------------
+                    # 2d. Restore Scheduled Events (if any)
                     # ----------------------------------------
                     from core.persistence import get_schedule
 
@@ -324,7 +334,7 @@ def setup_events(bot: commands.Bot):
                     if reg_open_iso:
                         try:
                             reg_open_time = datetime.fromisoformat(reg_open_iso).astimezone(ZoneInfo("UTC"))
-                            now = datetime.now(ZoneInfo("UTC"))
+                            now = discord.utils.utcnow()
 
                             if reg_open_time > now:
                                 # Schedule for future
@@ -356,7 +366,7 @@ def setup_events(bot: commands.Bot):
                     if reg_close_iso:
                         try:
                             reg_close_time = datetime.fromisoformat(reg_close_iso).astimezone(ZoneInfo("UTC"))
-                            now = datetime.now(ZoneInfo("UTC"))
+                            now = discord.utils.utcnow()
 
                             if reg_close_time > now:
                                 # Schedule for future
@@ -392,7 +402,7 @@ def setup_events(bot: commands.Bot):
                     if ci_open_iso:
                         try:
                             ci_open_time = datetime.fromisoformat(ci_open_iso).astimezone(ZoneInfo("UTC"))
-                            now = datetime.now(ZoneInfo("UTC"))
+                            now = discord.utils.utcnow()
 
                             if ci_open_time > now:
                                 # Schedule for future
@@ -424,7 +434,7 @@ def setup_events(bot: commands.Bot):
                     if ci_close_iso:
                         try:
                             ci_close_time = datetime.fromisoformat(ci_close_iso).astimezone(ZoneInfo("UTC"))
-                            now = datetime.now(ZoneInfo("UTC"))
+                            now = discord.utils.utcnow()
 
                             if ci_close_time > now:
                                 # Schedule for future

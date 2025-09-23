@@ -301,12 +301,12 @@ class UnifiedView(discord.ui.View):
     def __init__(self, guild: discord.Guild, user: Optional[discord.Member] = None):
         super().__init__(timeout=None)
         self.guild = guild
+        self.guild_id = str(guild.id)
 
         # Check if registration/check-in are open
         from core.persistence import persisted
-        guild_id = str(guild.id)
-        reg_open = persisted.get(guild_id, {}).get("registration_open", False)
-        ci_open = persisted.get(guild_id, {}).get("checkin_open", False)
+        reg_open = persisted.get(self.guild_id, {}).get("registration_open", False)
+        ci_open = persisted.get(self.guild_id, {}).get("checkin_open", False)
 
         # Primary user buttons (first row) - only show if respective features are open
         if reg_open:
@@ -318,9 +318,19 @@ class UnifiedView(discord.ui.View):
         if ci_open:
             self.add_item(ManageCheckInButton())
 
-        # Secondary buttons (second row)  
+        # Secondary buttons (second row)
         self.add_item(ViewListButton())
         self.add_item(AdminPanelButton())
+
+    @classmethod
+    def create_persistent(cls, guild: discord.Guild) -> 'UnifiedView':
+        """Create a persistent version of the UnifiedView for registration with the client."""
+        view = cls(guild)
+        # Ensure all buttons have proper custom IDs for persistence
+        for item in view.children:
+            if hasattr(item, 'custom_id') and item.custom_id:
+                item.custom_id = f"{guild.id}_{item.custom_id}"
+        return view
 
 
 class ManageRegistrationButton(discord.ui.Button):
@@ -746,6 +756,15 @@ class RegistrationManagementView(discord.ui.View):
         self.is_waitlist = is_waitlist
         self.original_message = None  # Store reference to the original message
 
+        # Dynamic item creation based on user state
+        self._setup_user_buttons(is_registered, is_waitlist)
+
+        # Add staff controls if user has permissions
+        if RoleManager.has_any_allowed_role(user):
+            self._setup_staff_buttons()
+
+    def _setup_user_buttons(self, is_registered: bool, is_waitlist: bool):
+        """Setup user-specific buttons dynamically."""
         if is_registered:
             # Fully registered user
             update_btn = UpdateRegistrationButton()
@@ -769,10 +788,10 @@ class RegistrationManagementView(discord.ui.View):
             register_btn.management_view = self
             self.add_item(register_btn)
 
-        # Add staff controls if user has permissions
-        if RoleManager.has_any_allowed_role(user):
-            self.add_item(ToggleRegistrationButton())
-            self.add_item(ResetRegistrationButton())
+    def _setup_staff_buttons(self):
+        """Setup staff-specific buttons dynamically."""
+        self.add_item(ToggleRegistrationButton())
+        self.add_item(ResetRegistrationButton())
 
     async def on_timeout(self):
         """Handle view timeout by showing timeout notice and disabling buttons."""
@@ -813,15 +832,24 @@ class CheckInManagementView(discord.ui.View):
         self.is_checked_in = is_checked_in
         self.original_message = None
 
+        # Dynamic item creation based on check-in state
+        self._setup_checkin_buttons(is_checked_in)
+
+        # Add staff controls if user has permissions
+        if RoleManager.has_any_allowed_role(user):
+            self._setup_staff_buttons()
+
+    def _setup_checkin_buttons(self, is_checked_in: bool):
+        """Setup check-in specific buttons dynamically."""
         if is_checked_in:
             self.add_item(CheckOutButton())
         else:
             self.add_item(CheckInButton())
 
-        # Add staff controls if user has permissions
-        if RoleManager.has_any_allowed_role(user):
-            self.add_item(ToggleCheckInButton())
-            self.add_item(ResetCheckInButton())
+    def _setup_staff_buttons(self):
+        """Setup staff-specific buttons dynamically."""
+        self.add_item(ToggleCheckInButton())
+        self.add_item(ResetCheckInButton())
 
     async def on_timeout(self):
         """Handle view timeout by showing timeout notice and disabling buttons."""
@@ -1544,14 +1572,110 @@ class ResetConfirmationView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
-# Channel Management Functions
-async def setup_unified_channel(guild: discord.Guild) -> bool:
-    """Setup the unified channel with traditional embed."""
+# Persistent View Registration Functions
+async def register_persistent_views(client: discord.Client, guild: discord.Guild):
+    """Register persistent views with the client for the guild."""
     try:
-        channel_name = get_unified_channel_name()
-        channel = discord.utils.get(guild.text_channels, name=channel_name)
+        # Create and register the unified view for persistence
+        unified_view = UnifiedView.create_persistent(guild)
+        client.add_view(unified_view)
+
+        logging.info(f"Registered persistent views for guild: {guild.name}")
+    except Exception as e:
+        logging.error(f"Failed to register persistent views for {guild.name}: {e}")
+
+
+async def register_all_persistent_views(client: discord.Client):
+    """Register persistent views for all guilds the bot is in."""
+    for guild in client.guilds:
+        await register_persistent_views(client, guild)
+
+
+# Example usage in your bot's on_ready event:
+"""
+@bot.event
+async def on_ready():
+    # Register persistent views when bot starts up
+    from core.components_traditional import register_all_persistent_views
+    await register_all_persistent_views(bot)
+    logging.info("Registered all persistent views for Discord.py v2")
+"""
+
+
+# Channel Management Functions
+async def ensure_unified_channel(guild: discord.Guild) -> discord.TextChannel:
+    """
+    Ensure unified channel exists, create if needed with proper permissions.
+
+    Returns:
+        discord.TextChannel: The unified channel, or None if creation failed
+    """
+    from config import get_allowed_roles
+
+    channel_name = get_unified_channel_name()
+    channel = discord.utils.get(guild.text_channels, name=channel_name)
+
+    if not channel:
+        logging.info(f"Creating unified channel: {channel_name}")
+
+        # Get roles for permissions
+        allowed_role_names = get_allowed_roles()
+        everyone_role = guild.default_role
+
+        # Get staff roles
+        staff_roles = []
+        for role_name in allowed_role_names:
+            role = discord.utils.get(guild.roles, name=role_name)
+            if role:
+                staff_roles.append(role)
+
+        try:
+            # Set up permissions for unified channel
+            overwrites = {
+                everyone_role: discord.PermissionOverwrite(
+                    read_messages=True,
+                    send_messages=False,
+                    read_message_history=True
+                )
+            }
+
+            # Allow staff to manage the channel
+            for staff_role in staff_roles:
+                overwrites[staff_role] = discord.PermissionOverwrite(
+                    read_messages=True,
+                    send_messages=True,
+                    manage_messages=True,
+                    read_message_history=True
+                )
+
+            channel = await guild.create_text_channel(
+                channel_name,
+                overwrites=overwrites,
+                topic="Tournament registration and check-in hub",
+                reason="Auto-created unified channel for registration/check-in"
+            )
+            logging.info(f"Created unified channel: {channel.mention}")
+
+        except discord.Forbidden:
+            logging.error(f"Missing permissions to create unified channel in {guild.name}")
+            return None
+        except discord.HTTPException as e:
+            logging.error(f"Failed to create unified channel in {guild.name}: {e}")
+            return None
+        except Exception as e:
+            logging.error(f"Unexpected error creating unified channel in {guild.name}: {e}")
+            return None
+
+    return channel
+
+
+async def setup_unified_channel(guild: discord.Guild) -> bool:
+    """Setup the unified channel with traditional embed, auto-creating if needed."""
+    try:
+        # Ensure channel exists
+        channel = await ensure_unified_channel(guild)
         if not channel:
-            logging.error(f"Channel '{channel_name}' not found")
+            logging.error(f"Failed to ensure unified channel exists in {guild.name}")
             return False
 
         chan_id, msg_id = get_persisted_msg(guild.id, "unified")

@@ -10,3 +10,10 @@ rapidfuzz
 aiohttp
 colorama
 ruamel.yaml
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+websockets
+redis
+jinja2

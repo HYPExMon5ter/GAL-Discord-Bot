@@ -788,6 +788,42 @@ class RegistrationModal(discord.ui.Modal):
             await interaction.edit_original_response(embed=embed, view=None)
             return
 
+        # IGN Verification - check if the IGN is valid with Riot API
+        try:
+            from integrations.ign_verification import verify_ign_for_registration, get_verification_embed_field
+
+            # Verify the IGN
+            is_valid, verification_message, riot_data = await verify_ign_for_registration(ign, "na")
+
+            if not is_valid:
+                # IGN verification failed - show error message
+                error_embed = discord.Embed(
+                    title="❌ IGN Verification Failed",
+                    description=f"**{ign}** could not be verified.\n\n{verification_message}",
+                    color=discord.Color.red()
+                )
+                error_embed.add_field(
+                    name="💡 Tips",
+                    value="• Make sure your IGN is spelled correctly\n"
+                          "• Include your tag if you have one (e.g., `Player#TAG`)\n"
+                          "• Try again after checking your Riot account",
+                    inline=False
+                )
+
+                await interaction.edit_original_response(embed=error_embed, view=None)
+                return
+
+            # Log verification result for admin reference
+            if "⚠️" in verification_message:
+                logging.warning(f"IGN verification warning for {discord_tag}: {verification_message}")
+            elif "✅" in verification_message:
+                logging.info(f"IGN verification successful for {discord_tag}: {ign}")
+
+        except Exception as e:
+            # IGN verification error - log but allow registration to continue
+            logging.error(f"IGN verification error for {discord_tag} ({ign}): {e}")
+            verification_message = "⚠️ IGN verification error - registration allowed"
+
         try:
             if mode == "doubleup" and team_value and not getattr(self, "bypass_similarity", False):
                 # Check for exact case-insensitive match first

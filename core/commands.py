@@ -1654,6 +1654,137 @@ async def onboard_cmd(interaction: discord.Interaction, action: app_commands.Cho
         await ErrorHandler.handle_interaction_error(interaction, e, "Onboard Command")
 
 
+@gal.command(name="test", description="Test the new Discord components layout.")
+async def test_cmd(interaction: discord.Interaction):
+    """Test the new Discord components layout."""
+    if not await Validators.validate_and_respond(
+            interaction,
+            Validators.validate_staff_permission(interaction)
+    ):
+        return
+
+    try:
+        from core.test_components import TestComponents
+
+        view = TestComponents()
+        await interaction.response.send_message(view=view, ephemeral=True)
+
+    except Exception as e:
+        await ErrorHandler.handle_interaction_error(interaction, e, "Test Command")
+
+
+@gal.command(name="placement", description="Get the latest TFT placement for a player.")
+@app_commands.describe(
+    riot_id="Riot ID to look up (format: GameName#TAG or just GameName)",
+    region="Region (default: na)"
+)
+@app_commands.choices(region=[
+    app_commands.Choice(name="North America (NA)", value="na"),
+    app_commands.Choice(name="Europe West (EUW)", value="euw"),
+    app_commands.Choice(name="Europe Nordic & East (EUNE)", value="eune"),
+    app_commands.Choice(name="Korea (KR)", value="kr"),
+    app_commands.Choice(name="Japan (JP)", value="jp"),
+    app_commands.Choice(name="Oceania (OCE)", value="oce"),
+    app_commands.Choice(name="Brazil (BR)", value="br"),
+    app_commands.Choice(name="Latin America North (LAN)", value="lan"),
+    app_commands.Choice(name="Latin America South (LAS)", value="las"),
+    app_commands.Choice(name="Russia (RU)", value="ru"),
+    app_commands.Choice(name="Turkey (TR)", value="tr")
+])
+async def placement_cmd(interaction: discord.Interaction, riot_id: str, region: Optional[app_commands.Choice[str]] = None):
+    """Get latest TFT placement for a player using Riot ID."""
+    try:
+        await interaction.response.defer()
+
+        # Default to NA if no region specified
+        region_value = region.value if region else "na"
+
+        # Import and use Riot API
+        from integrations.riot_api import RiotAPI
+
+        async with RiotAPI() as riot_api:
+            result = await riot_api.get_latest_placement(region_value, riot_id)
+
+        if result["success"]:
+            # Create success embed
+            embed = discord.Embed(
+                title="🎮 TFT Latest Placement",
+                color=discord.Color.gold() if result["placement"] <= 4 else discord.Color.blue()
+            )
+
+            # Add placement with emoji
+            placement_emojis = {
+                1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣",
+                5: "5️⃣", 6: "6️⃣", 7: "7️⃣", 8: "8️⃣"
+            }
+            placement_emoji = placement_emojis.get(result["placement"], f"{result['placement']}️⃣")
+
+            embed.add_field(
+                name="📊 Placement",
+                value=f"{placement_emoji} **{result['placement']}** out of {result['total_players']} players",
+                inline=False
+            )
+
+            embed.add_field(
+                name="👤 Player",
+                value=f"**{result['riot_id']}** (Level {result['level']})",
+                inline=True
+            )
+
+            embed.add_field(
+                name="🌍 Region",
+                value=result["region"],
+                inline=True
+            )
+
+            # Format game length (seconds to minutes:seconds)
+            game_length_minutes = result["game_length"] // 60
+            game_length_seconds = result["game_length"] % 60
+
+            embed.add_field(
+                name="⏱️ Game Length",
+                value=f"{game_length_minutes}m {game_length_seconds}s",
+                inline=True
+            )
+
+            # Add game version and match ID in footer
+            embed.set_footer(
+                text=f"Game Version: {result['game_version']} | Match ID: {result['match_id'][:8]}..."
+            )
+
+            # Add timestamp
+            import datetime
+            game_time = datetime.datetime.fromtimestamp(result["game_datetime"] / 1000, tz=datetime.timezone.utc)
+            embed.timestamp = game_time
+
+        else:
+            # Create error embed
+            embed = discord.Embed(
+                title="❌ TFT Placement Lookup Failed",
+                description=f"Could not retrieve placement data for **{result['riot_id']}** in **{result['region']}**",
+                color=discord.Color.red()
+            )
+
+            embed.add_field(
+                name="Error Details",
+                value=result["error"],
+                inline=False
+            )
+
+            # Add helpful tips based on error type
+            if "not found" in result["error"].lower():
+                embed.add_field(
+                    name="💡 Tips",
+                    value="• Check the Riot ID format (GameName#TAG)\n• Verify the region is correct\n• Ensure the player has recent TFT matches\n• Try including the full tag (e.g., Player#NA1)",
+                    inline=False
+                )
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        await ErrorHandler.handle_interaction_error(interaction, e, "Placement Command")
+
+
 @gal.command(name="help", description="Shows this help message.")
 async def help_cmd(interaction: discord.Interaction):
     """Display help information."""
@@ -1696,6 +1827,8 @@ async def help_cmd(interaction: discord.Interaction):
 @cache.error
 @config_cmd.error
 @onboard_cmd.error
+@test_cmd.error
+@placement_cmd.error
 @help_cmd.error
 async def command_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Enhanced global error handler for all GAL commands using Discord.py v2 features."""

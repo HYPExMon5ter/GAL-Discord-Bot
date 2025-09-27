@@ -237,6 +237,7 @@ async def serve_frontend():
 
 # Favicon endpoint
 @app.get("/favicon.ico")
+@app.head("/favicon.ico")
 async def favicon():
     """Return a simple favicon response."""
     return Response(status_code=204)  # No content

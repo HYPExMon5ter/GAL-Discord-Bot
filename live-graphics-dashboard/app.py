@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     global db_manager
 
     # Startup
-    logger.info("🚀 Starting Live Graphics Dashboard")
+    logger.info("Starting Live Graphics Dashboard")
 
     try:
         # Initialize database
@@ -78,16 +78,16 @@ async def lifespan(app: FastAPI):
         # Initialize IGN verification service
         await initialize_verification_service(db_manager)
 
-        logger.info("✅ Database and services initialized successfully")
+        logger.info("Database and services initialized successfully")
 
     except Exception as e:
-        logger.error(f"❌ Failed to initialize services: {e}")
+        logger.error(f"Failed to initialize services: {e}")
         raise
 
     yield
 
     # Shutdown
-    logger.info("🔽 Shutting down Live Graphics Dashboard")
+    logger.info("Shutting down Live Graphics Dashboard")
     if db_manager:
         if db_manager.primary_adapter:
             await db_manager.primary_adapter.disconnect()
@@ -205,7 +205,10 @@ app.include_router(archive.router, prefix="/api/archive", tags=["archive"])
 
 
 # Serve static files (React frontend)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+import os
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 # Serve React app
@@ -213,7 +216,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def serve_frontend():
     """Serve the React frontend."""
     try:
-        with open("static/index.html", "r") as f:
+        index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+        with open(index_path, "r") as f:
             return HTMLResponse(content=f.read(), status_code=200)
     except FileNotFoundError:
         return HTMLResponse(

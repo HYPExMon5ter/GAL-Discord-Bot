@@ -15,10 +15,10 @@ sys.path.insert(0, dashboard_dir)
 if __name__ == "__main__":
     # Development server
     port = int(os.getenv("PORT", 8080))
-    print(f"🚀 Starting Live Graphics Dashboard on port {port}")
-    print(f"📂 Dashboard directory: {dashboard_dir}")
-    print(f"🌐 Open http://localhost:{port} to view the dashboard")
-    print(f"📚 API docs available at http://localhost:{port}/docs")
+    print(f"Starting Live Graphics Dashboard on port {port}")
+    print(f"Dashboard directory: {dashboard_dir}")
+    print(f"Open http://localhost:{port} to view the dashboard")
+    print(f"API docs available at http://localhost:{port}/docs")
 
     uvicorn.run(
         "app:app",

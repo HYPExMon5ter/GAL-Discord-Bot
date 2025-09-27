@@ -92,17 +92,17 @@ class DatabaseManager:
                 self.primary_adapter = PostgreSQLAdapter(self.postgresql_url)
                 if await self.primary_adapter.connect():
                     self.current_adapter = self.primary_adapter
-                    print("✅ Connected to PostgreSQL (primary)")
+                    print("Connected to PostgreSQL (primary)")
                 else:
                     self.current_adapter = self.fallback_adapter
-                    print("⚠️  PostgreSQL unavailable, using SQLite fallback")
+                    print("PostgreSQL unavailable, using SQLite fallback")
             except Exception as e:
-                print(f"❌ PostgreSQL connection failed: {e}")
+                print(f"PostgreSQL connection failed: {e}")
                 self.current_adapter = self.fallback_adapter
-                print("⚠️  Using SQLite fallback")
+                print("Using SQLite fallback")
         else:
             self.current_adapter = self.fallback_adapter
-            print("ℹ️  No PostgreSQL URL provided, using SQLite")
+            print("No PostgreSQL URL provided, using SQLite")
 
         # Create tables in current adapter
         await self.current_adapter.create_tables()
@@ -114,7 +114,7 @@ class DatabaseManager:
     async def switch_to_fallback(self):
         """Switch to fallback storage if primary fails."""
         if self.current_adapter != self.fallback_adapter:
-            print("🔄 Switching to SQLite fallback")
+            print("Switching to SQLite fallback")
             self.current_adapter = self.fallback_adapter
             return True
         return False
@@ -124,12 +124,12 @@ class DatabaseManager:
         if self.primary_adapter and self.current_adapter == self.fallback_adapter:
             try:
                 if await self.primary_adapter.test_connection():
-                    print("🔄 Switching back to PostgreSQL")
+                    print("Switching back to PostgreSQL")
                     self.current_adapter = self.primary_adapter
                     # TODO: Sync any pending changes from SQLite to PostgreSQL
                     return True
             except Exception as e:
-                print(f"❌ PostgreSQL still unavailable: {e}")
+                print(f"PostgreSQL still unavailable: {e}")
         return False
 
     def is_using_fallback(self) -> bool:

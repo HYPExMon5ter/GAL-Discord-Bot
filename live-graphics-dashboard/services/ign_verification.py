@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple, Any
 
 import aiohttp
-from ..models.sessions import VerifiedIGN
-from ..storage.adapters.base import DatabaseManager
+from models.sessions import VerifiedIGN
+from storage.adapters.base import DatabaseManager
 
 
 class IGNVerificationError(Exception):

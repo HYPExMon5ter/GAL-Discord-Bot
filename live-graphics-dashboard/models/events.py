@@ -5,7 +5,7 @@ Event models for tournament/event management and archiving.
 from datetime import datetime, date
 from sqlalchemy import Column, Integer, String, Text, Date, DateTime, Boolean
 from sqlalchemy.orm import relationship
-from ..storage.adapters.base import Base
+from storage.adapters.base import Base
 
 
 class Event(Base):

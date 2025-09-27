@@ -5,7 +5,7 @@ Session models for tracking editing sessions and user activity.
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
-from ..storage.adapters.base import Base
+from storage.adapters.base import Base
 
 
 class EditingSession(Base):

@@ -5,7 +5,7 @@ History models for undo/redo functionality and state tracking.
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
-from ..storage.adapters.base import Base
+from storage.adapters.base import Base
 
 
 class GraphicsStateHistory(Base):

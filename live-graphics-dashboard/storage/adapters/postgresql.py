@@ -76,7 +76,7 @@ class PostgreSQLAdapter(StorageAdapter):
         """Create all necessary tables in PostgreSQL."""
         try:
             # Import models to register them with Base
-            from ...models import events, graphics, history, sessions
+            from models import events, graphics, history, sessions
 
             # Create all tables
             Base.metadata.create_all(bind=self.engine)
@@ -172,10 +172,10 @@ class PostgreSQLAdapter(StorageAdapter):
 
     def _get_model_class(self, table_name: str):
         """Get SQLAlchemy model class for table name."""
-        from ...models.events import Event
-        from ...models.graphics import GraphicsTemplate, GraphicsInstance
-        from ...models.history import GraphicsStateHistory
-        from ...models.sessions import EditingSession
+        from models.events import Event
+        from models.graphics import GraphicsTemplate, GraphicsInstance
+        from models.history import GraphicsStateHistory
+        from models.sessions import EditingSession
 
         model_map = {
             'events': Event,

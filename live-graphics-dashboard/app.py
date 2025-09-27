@@ -13,7 +13,7 @@ from typing import Dict, Any
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from storage.adapters.base import DatabaseManager
@@ -217,7 +217,7 @@ async def serve_frontend():
     """Serve the React frontend."""
     try:
         index_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-        with open(index_path, "r") as f:
+        with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), status_code=200)
     except FileNotFoundError:
         return HTMLResponse(
@@ -235,12 +235,20 @@ async def serve_frontend():
         )
 
 
+# Favicon endpoint
+@app.get("/favicon.ico")
+async def favicon():
+    """Return a simple favicon response."""
+    return Response(status_code=204)  # No content
+
+
 # Catch-all route for React Router
 @app.get("/{full_path:path}", response_class=HTMLResponse)
 async def serve_frontend_routes(full_path: str):
     """Serve React app for all frontend routes."""
-    # Exclude API routes
-    if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("ws/"):
+    # Exclude API routes and favicon
+    if (full_path.startswith("api/") or full_path.startswith("docs") or
+        full_path.startswith("ws/") or full_path == "favicon.ico"):
         raise HTTPException(status_code=404, detail="Not found")
 
     return await serve_frontend()

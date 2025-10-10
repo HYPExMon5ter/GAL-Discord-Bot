@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -n "$(git status --porcelain .agent | grep -v '^\?\?')" ]; then
+  if git diff --name-only | grep -q ".agent/system/"; then
+    msg="docs: refresh system documentation"
+  elif git diff --name-only | grep -q ".agent/tasks/"; then
+    msg="docs: update tasks/prds"
+  elif git diff --name-only | grep -q ".agent/snapshots/"; then
+    msg="chore: refresh documentation snapshot"
+  else
+    msg="docs: maintain documentation"
+  fi
+  git add .agent
+  git commit -m "$msg" || true
+else
+  echo "No documentation changes detected."
+fi

@@ -412,5 +412,36 @@ def get_guild_statistics() -> Dict[str, int]:
     return stats
 
 
+def get_guild_data(guild_id: Union[str, int]) -> Dict[str, Any]:
+    """
+    Get all data for a specific guild.
+    """
+    return persisted.get(str(guild_id), {})
+
+
+def update_guild_data(guild_id: Union[str, int], data: Dict[str, Any]) -> None:
+    """
+    Update guild data with new values.
+    """
+    # Environment check to prevent dev from overwriting prod
+    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    dev_guild_id = os.getenv("DEV_GUILD_ID")
+    gid = str(guild_id)
+
+    # If we're in dev mode, only allow saving dev guild data
+    if not is_production and dev_guild_id:
+        if gid != dev_guild_id:
+            logging.warning(f"Blocked guild data save for non-dev guild {gid} in dev mode")
+            return
+
+    if gid not in persisted:
+        persisted[gid] = {}
+
+    persisted[gid].update(data)
+    save_persisted(persisted)
+
+    logging.debug(f"Updated guild data for {gid}: {list(data.keys())}")
+
+
 # Log initialization
 logging.info(f"Persistence system initialized. Stats: {get_guild_statistics()}")

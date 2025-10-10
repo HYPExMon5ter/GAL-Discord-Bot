@@ -14,6 +14,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 from config import get_sheet_settings, col_to_index, get_registered_role, get_checked_in_role
 from core.persistence import get_event_mode_for_guild
+from integrations.sheet_integration import SheetIntegrationHelper
+from integrations.sheet_optimizer import (
+    fetch_required_columns_batch, update_cells_batch, detect_columns_optimized
+)
 
 # Scope for Google Sheets API
 SCOPE = [
@@ -240,60 +244,80 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                 print(f"[CACHE] Guild ID: {gid}")
 
             mode = get_event_mode_for_guild(gid)
-            cfg = get_sheet_settings(mode)
+            cfg, col_indexes = await SheetIntegrationHelper.get_sheet_and_column_config(gid)
 
-            # Validate configuration
-            required_fields = ["header_line_num", "max_players", "discord_col", "ign_col",
-                               "alt_ign_col", "registered_col", "checkin_col"]
-            missing_fields = [field for field in required_fields if field not in cfg]
-            if missing_fields:
-                raise SheetsError(f"Missing configuration fields: {missing_fields}")
+            # Validate configuration using column config from persistence
+            column_config = await SheetIntegrationHelper.get_column_config(gid)
+            is_valid, missing_columns = SheetIntegrationHelper.validate_required_columns(column_config, mode)
+            if not is_valid:
+                logging.error(f"[CACHE] Missing required columns: {missing_columns}")
+                logging.error(f"[CACHE] Column config: {column_config}")
+                logging.error(f"[CACHE] This can be fixed by running /gal config and using the Detect button")
+                raise SheetsError(f"Missing required columns: {missing_columns}")
 
             maxp = cfg.get("max_players", 9999)
             # AWAIT the async function
             sheet = await get_sheet_for_guild(gid, "GAL Database")
 
-            # Get column indexes
+            # Get column indexes from integration helper
             hline = cfg["header_line_num"]
-            dc = col_to_index(cfg["discord_col"])
-            ic = col_to_index(cfg["ign_col"])
-            ac = col_to_index(cfg["alt_ign_col"])
-            pc = col_to_index(cfg["pronouns_col"])
-            rc = col_to_index(cfg["registered_col"])
-            cc = col_to_index(cfg["checkin_col"])
-            tc = col_to_index(cfg["team_col"]) if mode == "doubleup" and "team_col" in cfg else None
+            dc = col_indexes.get("discord_idx")
+            ic = col_indexes.get("ign_idx")
+            ac = col_indexes.get("alt_idx")
+            pc = col_indexes.get("pronouns_idx")
+            rc = col_indexes.get("registered_idx")
+            cc = col_indexes.get("checkin_idx")
+            tc = col_indexes.get("team_idx")
 
-            # Fetch all columns with error handling
+            # Validate that we have the required column indexes
+            required_indexes = ["discord_idx", "ign_idx", "registered_idx", "checkin_idx"]
+            missing_indexes = [idx for idx in required_indexes if idx not in col_indexes]
+            if missing_indexes:
+                raise SheetsError(f"Missing column indexes: {missing_indexes}")
+
+            if mode == "doubleup" and "team_idx" not in col_indexes:
+                raise SheetsError("Team column index missing for doubleup mode")
+
+            # Fetch all required columns in a single batch operation
             if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print("[CACHE] Fetching sheet columns...")
+                print("[CACHE] Fetching sheet columns (optimized batch)...")
             try:
-                discord_vals = await retry_until_successful(sheet.col_values, dc)
-                ign_vals = await retry_until_successful(sheet.col_values, ic)
-                alt_vals = await retry_until_successful(sheet.col_values, ac)
-                pronouns_vals = await retry_until_successful(sheet.col_values, pc)
-                reg_vals = await retry_until_successful(sheet.col_values, rc)
-                ci_vals = await retry_until_successful(sheet.col_values, cc)
-                team_vals = await retry_until_successful(sheet.col_values, tc) if tc else []
-            except Exception as e:
-                raise SheetsError(f"Failed to fetch sheet data: {e}")
+                # Prepare column indexes for batch fetching
+                column_indexes = {
+                    "discord_idx": dc,
+                    "ign_idx": ic,
+                    "alt_idx": ac,
+                    "pronouns_idx": pc,
+                    "registered_idx": rc,
+                    "checkin_idx": cc
+                }
 
-            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print("[CACHE] Processing data...")
-            # Slice to relevant range
-            start = hline
-            end = hline + maxp
-            discord_col = discord_vals[start:end] if len(discord_vals) > start else []
-            ign_col = ign_vals[start:end] if len(ign_vals) > start else []
-            alt_col = alt_vals[start:end] if len(alt_vals) > start else []
-            pronouns_col = pronouns_vals[start:end] if len(pronouns_vals) > start else []
-            reg_col = reg_vals[start:end] if len(reg_vals) > start else []
-            ci_col = ci_vals[start:end] if len(ci_vals) > start else []
-            team_col = team_vals[start:end] if tc and len(team_vals) > start else []
+                if tc:
+                    column_indexes["team_idx"] = tc
+
+                # Fetch all columns in one API call
+                batch_data = await fetch_required_columns_batch(sheet, column_indexes, hline, maxp)
+
+                # Extract column data
+                discord_col = batch_data.get("discord_idx", [])
+                ign_col = batch_data.get("ign_idx", [])
+                alt_col = batch_data.get("alt_idx", [])
+                pronouns_col = batch_data.get("pronouns_idx", [])
+                reg_col = batch_data.get("registered_idx", [])
+                ci_col = batch_data.get("checkin_idx", [])
+                team_col = batch_data.get("team_idx", [])
+
+                if not hasattr(sheet_cache, "_skip_waitlist_processing"):
+                    print(f"[CACHE] Successfully fetched {len(batch_data)} columns in batch")
+
+            except Exception as e:
+                raise SheetsError(f"Failed to fetch sheet data in batch: {e}")
 
             # Build new cache mapping
+            start = hline
             new_map = {}
-            for idx, tag in enumerate(discord_col, start=start + 1):
-                offset = idx - (start + 1)
+            for idx, tag in enumerate(discord_col, start=hline + 1):
+                offset = idx - (hline + 1)
                 tag = str(tag).strip()
 
                 if not tag:
@@ -544,7 +568,7 @@ async def find_or_register_user(
 
         gid = str(guild_id) if guild_id else "unknown"
         mode = get_event_mode_for_guild(gid)
-        cfg = get_sheet_settings(mode)
+        cfg, col_indexes = await SheetIntegrationHelper.get_sheet_and_column_config(gid)
         sheet = await get_sheet_for_guild(gid, "GAL Database")  # ADD AWAIT
 
         # Update existing user
@@ -553,49 +577,46 @@ async def find_or_register_user(
 
             updates_needed = []
 
+            # Collect all updates to do them in a single batch
+            batch_updates = []
+
             if old_ign != ign:
-                await retry_until_successful(
-                    sheet.update_acell,
-                    f"{cfg['ign_col']}{row}",
-                    ign
-                )
-                updates_needed.append("IGN")
+                ign_col = await SheetIntegrationHelper.get_column_letter(gid, "ign_col")
+                if ign_col:
+                    batch_updates.append((f"{ign_col}{row}", ign))
+                    updates_needed.append("IGN")
 
             if not old_reg:
-                await retry_until_successful(
-                    sheet.update_acell,
-                    f"{cfg['registered_col']}{row}",
-                    True
-                )
-                updates_needed.append("registration")
+                reg_col = await SheetIntegrationHelper.get_column_letter(gid, "registered_col")
+                if reg_col:
+                    batch_updates.append((f"{reg_col}{row}", True))
+                    updates_needed.append("registration")
 
             if mode == "doubleup" and team_name and old_team != team_name:
-                await retry_until_successful(
-                    sheet.update_acell,
-                    f"{cfg['team_col']}{row}",
-                    team_name
-                )
-                updates_needed.append("team")
+                team_col = await SheetIntegrationHelper.get_column_letter(gid, "team_col")
+                if team_col:
+                    batch_updates.append((f"{team_col}{row}", team_name))
+                    updates_needed.append("team")
 
             # Update alt IGNs if provided and different
             if alt_igns is not None and alt_igns != old_alt:
-                if "alt_ign_col" in cfg:
-                    await retry_until_successful(
-                        sheet.update_acell,
-                        f"{cfg['alt_ign_col']}{row}",
-                        alt_igns
-                    )
+                alt_col = await SheetIntegrationHelper.get_column_letter(gid, "alt_ign_col")
+                if alt_col:
+                    batch_updates.append((f"{alt_col}{row}", alt_igns))
                     updates_needed.append("alt IGNs")
 
             # Update pronouns if provided and different
             if pronouns is not None and pronouns != old_pronouns:
-                if "pronouns_col" in cfg:
-                    await retry_until_successful(
-                        sheet.update_acell,
-                        f"{cfg['pronouns_col']}{row}",
-                        pronouns
-                    )
+                pronouns_col = await SheetIntegrationHelper.get_column_letter(gid, "pronouns_col")
+                if pronouns_col:
+                    batch_updates.append((f"{pronouns_col}{row}", pronouns))
                     updates_needed.append("pronouns")
+
+            # Execute all updates in a single batch
+            if batch_updates:
+                success = await update_cells_batch(sheet, batch_updates)
+                if not success:
+                    raise SheetsError("Failed to update user data in batch")
 
             # Update cache with NEW values (not old ones!)
             sheet_cache["users"][discord_tag] = (
@@ -611,9 +632,15 @@ async def find_or_register_user(
         # Register new user
         hline = cfg["header_line_num"]
         maxp = cfg.get("max_players", 9999)
-        dc_idx = col_to_index(cfg["discord_col"])
+        dc_idx = col_indexes.get("discord_idx")
 
-        discord_vals = await retry_until_successful(sheet.col_values, dc_idx)
+        if not dc_idx:
+            raise SheetsError("Discord column index not found")
+
+        # Fetch discord column only (we just need to find empty rows)
+        discord_column_indexes = {"discord_idx": dc_idx}
+        discord_data = await fetch_required_columns_batch(sheet, discord_column_indexes, hline, maxp)
+        discord_vals = discord_data.get("discord_idx", [])
 
         # Find first empty slot - check from header+1 to header+max_players for empty text content
         target_row = None
@@ -628,45 +655,63 @@ async def find_or_register_user(
                 break
 
         # Prepare data to write
-        writes = {
-            cfg["discord_col"]: discord_tag,
-            cfg["ign_col"]: ign,
-            cfg["registered_col"]: True,
-            cfg["checkin_col"]: False
-        }
+        writes = {}
 
-        if mode == "doubleup" and "team_col" in cfg:
-            writes[cfg["team_col"]] = team_name or ""
+        # Get all column letters
+        discord_col = await SheetIntegrationHelper.get_column_letter(gid, "discord_col")
+        ign_col = await SheetIntegrationHelper.get_column_letter(gid, "ign_col")
+        reg_col = await SheetIntegrationHelper.get_column_letter(gid, "registered_col")
+        checkin_col = await SheetIntegrationHelper.get_column_letter(gid, "checkin_col")
+
+        if discord_col:
+            writes[discord_col] = discord_tag
+        if ign_col:
+            writes[ign_col] = ign
+        if reg_col:
+            writes[reg_col] = True
+        if checkin_col:
+            writes[checkin_col] = False
+
+        if mode == "doubleup":
+            team_col = await SheetIntegrationHelper.get_column_letter(gid, "team_col")
+            if team_col:
+                writes[team_col] = team_name or ""
 
         # Add alt IGNs and pronouns if columns exist
-        if "alt_ign_col" in cfg:
-            writes[cfg["alt_ign_col"]] = alt_igns or ""
-        if "pronouns_col" in cfg:
-            writes[cfg["pronouns_col"]] = pronouns or ""
+        alt_col = await SheetIntegrationHelper.get_column_letter(gid, "alt_ign_col")
+        if alt_col:
+            writes[alt_col] = alt_igns or ""
+
+        pronouns_col = await SheetIntegrationHelper.get_column_letter(gid, "pronouns_col")
+        if pronouns_col:
+            writes[pronouns_col] = pronouns or ""
 
         if target_row:
-            # Write to existing formatted row
-            for col, val in writes.items():
-                await retry_until_successful(
-                    sheet.update_acell,
-                    f"{col}{target_row}",
-                    val
-                )
+            # Write to existing formatted row using batch update
+            updates = [(f"{col}{target_row}", val) for col, val in writes.items()]
+            success = await update_cells_batch(sheet, updates)
+            if not success:
+                raise SheetsError("Failed to update user data in batch")
             row = target_row
         else:
-            # Append new row
-            cols_idx = [col_to_index(c) for c in writes.keys()]
-            max_idx = max(cols_idx)
+            # Append new row using optimized append
+            # Convert writes dict to ordered list based on column order
+            from integrations.sheet_optimizer import SheetDataOptimizer
+            max_idx = max([col_to_index(col) for col in writes.keys()])
             row_vals = [""] * max_idx
 
             for col, val in writes.items():
                 row_vals[col_to_index(col) - 1] = val
 
-            await retry_until_successful(sheet.append_row, row_vals)
+            success = await SheetDataOptimizer.append_row_batch(sheet, row_vals, max_idx)
+            if not success:
+                raise SheetsError("Failed to append new row")
 
-            # Get new row number
-            dc_vals = await retry_until_successful(sheet.col_values, dc_idx)
-            row = len(dc_vals)
+            # Get new row number by fetching just the discord column
+            discord_column_indexes = {"discord_idx": dc_idx}
+            discord_data = await fetch_required_columns_batch(sheet, discord_column_indexes, hline, maxp + 10)
+            discord_vals = discord_data.get("discord_idx", [])
+            row = len([v for v in discord_vals if v.strip()]) + hline
 
         # Update cache
         sheet_cache["users"][discord_tag] = (

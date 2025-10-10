@@ -17,3 +17,6 @@ alembic
 websockets
 redis
 jinja2
+obs-websocket-client
+playwright
+Pillow

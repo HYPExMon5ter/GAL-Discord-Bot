@@ -21,6 +21,23 @@ def setup_logging():
     from colorama import Fore, Style
     colorama.init(autoreset=True)
 
+    # Fix Windows console encoding for Unicode support
+    if sys.platform == "win32":
+        import locale
+        try:
+            # Set console to UTF-8 mode
+            if hasattr(sys.stdout, 'reconfigure'):
+                sys.stdout.reconfigure(encoding='utf-8')
+                sys.stderr.reconfigure(encoding='utf-8')
+            else:
+                # Fallback for older Python versions
+                import codecs
+                sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer)
+                sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer)
+        except Exception:
+            # If encoding setup fails, continue with default encoding
+            pass
+
     class ColoredFormatter(logging.Formatter):
         """Custom formatter with colors for different log levels."""
 

@@ -29,7 +29,9 @@ if not APPLICATION_ID:
 def load_config() -> Dict[str, Any]:
     """Load and validate configuration from config.yaml."""
     try:
-        with open("config.yaml", "r", encoding="utf-8") as f:
+        # Look for config.yaml relative to this file's location
+        config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+        with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
         # Validate required sections
@@ -72,6 +74,14 @@ def get_registered_role() -> str:
 def get_checked_in_role() -> str:
     """Get checked-in role name from config."""
     return _FULL_CFG.get("roles", {}).get("checked_in_role", "Checked In")
+
+
+def get_live_graphics_settings() -> Dict[str, str]:
+    """Get live graphics dashboard configuration settings."""
+    return {
+        "base_url": os.getenv("LIVE_GFX_BASE_URL", "http://localhost:5173"),
+        "token": os.getenv("LIVE_GFX_TOKEN", "supersecrettoken")
+    }
 
 
 def get_ping_user() -> str:
@@ -433,14 +443,21 @@ def validate_configuration() -> None:
             errors.append(f"Missing sheet URLs for {mode} mode")
 
         # Check essential fields
-        essential = ["header_line_num", "max_players", "discord_col",
-                     "ign_col", "registered_col", "checkin_col"]
-        if mode == "doubleup":
-            essential.append("team_col")
+        # Only require essential fields - column assignments are now managed by persistence system
+        essential = ["header_line_num", "max_players"]
+
+        # Also require sheet URLs
+        if "sheet_url_dev" not in mode_config:
+            errors.append(f"Missing sheet_url_dev in {mode}")
+        if "sheet_url_prod" not in mode_config:
+            errors.append(f"Missing sheet_url_prod in {mode}")
 
         missing = [f for f in essential if f not in mode_config]
         if missing:
             errors.append(f"Missing fields in {mode}: {missing}")
+
+        # Log that column assignments are now managed by persistence
+        logging.info(f"[CONFIG] Column assignments for {mode} mode are now managed by persistence system")
 
     if errors:
         error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)

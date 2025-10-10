@@ -1,12 +1,10 @@
 # integrations/riot_api.py
 
-import asyncio
 import logging
 import os
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 
 import aiohttp
-import discord
 
 
 class RiotAPIError(Exception):
@@ -120,6 +118,12 @@ class RiotAPI:
         """Get summoner information by PUUID."""
         platform = self._get_platform_endpoint(region)
         url = f"https://{platform}.api.riotgames.com/tft/summoner/v1/summoners/by-puuid/{puuid}"
+        return await self._make_request(url)
+
+    async def get_league_entries(self, region: str, summoner_id: str) -> List[Dict[str, Any]]:
+        """Get TFT league (rank) entries for a summoner."""
+        platform = self._get_platform_endpoint(region)
+        url = f"https://{platform}.api.riotgames.com/tft/league/v1/entries/by-summoner/{summoner_id}"
         return await self._make_request(url)
 
     async def get_match_history(self, region: str, puuid: str, count: int = 20) -> List[str]:

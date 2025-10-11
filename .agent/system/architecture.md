@@ -153,3 +153,29 @@ except Exception as e:
 **Documentation Status**: Complete and current  
 **Security Status**: Enhanced with comprehensive token masking  
 **Last Reviewed**: 2025-06-17
+
+
+## Security & Logging
+
+### Token Management
+- **Secure Logging**: All tokens and API keys are automatically masked in logs
+- **Environment Variables**: Sensitive variables are properly handled and not exposed
+- **Error Handling**: Login failures provide useful information without exposing credentials
+- **Debug Mode**: Token previews available in debug logs (last 4 characters only)
+
+### Log Sanitization
+- **Automatic Detection**: Discord tokens, API keys, and sensitive data patterns are detected
+- **Pattern Matching**: Regular expression-based detection of token formats
+- **Safe Logging**: All log messages are sanitized before output
+- **Debug Support**: Masked information available for troubleshooting
+
+### Implementation
+```python
+from utils.logging_utils import mask_token, sanitize_log_message
+
+# Secure error handling
+except discord.LoginFailure:
+    logging.error("Failed to login - check your Discord token configuration")
+    if DISCORD_TOKEN:
+        logging.debug(f"Token preview: {mask_token(DISCORD_TOKEN)}")
+```

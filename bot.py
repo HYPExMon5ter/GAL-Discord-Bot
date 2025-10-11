@@ -12,6 +12,7 @@ from config import DISCORD_TOKEN, APPLICATION_ID
 from core.commands import setup as setup_commands
 from core.events import setup_events
 from helpers.environment_helpers import EnvironmentHelper
+from utils.logging_utils import sanitize_log_message, mask_token
 
 
 # Configure logging with better formatting
@@ -470,7 +471,11 @@ class GALBot(commands.Bot):
         try:
             self.run(DISCORD_TOKEN, log_handler=None)  # We handle logging ourselves
         except discord.LoginFailure:
-            logging.error("Failed to login - check your Discord token")
+            logging.error("Failed to login - check your Discord token configuration")
+            if DISCORD_TOKEN:
+                logging.debug(f"Token format validation failed. Token preview: {mask_token(DISCORD_TOKEN)}")
+            else:
+                logging.error("DISCORD_TOKEN environment variable is not set")
             sys.exit(1)
         except discord.ConnectionClosed:
             logging.error("Connection to Discord was closed")

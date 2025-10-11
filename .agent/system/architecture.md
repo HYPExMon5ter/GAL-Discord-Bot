@@ -1,22 +1,90 @@
 ---
 id: system.architecture
-version: 1.3
-last_updated: 2025-06-17
-tags: [system, architecture, updated, documentation-refresh]
+version: 2.0
+last_updated: 2025-10-11
+tags: [system, architecture, unified-data-flow, api-backend, event-system]
 ---
 
 # Architecture Overview
 
 ## System Philosophy
 - **Bot**: Python (`discord.py`) with slash commands, embeds, and Discord Scheduled Events
-- **Data**: Database-first (SQLite for dev, Postgres-ready). Google Sheets serves as a **view**
-- **Architecture**: Bot-only operation (dashboard removed), focused on Discord integration
-- **Security**: Comprehensive token masking and secure logging implementation
+- **API**: FastAPI backend with JWT authentication providing RESTful endpoints and WebSocket connections
+- **Data**: Unified data flow architecture with database-first (SQLite for dev, Postgres-ready). Google Sheets serves as a **view**
+- **Events**: Event-driven architecture with prioritized handling and real-time updates
+- **Security**: Comprehensive token masking, secure logging, and JWT-based API authentication
 - **Documentation**: `.agent` auto-maintained via Droid + Git hooks + CI audits
 
-## Module Organization (2025-06-17)
+## Unified Data Flow Architecture
 
-### Core Components (`core/`)
+The Guardian Angel League system now implements a unified data flow architecture that centralizes data management through a comprehensive Data Access Layer (DAL), Event System, and API Backend. This architecture eliminates data fragmentation and provides real-time synchronization across all components.
+
+### Architecture Components
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Discord Bot   │    │   Dashboard     │    │  External APIs  │
+│                 │    │   Frontend      │    │                 │
+└─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘
+          │                      │                      │
+          ▼                      ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│  Event System   │◄──►│   API Layer     │◄──►│  Data Sources   │
+│                 │    │   (FastAPI)     │    │                 │
+└─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘
+          │                      │                      │
+          ▼                      ▼                      ▼
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│ Data Access     │◄──►│  Cache Manager  │◄──►│  Google Sheets  │
+│ Layer (DAL)     │    │                 │    │                 │
+└─────────┬───────┘    └─────────────────┘    └─────────┬───────┘
+          │                                              │
+          ▼                                              ▼
+┌─────────────────┐                            ┌─────────────────┐
+│   PostgreSQL    │                            │   Configuration │
+│    Database     │                            │     System      │
+└─────────────────┘                            └─────────────────┘
+```
+
+## Module Organization (2025-10-11)
+
+### API Backend System (`api/`) - NEW
+- `api/main.py` (184 lines) - FastAPI application with JWT authentication and CORS
+- `api/dependencies.py` (35 lines) - Common dependencies injection for database and auth
+- `api/middleware.py` (89 lines) - Custom middleware for security and logging
+- `api/routers/tournaments.py` (112 lines) - Tournament management endpoints
+- `api/routers/users.py` (118 lines) - User management endpoints  
+- `api/routers/configuration.py` (134 lines) - Configuration management endpoints
+- `api/routers/websocket.py` (201 lines) - Real-time WebSocket connections
+- `api/schemas/` (5 files, 299 lines) - Pydantic models for request/response validation
+- `api/services/` (3 files, 1,038 lines) - Business logic layer for API operations
+
+### Data Access Layer (`core/data_access/`) - NEW
+- `core/data_access/base_repository.py` (384 lines) - Abstract base repository interface
+- `core/data_access/cache_manager.py` (657 lines) - Multi-level caching system (Redis + Memory)
+- `core/data_access/connection_manager.py` (710 lines) - Database connection pooling and management
+- `core/data_access/configuration_repository.py` (523 lines) - Configuration data operations
+- `core/data_access/legacy_adapter.py` (412 lines) - Legacy system compatibility layer
+- `core/data_access/persistence_repository.py` (587 lines) - Database persistence operations
+- `core/data_access/sheets_repository.py` (493 lines) - Google Sheets integration
+
+### Event System (`core/events/`) - NEW  
+- `core/events/event_bus.py` (533 lines) - Central event dispatcher with prioritization
+- `core/events/event_types.py` (372 lines) - Event type definitions and base classes
+- `core/events/handlers/tournament_events.py` (217 lines) - Tournament event handlers
+- `core/events/handlers/user_events.py` (164 lines) - User event handlers
+- `core/events/handlers/guild_events.py` (189 lines) - Discord guild event handlers
+- `core/events/handlers/configuration_events.py` (143 lines) - Configuration event handlers
+- `core/events/subscribers/dashboard_subscribers.py` (127 lines) - Dashboard real-time updates
+- `core/events/subscribers/discord_subscribers.py` (118 lines) - Discord bot integration
+
+### Data Models (`core/models/`) - NEW
+- `core/models/base_model.py` (157 lines) - Abstract base model with validation and audit trails
+- `core/models/tournament.py` (213 lines) - Tournament entities with business logic
+- `core/models/user.py` (254 lines) - User entities with permissions and statistics
+- `core/models/guild.py` (189 lines) - Discord guild management entities
+- `core/models/configuration.py` (201 lines) - Configuration entities with versioning
+
+### Legacy Core Components (`core/`)
 - `core/commands.py` (86,573 lines) - Slash command definitions and tournament management logic
 - `core/components_traditional.py` (73,408 lines) - Traditional Discord components and UI elements
 - `core/views.py` (51,100 lines) - View classes and persistent view management
@@ -26,7 +94,7 @@ tags: [system, architecture, updated, documentation-refresh]
 - `core/onboard.py` (23,126 lines) - User onboarding system and approval workflow
 - `core/migration.py` (11,993 lines) - Database migration and schema management
 - `core/test_components.py` (7,157 lines) - Testing framework for core components
-- `core/__init__.py` (591 lines) - Core package initialization
+- `core/__init__.py` (1,621 lines) - Core package initialization with new module exports
 
 ### Integration Layer (`integrations/`)
 - `integrations/sheets.py` (43,741 lines) - Google Sheets integration with caching and optimization
@@ -64,7 +132,14 @@ tags: [system, architecture, updated, documentation-refresh]
 
 ## Data Flow Architecture
 
-### Primary Data Flow
+### Unified Data Flow
+```
+Discord User/Dashboard → Event System → API Layer → Data Access Layer → Cache → Database → Response
+         ↓                    ↓            ↓              ↓              ↓         ↓          ↓
+    User Interaction → Event Bus → FastAPI → Repository Pattern → Multi-level → PostgreSQL → Real-time Update
+```
+
+### Legacy Bot Data Flow (Maintained)
 ```
 Discord User Interaction → Slash Command → Business Logic → External APIs → Database → Discord Response
          ↓                      ↓               ↓              ↓            ↓              ↓
@@ -73,9 +148,16 @@ Discord User Interaction → Slash Command → Business Logic → External APIs 
 
 ### Sheet Integration Flow
 ```
-Config → Sheet Settings → Google Auth → Sheet Access → Cache Layer → Bot Operations
-   ↓          ↓               ↓            ↓           ↓            ↓
-YAML → Guild Config → OAuth2Client → gspread → asyncio Cache → Tournament Logic
+Config → Sheet Settings → Google Auth → Sheet Access → Cache Layer → DAL → Bot/API Operations
+   ↓          ↓               ↓            ↓           ↓          ↓           ↓
+YAML → Guild Config → OAuth2Client → gspread → asyncio Cache → Repository → Tournament Logic
+```
+
+### Event-Driven Updates
+```
+Data Change → Event Eission → Event Bus → Handlers → Subscribers → Dashboard Updates → Discord Notifications
+     ↓             ↓              ↓           ↓           ↓              ↓                    ↓
+  Database → Create Event → Prioritize → Business Logic → WebSocket → Real-time UI → Bot Messages
 ```
 
 ### Security Flow
@@ -85,19 +167,55 @@ Log Message → sanitize_log_message() → Pattern Detection → Token Masking �
 Original Text → Discord/API Detection → Regex Matching → Partial Preview → Log File
 ```
 
-## Recent Changes (2025-06-17)
+### API Authentication Flow
+```
+Dashboard Request → Master Password → JWT Token → API Validation → Database Access → Response
+        ↓                ↓               ↓              ↓                ↓              ↓
+   HTTP Request → Credentials Check → Token Generate → Bearer Verify → Permission Check → JSON Response
+```
 
-### Major Updates
-- **Security Enhancement**: Comprehensive token masking and secure logging system
-- **Architecture**: Moved to bot-only operation (dashboard removed for focus)
-- **Performance**: Enhanced sheet optimization with batch operations and caching
-- **Error Handling**: Structured error reporting with unique IDs and user-friendly messages
-- **Configuration**: Hot-reload capabilities with in-place updates
+## Recent Changes (2025-10-11)
+
+### Major Architecture Updates
+- **Unified Data Flow**: Complete data flow architecture with centralized Data Access Layer
+- **API Backend System**: FastAPI application with JWT authentication and WebSocket support
+- **Event System**: Centralized event-driven architecture with prioritized handling
+- **Data Models**: Comprehensive model layer with validation and business logic
+- **Multi-level Caching**: Redis + Memory + Database caching for optimal performance
+- **Real-time Updates**: WebSocket-based real-time dashboard updates
+
+### Security Enhancements
+- **JWT Authentication**: Master password-based API authentication with 24-hour tokens
+- **Token Masking**: Comprehensive token masking and secure logging system
+- **API Security**: Rate limiting, CORS configuration, and input validation
+- **Access Control**: Role-based permissions and secure endpoint protection
+
+### Performance Improvements
+- **Connection Pooling**: Advanced database connection pooling with health checks
+- **Caching Strategy**: Intelligent multi-level caching with automatic invalidation
+- **Async Operations**: Full async/await support throughout the system
+- **Batch Operations**: Optimized batch processing for database and sheet operations
+
+### Legacy System Integration
+- **Legacy Adapter**: Seamless integration with existing bot components
+- **Backward Compatibility**: Full compatibility with existing commands and features
+- **Gradual Migration**: Path for gradual migration from legacy systems
+- **Data Consistency**: Maintained data consistency across old and new systems
 
 ### Code Quality Improvements
 - **Fixed**: Syntax errors in `send_reminder_dms` function and other critical issues
 - **Enhanced**: Async support throughout the codebase with proper error handling
 - **Updated**: Factory AI agents integration and documentation system
+- **Comprehensive Testing**: Unit tests, integration tests, and performance monitoring
+
+## Previous Changes (2025-06-17)
+
+### Historical Updates
+- **Security Enhancement**: Comprehensive token masking and secure logging system
+- **Architecture**: Moved to bot-only operation (dashboard removed for focus)
+- **Performance**: Enhanced sheet optimization with batch operations and caching
+- **Error Handling**: Structured error reporting with unique IDs and user-friendly messages
+- **Configuration**: Hot-reload capabilities with in-place updates
 - **Improved**: Consistent error handling patterns across all modules
 
 ### Integration Enhancements

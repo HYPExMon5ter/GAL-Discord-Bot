@@ -3,7 +3,7 @@
 import logging
 import os
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 import discord
 import yaml
@@ -15,6 +15,9 @@ from config import (
     get_unified_channel_name, get_registered_role, get_checked_in_role
 )
 from core.components_traditional import update_unified_channel
+from core.config_ui import (
+    ColumnMappingView, SettingsView
+)
 from core.persistence import (
     get_event_mode_for_guild, set_event_mode_for_guild
 )
@@ -26,10 +29,6 @@ from helpers import (
 from integrations.sheets import (
     refresh_sheet_cache
 )
-from core.config_ui import (
-    ColumnMappingView, SettingsView
-)
-
 
 
 async def send_reminder_dms(
@@ -56,31 +55,30 @@ async def send_reminder_dms(
             cache_snapshot = dict(sheet_cache["users"])
 
         for discord_tag, user_tuple in cache_snapshot.items():
-            try:
-                # Check if user is registered but not checked in
-                if len(user_tuple) < 4:
-                    continue
+            # Check if user is registered but not checked in
+            if len(user_tuple) < 4:
+                continue
 
-                is_reg = str(user_tuple[2]).upper() == "TRUE"
-                is_ci = str(user_tuple[3]).upper() == "TRUE"
+            is_reg = str(user_tuple[2]).upper() == "TRUE"
+            is_ci = str(user_tuple[3]).upper() == "TRUE"
 
-                if is_reg and not is_ci:
-                    try:
-                        member = await resolve_member(guild, discord_tag)
-                        if member:
-                            dm = await member.create_dm()
-                            await dm.send(embed=dm_embed, view=view_cls)
-                            dmmed.append(discord_tag)
-                        else:
-                            if not skip_member_resolution:
-                                failed_dms += 1
-                    except discord.Forbidden:
+            if is_reg and not is_ci:
+                try:
+                    member = await resolve_member(guild, discord_tag)
+                    if member:
+                        dm = await member.create_dm()
+                        await dm.send(embed=dm_embed, view=view_cls)
+                        dmmed.append(discord_tag)
+                    else:
                         if not skip_member_resolution:
                             failed_dms += 1
-                    except Exception as e:
-                        if not skip_member_resolution:
-                            failed_dms += 1
-                        logging.error(f"Failed to DM {discord_tag}: {e}")
+                except discord.Forbidden:
+                    if not skip_member_resolution:
+                        failed_dms += 1
+                except Exception as e:
+                    if not skip_member_resolution:
+                        failed_dms += 1
+                    logging.error(f"Failed to DM {discord_tag}: {e}")
 
         # Send summary message
         if dmmed or failed_dms:
@@ -1910,278 +1908,6 @@ async def placement_cmd(interaction: discord.Interaction, riot_id: str, region: 
         await ErrorHandler.handle_interaction_error(interaction, e, "Placement Command")
 
 
-@gal.command(name="graphics_sync", description="Sync Google Sheets data to the live graphics dashboard.")
-@app_commands.describe(
-    guild_id="Guild ID to sync data for (defaults to current guild)",
-    force_refresh="Force refresh of sheet cache before syncing"
-)
-async def graphics_sync(interaction: discord.Interaction, guild_id: Optional[str] = None, force_refresh: bool = False):
-    """Sync Google Sheets data to the live graphics dashboard."""
-    if not await Validators.validate_and_respond(
-            interaction,
-            Validators.validate_staff_permission(interaction)
-    ):
-        return
-
-    try:
-        # Defer the interaction as this might take a while
-        await interaction.response.defer()
-
-        # Use current guild if not specified
-        target_guild_id = guild_id or str(interaction.guild.id)
-
-        # Create initial embed
-        embed = discord.Embed(
-            title="🔄 Graphics Sync",
-            description=f"Syncing Google Sheets data to live graphics dashboard for guild `{target_guild_id}`...",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="Status", value="Initializing...", inline=False)
-        
-        message = await interaction.followup.send(embed=embed)
-
-        # Step 1: Refresh sheet cache if requested
-        if force_refresh:
-            embed.set_field_at(0, name="Status", value="Refreshing sheet cache...")
-            await message.edit(embed=embed)
-            
-            try:
-                await refresh_sheet_cache(target_guild_id)
-                embed.set_field_at(0, name="Status", value="✅ Sheet cache refreshed")
-                await message.edit(embed=embed)
-            except Exception as e:
-                embed.set_field_at(0, name="Status", value=f"❌ Cache refresh failed: {str(e)}")
-                embed.color = discord.Color.red()
-                await message.edit(embed=embed)
-                return
-
-        # Step 2: Build event snapshot from sheets
-        embed.set_field_at(0, name="Status", value="Building event snapshot from Google Sheets...")
-        await message.edit(embed=embed)
-
-        try:
-            from integrations.sheet_integration import build_event_snapshot
-            snapshot = await build_event_snapshot(target_guild_id)
-            
-            if not snapshot:
-                raise Exception("Failed to build event snapshot - no data returned")
-                
-            embed.set_field_at(0, name="Status", value="✅ Event snapshot built successfully")
-            await message.edit(embed=embed)
-            
-        except Exception as e:
-            embed.set_field_at(0, name="Status", value=f"❌ Failed to build snapshot: {str(e)}")
-            embed.color = discord.Color.red()
-            await message.edit(embed=embed)
-            return
-
-        # Step 3: Sync to live graphics API
-        embed.set_field_at(0, name="Status", value="Syncing to live graphics dashboard...")
-        await message.edit(embed=embed)
-
-        try:
-            from integrations.live_graphics_api import LiveGraphicsAPI
-            api = LiveGraphicsAPI()
-            
-            # Sync the snapshot (API expects the full snapshot, not event_id)
-            sync_result = await api.sync_event_snapshot(snapshot)
-            
-            if sync_result.get('success', False):
-                embed.set_field_at(0, name="Status", value="✅ Sync completed successfully")
-                embed.color = discord.Color.green()
-                
-                # Add detailed results
-                lobbies_count = len(snapshot.get('lobbies', []))
-                standings_count = len(snapshot.get('standings', []))
-                
-                embed.add_field(name="Lobbies Synced", value=str(lobbies_count), inline=True)
-                embed.add_field(name="Standings Synced", value=str(standings_count), inline=True)
-                embed.add_field(name="Event ID", value=str(snapshot.get('metadata', {}).get('event_id', 1)), inline=True)
-                
-                # Add metadata
-                metadata = snapshot.get('metadata', {})
-                if metadata:
-                    mode = metadata.get('mode', 'unknown')
-                    round_num = metadata.get('round', 'N/A')
-                    embed.add_field(name="Tournament Mode", value=mode.title(), inline=True)
-                    embed.add_field(name="Round", value=str(round_num), inline=True)
-                
-            else:
-                embed.set_field_at(0, name="Status", value=f"❌ Sync failed: {sync_result.get('error', 'Unknown error')}")
-                embed.color = discord.Color.red()
-                
-            await message.edit(embed=embed)
-            await api.close()
-            
-        except Exception as e:
-            embed.set_field_at(0, name="Status", value=f"❌ API sync failed: {str(e)}")
-            embed.color = discord.Color.red()
-            await message.edit(embed=embed)
-            return
-
-    except Exception as e:
-        await ErrorHandler.handle_interaction_error(interaction, e, "Graphics Sync Command")
-
-
-@gal.command(name="graphics_publish", description="Publish/render a specific graphic from the dashboard.")
-@app_commands.describe(
-    graphic_id="ID of the graphic to publish/render",
-    render_image="Also render the graphic as an image (PNG)",
-    target_urls="Optional comma-separated target URLs (e.g., obs://scene/standings)"
-)
-async def graphics_publish(interaction: discord.Interaction, graphic_id: str, render_image: bool = False, target_urls: Optional[str] = None):
-    """Publish/render a specific graphic from the dashboard."""
-    if not await Validators.validate_and_respond(
-            interaction,
-            Validators.validate_staff_permission(interaction)
-    ):
-        return
-
-    try:
-        # Defer the interaction
-        await interaction.response.defer()
-
-        # Create initial embed
-        embed = discord.Embed(
-            title="📊 Graphics Publish",
-            description=f"Publishing graphic `{graphic_id}`...",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="Status", value="Initializing...", inline=False)
-        
-        message = await interaction.followup.send(embed=embed)
-
-        # Step 1: Validate graphic exists
-        embed.set_field_at(0, name="Status", value="Checking if graphic exists...")
-        await message.edit(embed=embed)
-
-        try:
-            from integrations.live_graphics_api import LiveGraphicsAPI
-            api = LiveGraphicsAPI()
-            
-            # Get guild's current event (default to 1 if not set)
-            guild_id = str(interaction.guild.id)
-            from core.persistence import get_event_mode_for_guild
-            # For now, we'll use event_id 1 - this could be enhanced to fetch from database
-            event_id = 1
-            
-            # Get available graphics for this event
-            graphics = await api.get_event_graphics(event_id)
-            
-            # Check if our graphic exists
-            target_graphic = None
-            for graphic in graphics:
-                if str(graphic.get('id')) == graphic_id:
-                    target_graphic = graphic
-                    break
-            
-            if not target_graphic:
-                embed.set_field_at(0, name="Status", value=f"❌ Graphic `{graphic_id}` not found")
-                embed.add_field(name="Available Graphics", 
-                              value=", ".join([f"`{g.get('id')}`" for g in graphics[:10]]) + 
-                              ("..." if len(graphics) > 10 else ""), 
-                              inline=False)
-                embed.color = discord.Color.red()
-                await message.edit(embed=embed)
-                await api.close()
-                return
-
-            embed.set_field_at(0, name="Status", value="✅ Graphic found")
-            embed.add_field(name="Graphic Name", value=target_graphic.get('name', 'Unknown'), inline=True)
-            embed.add_field(name="Graphic Type", value=target_graphic.get('type', 'Unknown'), inline=True)
-            await message.edit(embed=embed)
-            
-        except Exception as e:
-            embed.set_field_at(0, name="Status", value=f"❌ Failed to validate graphic: {str(e)}")
-            embed.color = discord.Color.red()
-            await message.edit(embed=embed)
-            await api.close()
-            return
-
-        # Step 2: Publish the graphic
-        embed.set_field_at(0, name="Status", value="Publishing graphic...")
-        await message.edit(embed=embed)
-
-        try:
-            # Parse target URLs if provided
-            targets = []
-            if target_urls:
-                targets = [url.strip() for url in target_urls.split(',') if url.strip()]
-            
-            # Prepare template data (empty for now, could be enhanced)
-            template_data = {}
-            
-            # Publish the graphic
-            publish_result = await api.publish(
-                graphic_id=graphic_id,
-                template_data=template_data,
-                target_urls=targets if targets else None
-            )
-            
-            if publish_result.get('success', False):
-                embed.set_field_at(0, name="Status", value="✅ Graphic published successfully")
-                embed.color = discord.Color.green()
-                
-                # Add publish details
-                job_id = publish_result.get('job_id')
-                if job_id:
-                    embed.add_field(name="Publish Job ID", value=job_id, inline=True)
-                
-                if targets:
-                    embed.add_field(name="Target URLs", value="\n".join(targets), inline=False)
-                
-            else:
-                embed.set_field_at(0, name="Status", value=f"❌ Publish failed: {publish_result.get('error', 'Unknown error')}")
-                embed.color = discord.Color.red()
-                
-            await message.edit(embed=embed)
-            
-        except Exception as e:
-            embed.set_field_at(0, name="Status", value=f"❌ Publish failed: {str(e)}")
-            embed.color = discord.Color.red()
-            await message.edit(embed=embed)
-            return
-
-        # Step 3: Render the graphic if requested
-        if render_image:
-            embed.set_field_at(0, name="Status", value="Rendering graphic as image...")
-            embed.color = discord.Color.blue()
-            await message.edit(embed=embed)
-
-            try:
-                # Import the renderer using lazy loading
-                from utils import get_renderer
-                _, render_graphic = get_renderer()
-                rendered_path = await render_graphic(graphic_id)
-                
-                if rendered_path and os.path.exists(rendered_path):
-                    embed.set_field_at(0, name="Status", value="✅ Graphic rendered successfully")
-                    embed.color = discord.Color.green()
-                    
-                    # Send the rendered image
-                    await message.edit(embed=embed)
-                    
-                    file = discord.File(rendered_path, filename=f"graphic_{graphic_id}.png")
-                    await interaction.followup.send(
-                        f"📸 Rendered image for graphic `{graphic_id}`:",
-                        file=file
-                    )
-                else:
-                    embed.set_field_at(0, name="Status", value="⚠️ Rendering failed - graphic published but image not generated")
-                    embed.color = discord.Color.orange()
-                    await message.edit(embed=embed)
-                    
-            except Exception as e:
-                embed.set_field_at(0, name="Status", value=f"⚠️ Rendering failed: {str(e)}\n\nGraphic was still published successfully.")
-                embed.color = discord.Color.orange()
-                await message.edit(embed=embed)
-
-        # Clean up API session
-        await api.close()
-
-    except Exception as e:
-        await ErrorHandler.handle_interaction_error(interaction, e, "Graphics Publish Command")
-
 
 @gal.command(name="help", description="Shows this help message.")
 async def help_cmd(interaction: discord.Interaction):
@@ -2227,8 +1953,6 @@ async def help_cmd(interaction: discord.Interaction):
 @onboard_cmd.error
 @test_cmd.error
 @placement_cmd.error
-@graphics_sync.error
-@graphics_publish.error
 @help_cmd.error
 async def command_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Enhanced global error handler for all GAL commands using Discord.py v2 features."""

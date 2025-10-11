@@ -1,4 +1,4 @@
-discord.py>=2.6.0
+discord.py
 python-dotenv
 gspread
 oauth2client
@@ -17,6 +17,3 @@ alembic
 websockets
 redis
 jinja2
-obs-websocket-client
-playwright
-Pillow

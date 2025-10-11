@@ -21,7 +21,7 @@ scripts/
 
 ## Script Details
 
-### 1. Documentation Drift Auditor (`check_doc_drift.py`)
+### 1. Documentation Drift Auditor (`scripts/check_doc_drift.py`)
 **Purpose**: Automated auditing of documentation completeness and accuracy  
 **Size**: 11,175 lines  
 **Dependencies**: Standard library (os, sys, pathlib, datetime, re)  
@@ -56,7 +56,7 @@ python scripts/check_doc_drift.py
 - **Class Extraction**: Parses class definitions and inheritance
 - **Severity Levels**: INFO, WARNING, ERROR for different finding types
 
-### 2. Context Snapshot Generator (`generate_snapshot.py`)
+### 2. Context Snapshot Generator (`scripts/generate_snapshot.py`)
 **Purpose**: Creates comprehensive system state snapshots for AI sessions  
 **Size**: 9,208 lines  
 **Dependencies**: Standard library (os, json, pathlib, datetime, typing)  
@@ -91,7 +91,7 @@ python scripts/generate_snapshot.py
 - **Encoding Support**: Handles UTF-8 file encoding
 - **Error Handling**: Graceful handling of unreadable files
 
-### 3. Database Migration Utility (`migrate_columns.py`)
+### 3. Database Migration Utility (`scripts/migrate_columns.py`)
 **Purpose**: Migrates configuration from config.yaml to persistence system  
 **Size**: 2,905 lines  
 **Dependencies**: asyncio, logging, os, sys, core.migration  
@@ -126,7 +126,7 @@ python scripts/migrate_columns.py
 - **Logging Configuration**: Configurable log levels and formatting
 - **Error Recovery**: Comprehensive error handling and reporting
 
-### 4. System Documentation Updater (`update_system_docs.py`)
+### 4. System Documentation Updater (`scripts/update_system_docs.py`)
 **Purpose**: Automated updates to .agent/system documentation  
 **Size**: 6,566 lines  
 **Dependencies**: Standard library (os, sys, pathlib, datetime, typing)  
@@ -201,10 +201,10 @@ python scripts/update_system_docs.py
 ## Usage Patterns
 
 ### Maintenance Workflows
-1. **Daily**: Run `check_doc_drift.py` to identify documentation gaps
-2. **Weekly**: Execute `update_system_docs.py` after code changes
-3. **On Demand**: Use `generate_snapshot.py` for AI session preparation
-4. **One-time**: Run `migrate_columns.py` for system upgrades
+1. **Daily**: Run `scripts/check_doc_drift.py` to identify documentation gaps
+2. **Weekly**: Execute `scripts/update_system_docs.py` after code changes
+3. **On Demand**: Use `scripts/generate_snapshot.py` for AI session preparation
+4. **One-time**: Run `scripts/migrate_columns.py` for system upgrades
 
 ### Development Workflows
 1. **Before Commit**: Run documentation audit to ensure completeness

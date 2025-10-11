@@ -76,7 +76,7 @@ The `integrations/` directory contains modules that handle external service inte
   - Shared utilities and error handling patterns
 - **Dependencies**: Google Sheets API, gspread
 - **Used By**: All sheet-related modules as foundation
-- **Note**: Duplicated functionality from sheets.py for modularity
+- **Note**: Duplicated functionality from integrations/sheets.py for modularity
 
 ### `integrations/sheet_utils.py`
 - **Purpose**: Utility functions and helpers for sheet operations (3,713 lines)

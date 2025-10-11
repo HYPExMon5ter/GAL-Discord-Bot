@@ -97,15 +97,56 @@ class DocumentationAuditor:
             with open(doc_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Look for Python file references
-            py_refs = re.findall(r'([a-zA-Z_][a-zA-Z0-9_]*\.py)', content)
+            # Look for Python file references (exclude known library names)
+            py_refs = re.findall(r'([a-zA-Z_0-9/]*[a-zA-Z_][a-zA-Z0-9_]*\.py)', content)
+            
+            # Known library/package names that shouldn't be treated as file references
+            library_names = {
+                'discord.py', 'requests.py', 'asyncio.py', 'aiohttp.py', 'sqlalchemy.py',
+                'pandas.py', 'numpy.py', 'matplotlib.py', 'flask.py', 'fastapi.py'
+            }
             
             for py_ref in py_refs:
+                # Skip if it's a known library name
+                if py_ref in library_names:
+                    continue
+                
+                # Skip if it appears to be in a directory structure listing (within ```
+                # code blocks and contains tree structure characters)
+                lines = content.split('\n')
+                ref_found_in_dir_structure = False
+                for i, line in enumerate(lines):
+                    if py_ref in line:
+                        # Check if this line appears to be part of a directory tree listing
+                        # Look for tree structure characters or code block context
+                        if ('├──' in line or '└──' in line or 
+                            (line.strip().startswith(py_ref) and i > 0 and 
+                             any('├──' in lines[j] or '└──' in lines[j] for j in range(max(0, i-5), i)))):
+                            ref_found_in_dir_structure = True
+                            break
+                
+                if ref_found_in_dir_structure:
+                    continue
+                    
+                # Check if file exists at root level
                 py_path = self.project_root / py_ref
                 if not py_path.exists():
-                    self.add_finding("ORPHAN_DOC", 
-                                   f"Documentation {doc_file.name} references non-existent {py_ref}", 
-                                   "WARNING")
+                    # Check if it might be a file in a subdirectory without prefix
+                    found_in_subdir = False
+                    for subdir in ['core', 'helpers', 'integrations', 'utils', 'scripts']:
+                        subdir_path = self.project_root / subdir / py_ref
+                        if subdir_path.exists():
+                            found_in_subdir = True
+                            self.add_finding("ORPHAN_DOC", 
+                                           f"Documentation {doc_file.name} references {py_ref} without directory prefix (found in {subdir}/)", 
+                                           "WARNING")
+                            break
+                    
+                    # If not found in any subdirectory either, it's genuinely missing
+                    if not found_in_subdir:
+                        self.add_finding("ORPHAN_DOC", 
+                                       f"Documentation {doc_file.name} references non-existent {py_ref}", 
+                                       "WARNING")
     
     def check_undocumented_modules(self):
         """Check for Python modules that lack documentation."""
@@ -187,9 +228,9 @@ class DocumentationAuditor:
             "security.md"
         ]
         
-        docs_path = self.project_root / ".agent" / "system"
-        if docs_path.exists():
-            existing_docs = [f.name for f in docs_path.glob("*.md")]
+        sops_path = self.project_root / ".agent" / "sops"
+        if sops_path.exists():
+            existing_docs = [f.name for f in sops_path.glob("*.md")]
             
             for sop in expected_sops:
                 if sop not in existing_docs:

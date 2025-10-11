@@ -17,50 +17,50 @@ tags: [system, architecture, updated, documentation-refresh]
 ## Module Organization (2025-06-17)
 
 ### Core Components (`core/`)
-- `commands.py` (86,573 lines) - Slash command definitions and tournament management logic
-- `components_traditional.py` (73,408 lines) - Traditional Discord components and UI elements
-- `views.py` (51,100 lines) - View classes and persistent view management
-- `config_ui.py` (36,243 lines) - Configuration UI components and settings management
-- `persistence.py` (16,544 lines) - Data persistence layer and database operations
-- `events.py` (29,619 lines) - Discord event handlers and bot lifecycle management
-- `onboard.py` (23,126 lines) - User onboarding system and approval workflow
-- `migration.py` (11,993 lines) - Database migration and schema management
-- `test_components.py` (7,157 lines) - Testing framework for core components
-- `__init__.py` (591 lines) - Core package initialization
+- `core/commands.py` (86,573 lines) - Slash command definitions and tournament management logic
+- `core/components_traditional.py` (73,408 lines) - Traditional Discord components and UI elements
+- `core/views.py` (51,100 lines) - View classes and persistent view management
+- `core/config_ui.py` (36,243 lines) - Configuration UI components and settings management
+- `core/persistence.py` (16,544 lines) - Data persistence layer and database operations
+- `core/events.py` (29,619 lines) - Discord event handlers and bot lifecycle management
+- `core/onboard.py` (23,126 lines) - User onboarding system and approval workflow
+- `core/migration.py` (11,993 lines) - Database migration and schema management
+- `core/test_components.py` (7,157 lines) - Testing framework for core components
+- `core/__init__.py` (591 lines) - Core package initialization
 
 ### Integration Layer (`integrations/`)
-- `sheets.py` (43,741 lines) - Google Sheets integration with caching and optimization
-- `riot_api.py` (9,454 lines) - Riot Games API integration for player verification
-- `sheet_integration.py` (18,846 lines) - Advanced sheet integration bridging systems
-- `sheet_optimizer.py` (9,774 lines) - Performance optimization for sheet operations
-- `sheet_detector.py` (12,627 lines) - Automatic sheet structure detection
-- `sheet_base.py` (4,773 lines) - Base functionality for sheet operations
-- `sheet_utils.py` (3,713 lines) - Utility functions for sheet operations
-- `ign_verification.py` (4,522 lines) - IGN validation system
-- `__init__.py` (764 lines) - Integration package initialization
+- `integrations/sheets.py` (43,741 lines) - Google Sheets integration with caching and optimization
+- `integrations/riot_api.py` (9,454 lines) - Riot Games API integration for player verification
+- `integrations/sheet_integration.py` (18,846 lines) - Advanced sheet integration bridging systems
+- `integrations/sheet_optimizer.py` (9,774 lines) - Performance optimization for sheet operations
+- `integrations/sheet_detector.py` (12,627 lines) - Automatic sheet structure detection
+- `integrations/sheet_base.py` (4,773 lines) - Base functionality for sheet operations
+- `integrations/sheet_utils.py` (3,713 lines) - Utility functions for sheet operations
+- `integrations/ign_verification.py` (4,522 lines) - IGN validation system
+- `integrations/__init__.py` (764 lines) - Integration package initialization
 
 ### Helper System (`helpers/`)
-- `error_handler.py` (6,556 lines) - Centralized error handling with structured reporting
-- `waitlist_helpers.py` (31,520 lines) - Waitlist management and tournament overflow
-- `role_helpers.py` (8,453 lines) - Discord role management and assignment
-- `validation_helpers.py` (7,015 lines) - Data validation and permission checking
-- `schedule_helpers.py` (4,354 lines) - Schedule management and time validation
-- `embed_helpers.py` (5,199 lines) - Discord embed creation and formatting
-- `sheet_helpers.py` (5,258 lines) - Google Sheets integration helpers
-- `onboard_helpers.py` (12,827 lines) - User onboarding and approval workflow
-- `config_manager.py` (3,642 lines) - Configuration loading and hot-reload
-- `environment_helpers.py` (2,225 lines) - Environment-specific logic
-- `__init__.py` (729 lines) - Helper package initialization
+- `helpers/error_handler.py` (6,556 lines) - Centralized error handling with structured reporting
+- `helpers/waitlist_helpers.py` (31,520 lines) - Waitlist management and tournament overflow
+- `helpers/role_helpers.py` (8,453 lines) - Discord role management and assignment
+- `helpers/validation_helpers.py` (7,015 lines) - Data validation and permission checking
+- `helpers/schedule_helpers.py` (4,354 lines) - Schedule management and time validation
+- `helpers/embed_helpers.py` (5,199 lines) - Discord embed creation and formatting
+- `helpers/sheet_helpers.py` (5,258 lines) - Google Sheets integration helpers
+- `helpers/onboard_helpers.py` (12,827 lines) - User onboarding and approval workflow
+- `helpers/config_manager.py` (3,642 lines) - Configuration loading and hot-reload
+- `helpers/environment_helpers.py` (2,225 lines) - Environment-specific logic
+- `helpers/__init__.py` (729 lines) - Helper package initialization
 
 ### Utilities (`utils/`)
-- `utils.py` (8,509 lines) - General utility functions and Discord member resolution
-- `logging_utils.py` (4,030 lines) - Secure logging with automatic token masking
-- `__init__.py` (609 lines) - Utility exports and imports
+- `utils/utils.py` (8,509 lines) - General utility functions and Discord member resolution
+- `utils/logging_utils.py` (4,030 lines) - Secure logging with automatic token masking
+- `utils/__init__.py` (609 lines) - Utility exports and imports
 
 ### Scripts (`scripts/`)
-- `generate_snapshot.py` (9,208 lines) - Context snapshot generator for AI sessions
-- `update_system_docs.py` (6,566 lines) - System documentation update utilities
-- `migrate_columns.py` (2,905 lines) - Column migration and database schema updates
+- `scripts/generate_snapshot.py` (9,208 lines) - Context snapshot generator for AI sessions
+- `scripts/update_system_docs.py` (6,566 lines) - System documentation update utilities
+- `scripts/migrate_columns.py` (2,905 lines) - Column migration and database schema updates
 
 ## Data Flow Architecture
 

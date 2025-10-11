@@ -542,4 +542,173 @@ validate_configuration()
 # Merge any new required keys on production deployment
 merge_config_on_deployment()
 
+# Phase 2 Integration: DAL integration
+_dal_adapter = None
+
+async def get_dal_adapter():
+    """Get the DAL adapter for Phase 2 integration."""
+    global _dal_adapter
+    if _dal_adapter is None:
+        try:
+            from core.data_access.legacy_adapter import get_legacy_adapter
+            _dal_adapter = await get_legacy_adapter()
+            logging.info("DAL integration initialized for configuration module")
+        except ImportError as e:
+            logging.warning(f"DAL integration not available: {e}")
+            _dal_adapter = None
+    return _dal_adapter
+
+
+# Phase 2: Enhanced configuration functions with DAL integration
+async def get_sheet_settings_enhanced(mode: str) -> Dict[str, Any]:
+    """
+    Enhanced sheet settings function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.get_sheet_settings(mode)
+    except Exception as e:
+        logging.warning(f"DAL get_sheet_settings failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    return get_sheet_settings(mode)
+
+
+async def get_embed_configuration_enhanced(embed_key: str) -> Dict[str, Any]:
+    """
+    Enhanced embed configuration function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.get_embed_configuration(embed_key)
+    except Exception as e:
+        logging.warning(f"DAL get_embed_configuration failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    return embed_from_cfg(embed_key)
+
+
+async def get_role_configuration_enhanced() -> Dict[str, Any]:
+    """
+    Enhanced role configuration function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.get_role_configuration()
+    except Exception as e:
+        logging.warning(f"DAL get_role_configuration failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    return {
+        "allowed_roles": get_allowed_roles(),
+        "registered_role": get_registered_role(),
+        "checked_in_role": get_checked_in_role()
+    }
+
+
+async def get_channel_configuration_enhanced() -> Dict[str, str]:
+    """
+    Enhanced channel configuration function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.get_channel_configuration()
+    except Exception as e:
+        logging.warning(f"DAL get_channel_configuration failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    return {
+        "log_channel": get_log_channel_name(),
+        "unified_channel": get_unified_channel_name()
+    }
+
+
+async def get_configuration_enhanced(key: str, default: Any = None) -> Any:
+    """
+    Enhanced configuration function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            value = await adapter.get_configuration(key)
+            return value if value is not None else default
+    except Exception as e:
+        logging.warning(f"DAL get_configuration failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    if key in _FULL_CFG:
+        return _FULL_CFG[key]
+    return default
+
+
+# Phase 2: Configuration validation with DAL integration
+async def validate_configuration_enhanced() -> List[str]:
+    """
+    Enhanced configuration validation with DAL integration.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.validate_configuration()
+    except Exception as e:
+        logging.warning(f"DAL validate_configuration failed, using legacy: {e}")
+    
+    # Fallback to legacy implementation
+    try:
+        validate_configuration()
+        return []
+    except ValueError as e:
+        return [str(e)]
+
+
+# Phase 2: Configuration export with DAL integration
+async def export_configuration_enhanced(guild_id: str = None) -> Dict[str, Any]:
+    """
+    Enhanced configuration export with DAL integration.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.export_configuration(guild_id)
+    except Exception as e:
+        logging.warning(f"DAL export_configuration failed, using basic export: {e}")
+    
+    # Fallback to basic export
+    return {
+        "timestamp": int(time.time()),
+        "version": "1.0",
+        "configuration": _FULL_CFG.copy() if not guild_id else {},
+        "legacy_mode": True
+    }
+
+
+# Phase 2: Log DAL integration status
+async def log_dal_integration_status():
+    """Log the current DAL integration status."""
+    adapter = await get_dal_adapter()
+    if adapter:
+        logging.info("Phase 2 DAL integration: ACTIVE")
+    else:
+        logging.info("Phase 2 DAL integration: NOT AVAILABLE - using legacy configuration")
+
+# Schedule status check (don't await here as this is module-level)
+try:
+    # Try to schedule the status check if event loop is running
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        asyncio.create_task(log_dal_integration_status())
+except RuntimeError:
+    # No event loop running yet - will be checked later
+    pass
+
+
 logging.info("Configuration loaded and validated successfully")

@@ -197,9 +197,23 @@ async def retry_until_successful(fn, *args, **kwargs):
     raise SheetsError(f"All {MAX_RETRIES} retries exhausted. Last error: {last_error}")
 
 
-# Cache management
+# Cache management - now integrated with DAL
 sheet_cache = {"users": {}, "last_refresh": 0}
 cache_lock = asyncio.Lock()
+
+# Integration with new DAL (Phase 2 migration)
+_legacy_adapter = None
+
+async def get_legacy_adapter():
+    """Get the legacy adapter for DAL integration."""
+    global _legacy_adapter
+    if _legacy_adapter is None:
+        from core.data_access.legacy_adapter import get_legacy_adapter as get_adapter
+        _legacy_adapter = await get_adapter()
+        # Replace the global cache with the adapter's cache for consistency
+        global sheet_cache
+        sheet_cache = _legacy_adapter.get_legacy_sheet_cache()
+    return _legacy_adapter
 
 
 async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
@@ -207,10 +221,22 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     Refresh the sheet cache with comprehensive error handling.
     Synchronizes Discord roles with sheet data after refresh.
     Processes waitlist after cache update to fill any open spots.
+    
+    Phase 2 Integration: Now integrates with the new DAL for event broadcasting
+    and unified cache management while maintaining backward compatibility.
     """
     # Only print at start if this is not a recursive call
     if not hasattr(sheet_cache, "_skip_waitlist_processing"):
         print("[CACHE] Starting refresh_sheet_cache")
+    
+    # Phase 2: Initialize DAL integration
+    try:
+        adapter = await get_legacy_adapter()
+        if hasattr(sheet_cache, "_skip_waitlist_processing"):
+            print("[CACHE] Using DAL integration for cache refresh")
+    except Exception as e:
+        print(f"[CACHE] DAL integration not available: {e}")
+        adapter = None
 
     # Store guild reference for later use
     guild = None

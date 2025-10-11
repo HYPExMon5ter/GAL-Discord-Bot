@@ -443,5 +443,160 @@ def update_guild_data(guild_id: Union[str, int], data: Dict[str, Any]) -> None:
     logging.debug(f"Updated guild data for {gid}: {list(data.keys())}")
 
 
+# Phase 2 Integration: DAL integration
+_dal_adapter = None
+
+async def get_dal_adapter():
+    """Get the DAL adapter for Phase 2 integration."""
+    global _dal_adapter
+    if _dal_adapter is None:
+        try:
+            from core.data_access.legacy_adapter import get_legacy_adapter
+            _dal_adapter = await get_legacy_adapter()
+            logging.info("DAL integration initialized for persistence module")
+        except ImportError as e:
+            logging.warning(f"DAL integration not available: {e}")
+            _dal_adapter = None
+    return _dal_adapter
+
+
+# Phase 2: Enhanced functions with DAL integration
+async def get_event_mode_for_guild_enhanced(guild_id: Union[str, int]) -> str:
+    """
+    Enhanced event mode function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.get_event_mode(guild_id)
+    except Exception as e:
+        logging.warning(f"DAL get_event_mode failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    return get_event_mode_for_guild(guild_id)
+
+
+async def set_event_mode_for_guild_enhanced(guild_id: Union[str, int], mode: str) -> None:
+    """
+    Enhanced set event mode function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    if mode not in ["normal", "doubleup"]:
+        raise ValueError(f"Invalid event mode: {mode}")
+    
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            await adapter.set_event_mode(guild_id, mode)
+            logging.info(f"Event mode set via DAL for guild {guild_id}: {mode}")
+            return
+    except Exception as e:
+        logging.warning(f"DAL set_event_mode failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    set_event_mode_for_guild(guild_id, mode)
+
+
+async def get_guild_data_enhanced(guild_id: Union[str, int]) -> Dict[str, Any]:
+    """
+    Enhanced guild data function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.get_guild_data(guild_id)
+    except Exception as e:
+        logging.warning(f"DAL get_guild_data failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    return get_guild_data(guild_id)
+
+
+async def update_guild_data_enhanced(guild_id: Union[str, int], data: Dict[str, Any]) -> None:
+    """
+    Enhanced update guild data function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            success = await adapter.update_guild_data(guild_id, data)
+            if success:
+                logging.info(f"Guild data updated via DAL for {guild_id}: {list(data.keys())}")
+                return
+    except Exception as e:
+        logging.warning(f"DAL update_guild_data failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    update_guild_data(guild_id, data)
+
+
+async def set_persisted_msg_enhanced(guild_id: Union[str, int], key: str, channel_id: int, msg_id: int) -> None:
+    """
+    Enhanced set persisted message function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            await adapter.set_persisted_message(guild_id, key, channel_id, msg_id)
+            logging.debug(f"Persisted message via DAL for guild {guild_id}, key {key}: {channel_id}/{msg_id}")
+            return
+    except Exception as e:
+        logging.warning(f"DAL set_persisted_msg failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    set_persisted_msg(guild_id, key, channel_id, msg_id)
+
+
+async def get_persisted_msg_enhanced(guild_id: Union[str, int], key: str) -> Tuple[Optional[int], Optional[int]]:
+    """
+    Enhanced get persisted message function with DAL integration.
+    Falls back to legacy system if DAL is not available.
+    """
+    try:
+        adapter = await get_dal_adapter()
+        if adapter:
+            return await adapter.get_persisted_message(guild_id, key)
+    except Exception as e:
+        logging.warning(f"DAL get_persisted_msg failed, falling back to legacy: {e}")
+    
+    # Fallback to legacy implementation
+    return get_persisted_msg(guild_id, key)
+
+
+# Backward compatibility - make enhanced versions the default
+async def get_event_mode_for_guild_async(guild_id: Union[str, int]) -> str:
+    """Async version of get_event_mode_for_guild with DAL integration."""
+    return await get_event_mode_for_guild_enhanced(guild_id)
+
+
+async def set_event_mode_for_guild_async(guild_id: Union[str, int], mode: str) -> None:
+    """Async version of set_event_mode_for_guild with DAL integration."""
+    await set_event_mode_for_guild_enhanced(guild_id, mode)
+
+
 # Log initialization
 logging.info(f"Persistence system initialized. Stats: {get_guild_statistics()}")
+
+# Phase 2: Log DAL integration status
+async def log_dal_integration_status():
+    """Log the current DAL integration status."""
+    adapter = await get_dal_adapter()
+    if adapter:
+        logging.info("Phase 2 DAL integration: ACTIVE")
+    else:
+        logging.info("Phase 2 DAL integration: NOT AVAILABLE - using legacy system")
+
+# Schedule status check (don't await here as this is module-level)
+import asyncio
+try:
+    # Try to schedule the status check if event loop is running
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        asyncio.create_task(log_dal_integration_status())
+except RuntimeError:
+    # No event loop running yet - will be checked later
+    pass

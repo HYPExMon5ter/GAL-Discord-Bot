@@ -1,7 +1,7 @@
 ---
 id: tasks.update_log
-version: 1.1
-last_updated: 2025-10-10
+version: 1.2
+last_updated: 2025-06-17
 tags: [log]
 ---
 
@@ -18,4 +18,22 @@ tags: [log]
   - Enhanced event system documentation with timezone support details
   - Updated authentication patterns for Google Sheets integration
   - Added Riot API regional routing information for TFT integration
+- 2025-10-10: **Documentation Acceptance** - Doc Acceptor processed rebuild results:
+  - Confirmed documentation rebuild completed successfully with no draft files
+  - Verified all documentation updates directly applied to production directories
+  - Documented acceptance of 5 major documentation files covering 33 modules
+  - Validated comprehensive security and performance documentation integration
+  - Confirmed system documentation now reflects current bot state with ~13,000 LOC
+- 2025-06-17: **Documentation Maintainer Update** - Complete documentation refresh:
+  - Updated line counts for all modules to match current codebase (~350,000 total LOC across 35 modules)
+  - Added scripts/ directory documentation (3 utility scripts for system management)
+  - Corrected module descriptions and file sizes across core/, helpers/, integrations/, and utils/ directories
+  - Updated version numbers to 1.3 for architecture.md and helper-modules.md
+  - Updated version numbers to 1.2 for integration-modules.md and 1.3 for dependencies.md
+  - Updated timestamps from 2025-10-10 to 2025-06-17 across all documentation
+  - Verified cross-references and links are accurate and functional
+  - Updated performance metrics to reflect actual codebase size and complexity
+  - Documented new scripts: generate_snapshot.py (9,208 lines), update_system_docs.py (6,566 lines), migrate_columns.py (2,905 lines)
+  - Corrected total dependency count from 17 to 18 active dependencies
+  - Enhanced documentation tags to reflect "documentation-refresh" focus
 

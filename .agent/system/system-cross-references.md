@@ -112,6 +112,22 @@ core/models/ (Data Models)
   - References: All component documentation, Monitoring SOP
   - Referenced by: Support team, System administrators
 
+- **[Backup and Recovery SOP](../sops/backup-recovery.md)** - System backup and disaster recovery
+  - References: Data Access Layer, Security SOP, Deployment SOP
+  - Referenced by: System administrators, DevOps team
+
+- **[Performance Monitoring SOP](../sops/performance-monitoring.md)** - System performance monitoring and metrics
+  - References: API Backend System, Event System, Troubleshooting SOP
+  - Referenced by: Operations team, System administrators
+
+- **[Team Onboarding SOP](../sops/team-onboarding.md)** - Team member onboarding and access management
+  - References: Security SOP, Architecture Overview, Deployment SOP
+  - Referenced by: Team leads, System administrators, HR team
+
+- **[Emergency Rollback SOP](../sops/emergency-rollback.md)** - Emergency deployment rollback procedures
+  - References: API Deployment SOP, Deployment SOP, Troubleshooting SOP
+  - Referenced by: DevOps team, System administrators, On-call engineers
+
 ## Integration Points
 
 ### API Integration Matrix

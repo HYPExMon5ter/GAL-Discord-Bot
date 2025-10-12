@@ -11,11 +11,23 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 import os
 
+# Load environment variables from .env.local to ensure they're available
 from dotenv import load_dotenv
-load_dotenv('.env.local')
+import os
 
-# Configuration
+# Clear any existing DASHBOARD_MASTER_PASSWORD from system environment
+if 'DASHBOARD_MASTER_PASSWORD' in os.environ:
+    del os.environ['DASHBOARD_MASTER_PASSWORD']
+
+# Get the project root directory and load .env.local
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+env_path = os.path.join(project_root, '.env.local')
+load_dotenv(env_path, override=True)
+
+# Configuration - get the master password from environment
 SECRET_KEY = os.getenv("DASHBOARD_MASTER_PASSWORD", "default-secret-key-change-in-production")
+
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
 

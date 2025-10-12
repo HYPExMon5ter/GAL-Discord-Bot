@@ -17,12 +17,34 @@ from jose import JWTError, jwt
 from pydantic import BaseModel
 import uvicorn
 
-# Load environment variables
+# Load environment variables from .env.local only
 from dotenv import load_dotenv
-load_dotenv('.env.local')
+import os
 
-# Import authentication
-from .auth import SECRET_KEY, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+# Clear any existing DASHBOARD_MASTER_PASSWORD from system environment
+if 'DASHBOARD_MASTER_PASSWORD' in os.environ:
+    del os.environ['DASHBOARD_MASTER_PASSWORD']
+
+# Get the project root directory and load .env.local
+project_root = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(project_root, '..', '.env.local')
+load_dotenv(env_path, override=True)
+
+# Read the master password directly from .env.local file
+def read_master_password():
+    try:
+        with open(env_path, 'r') as f:
+            for line in f:
+                if line.startswith('DASHBOARD_MASTER_PASSWORD='):
+                    return line.split('=', 1)[1].strip()
+    except Exception:
+        return None
+
+# Import authentication after loading environment
+from .auth import SECRET_KEY as auth_secret_key, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+
+# Override SECRET_KEY with the value directly from .env.local
+SECRET_KEY = read_master_password() or auth_secret_key
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -36,8 +58,8 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins since we're not using credentials
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -125,6 +147,8 @@ async def root():
         "docs": "/docs",
         "health": "/health"
     }
+
+
 
 # Import and include routers
 from .routers import tournaments, users, configuration, websocket, graphics

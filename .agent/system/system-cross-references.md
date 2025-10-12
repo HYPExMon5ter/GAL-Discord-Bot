@@ -145,6 +145,12 @@ core/models/ (Data Models)
 - **[Canvas Locking Management SOP](../sops/canvas-locking-management.md)** - Canvas lock system administration
   - References: Dashboard Operations SOP, API Integration docs
   - Referenced by: System administrators, Dashboard operators
+- **[Route-Based Canvas Operations SOP](../sops/route-based-canvas-operations.md)** - Route-based canvas editor workflows
+  - References: Canvas Editor Architecture, Dashboard Operations SOP, Graphics Management SOP
+  - Referenced by: Dashboard operators, Graphics team, Frontend developers
+- **[Canvas Migration Procedures SOP](../sops/canvas-migration-procedures.md)** - Modal-to-route migration procedures
+  - References: Canvas Editor Architecture, Emergency Rollback SOP, Dashboard Deployment SOP
+  - Referenced by: System administrators, Migration team, Frontend developers
 
 - **[Dashboard Security SOP](../sops/dashboard-security.md)** - Dashboard authentication and access control
   - References: Security SOP, Dashboard Operations SOP
@@ -489,4 +495,5 @@ Configuration (1) ←→ (N) FeatureFlag
 **Coverage**: All system components documented with interconnections  
 **Navigation**: Clear mapping between documentation, code, and operations  
 **Maintenance**: Update process defined for ongoing changes  
-**Accessibility**: Multiple access methods for different user roles
+**Accessibility**: Multiple access methods for different user roles  
+**Last Updated**: 2025-10-12 (Added Route-Based Canvas Operations & Migration SOPs)

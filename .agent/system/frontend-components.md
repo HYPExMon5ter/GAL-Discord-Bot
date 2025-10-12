@@ -193,7 +193,8 @@ interface ArchiveDetailsProps {
 ## Canvas Components (`components/canvas/`)
 
 ### CanvasEditor Component
-**Purpose**: Main canvas editing interface
+**Purpose**: **DEPRECATED** Legacy modal-based canvas editing interface (replaced by route-based editor)
+**Status**: Use `/canvas/edit/{id}` route instead
 
 ```typescript
 interface CanvasEditorProps {

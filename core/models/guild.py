@@ -15,8 +15,8 @@ from .base_model import BaseModel
 class GuildConfiguration(BaseModel):
     """Configuration settings for a Discord guild."""
     
-    guild_id: str
-    name: str
+    guild_id: str = ""
+    name: str = ""
     prefix: str = "!"
     timezone: str = "UTC"
     locale: str = "en-US"
@@ -109,9 +109,9 @@ class GuildConfiguration(BaseModel):
 class Guild(BaseModel):
     """Represents a Discord guild (server)."""
     
-    discord_id: str
-    name: str
-    owner_id: str
+    discord_id: str = ""
+    name: str = ""
+    owner_id: str = ""
     member_count: int = 0
     icon_url: Optional[str] = None
     description: Optional[str] = None
@@ -212,8 +212,8 @@ class Guild(BaseModel):
 class GuildMember(BaseModel):
     """Represents a member's status within a specific guild."""
     
-    guild_id: str
-    user_id: str
+    guild_id: str = ""
+    user_id: str = ""
     joined_at: Optional[datetime] = field(default_factory=datetime.utcnow)
     roles: List[str] = field(default_factory=list)
     nickname: Optional[str] = None

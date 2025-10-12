@@ -6,22 +6,39 @@ from typing import Generator
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import os
 
-from core.data_access.connection_manager import get_db_session
-from .main import verify_token, TokenData
+from dotenv import load_dotenv
+load_dotenv('.env.local')
 
-def get_database_session() -> Generator[Session, None, None]:
+# Database configuration
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dashboard.db")
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Import models to ensure they're created
+from .models import Base
+Base.metadata.create_all(bind=engine)
+
+def get_db() -> Generator[Session, None, None]:
     """
     Get database session dependency
     """
-    session = next(get_db_session())
+    db = SessionLocal()
     try:
-        yield session
+        yield db
     finally:
-        session.close()
+        db.close()
 
-def get_current_authenticated_user(token_data: TokenData = Depends(verify_token)) -> TokenData:
+# Legacy compatibility
+def get_database_session() -> Generator[Session, None, None]:
     """
-    Dependency to ensure user is authenticated
+    Get database session dependency (legacy name)
     """
-    return token_data
+    return get_db()
+
+# Authentication dependencies will be imported in main.py to avoid circular imports
+# These will be defined in main.py and re-exported here

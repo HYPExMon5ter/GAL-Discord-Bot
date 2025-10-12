@@ -7,6 +7,7 @@ and automatic reconnection for database systems.
 
 import asyncio
 import logging
+from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional, Union, AsyncContextManager
 from contextlib import asynccontextmanager

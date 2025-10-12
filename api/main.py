@@ -21,10 +21,8 @@ import uvicorn
 from dotenv import load_dotenv
 load_dotenv('.env.local')
 
-# Configuration
-SECRET_KEY = os.getenv("DASHBOARD_MASTER_PASSWORD", "default-secret-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
+# Import authentication
+from .auth import SECRET_KEY, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -44,48 +42,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# JWT Security
-security = HTTPBearer()
-
 # Pydantic models
 class Token(BaseModel):
     access_token: str
     token_type: str
     expires_in: int
 
-class TokenData(BaseModel):
-    username: Optional[str] = None
-
 class LoginRequest(BaseModel):
     master_password: str
 
-# JWT token functions
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    return token_data
+# Import auth functions
+from .auth import TokenData, verify_token, get_current_user, get_current_authenticated_user
 
 # Authentication endpoints
 @app.post("/auth/login", response_model=Token)
@@ -160,7 +127,7 @@ async def root():
     }
 
 # Import and include routers
-from .routers import tournaments, users, configuration, websocket
+from .routers import tournaments, users, configuration, websocket, graphics
 from .middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 
 # Add custom middleware
@@ -172,6 +139,7 @@ app.include_router(tournaments.router, prefix="/api/v1/tournaments", tags=["tour
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(configuration.router, prefix="/api/v1/configuration", tags=["configuration"])
 app.include_router(websocket.router, prefix="/api/v1", tags=["websocket"])
+app.include_router(graphics.router, prefix="/api/v1", tags=["graphics"])
 
 if __name__ == "__main__":
     uvicorn.run(

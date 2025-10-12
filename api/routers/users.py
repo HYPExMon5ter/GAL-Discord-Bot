@@ -6,7 +6,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_database_session, get_current_authenticated_user
+from ..dependencies import get_database_session
+from ..auth import get_current_authenticated_user, TokenData
 from ..services.user_service import UserService
 from ..schemas.user import (
     User, 
@@ -14,7 +15,7 @@ from ..schemas.user import (
     UserUpdate, 
     UserList
 )
-from ..main import TokenData
+
 
 router = APIRouter()
 

@@ -9,8 +9,8 @@ from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from sqlalchemy.orm import Session
 
-from ..dependencies import get_database_session, get_current_authenticated_user
-from ..main import TokenData
+from ..dependencies import get_database_session
+from ..auth import get_current_authenticated_user, TokenData
 
 router = APIRouter()
 

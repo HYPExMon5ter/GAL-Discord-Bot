@@ -36,7 +36,7 @@ class UserStatus(Enum):
 class UserStats(BaseModel):
     """User statistics and performance metrics."""
     
-    user_id: str
+    user_id: str = ""
     tournaments_played: int = 0
     tournaments_won: int = 0
     matches_played: int = 0
@@ -99,7 +99,7 @@ class UserStats(BaseModel):
 class UserPreferences(BaseModel):
     """User preferences and settings."""
     
-    user_id: str
+    user_id: str = ""
     timezone: str = "UTC"
     locale: str = "en-US"
     theme: str = "dark"  # dark, light, auto
@@ -128,8 +128,8 @@ class UserPreferences(BaseModel):
 class User(BaseModel):
     """Represents a Discord user in the system."""
     
-    discord_id: str
-    username: str
+    discord_id: str = ""
+    username: str = ""
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
     email: Optional[str] = None

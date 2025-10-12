@@ -2,7 +2,7 @@
 Configuration schemas
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 
 class Configuration(BaseModel):

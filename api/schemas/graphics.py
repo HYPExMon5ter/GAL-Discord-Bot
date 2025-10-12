@@ -1,0 +1,93 @@
+"""
+Pydantic schemas for graphics management
+"""
+
+from datetime import datetime
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field
+
+
+class GraphicBase(BaseModel):
+    """Base schema for graphics"""
+    title: str = Field(..., min_length=1, max_length=255, description="Graphic title")
+    data_json: Optional[Dict[str, Any]] = Field(default=None, description="Canvas data as JSON")
+
+
+class GraphicCreate(GraphicBase):
+    """Schema for creating a new graphic"""
+    pass
+
+
+class GraphicUpdate(BaseModel):
+    """Schema for updating an existing graphic"""
+    title: Optional[str] = Field(None, min_length=1, max_length=255, description="Graphic title")
+    data_json: Optional[Dict[str, Any]] = Field(None, description="Canvas data as JSON")
+
+
+class GraphicResponse(GraphicBase):
+    """Schema for graphic response"""
+    id: int
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    archived: bool
+    
+    class Config:
+        from_attributes = True
+
+
+class GraphicListResponse(BaseModel):
+    """Schema for graphics list response"""
+    graphics: list[GraphicResponse]
+    total: int
+
+
+class CanvasLockBase(BaseModel):
+    """Base schema for canvas locks"""
+    graphic_id: int
+    user_name: str
+
+
+class CanvasLockCreate(CanvasLockBase):
+    """Schema for creating a canvas lock"""
+    pass
+
+
+class CanvasLockResponse(CanvasLockBase):
+    """Schema for canvas lock response"""
+    id: int
+    locked: bool
+    locked_at: datetime
+    expires_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class LockStatusResponse(BaseModel):
+    """Schema for lock status response"""
+    locked: bool
+    lock_info: Optional[CanvasLockResponse] = None
+    can_edit: bool
+
+
+class ArchiveActionRequest(BaseModel):
+    """Schema for archive action requests"""
+    graphic_id: int
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for archiving")
+
+
+class ArchiveResponse(BaseModel):
+    """Schema for archive action response"""
+    success: bool
+    message: str
+    graphic_id: int
+    archived_at: Optional[datetime] = None
+    restored_at: Optional[datetime] = None
+
+
+class ArchiveListResponse(BaseModel):
+    """Schema for archive list response"""
+    archives: list[GraphicResponse]
+    total: int
+    can_delete: bool  # Admin permission flag

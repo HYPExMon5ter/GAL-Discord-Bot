@@ -1,0 +1,884 @@
+# core/config_ui.py
+
+import logging
+from typing import Optional, Dict, Any, List
+import discord
+from discord import ui, TextInput, ButtonStyle
+from discord.ext import commands
+
+from config import embed_from_cfg, get_sheet_settings, _FULL_CFG
+from integrations.sheet_detector import (
+    detect_sheet_columns, get_column_mapping, save_column_mapping,
+    SheetColumnDetector, ColumnMapping
+)
+from core.persistence import get_guild_data, update_guild_data, get_event_mode_for_guild
+
+
+class ColumnButton(ui.Button):
+    """Custom button class for column operations."""
+    def __init__(self, column_type: str, display_name: str, action: str = "update"):
+        label = f"🔄 {display_name}" if action == "update" else f"🗑️ {display_name}"
+        style = discord.ButtonStyle.primary if action == "update" else discord.ButtonStyle.danger
+        custom_id = f"{action}_{column_type}"
+        super().__init__(label=label, style=style, custom_id=custom_id)
+        self.column_type = column_type
+        self.display_name = display_name
+        self.action = action
+
+
+class ActionButton(ui.Button):
+    """Custom button class for general actions."""
+    def __init__(self, action: str, label: str, style: discord.ButtonStyle):
+        super().__init__(label=label, style=style, custom_id=action)
+        self.action = action
+
+
+class ColumnMappingView(ui.View):
+    """
+    Configuration UI for Google Sheet column mappings using embed and buttons.
+    """
+
+    def __init__(self, guild_id: str):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.guild_id = guild_id
+        self.detections = {}
+        self.current_mapping = None
+        self.detector = SheetColumnDetector()
+
+    async def initialize(self):
+        """
+        Initialize the view with current detections and mappings.
+        """
+        self.detections = await detect_sheet_columns(self.guild_id)
+        self.current_mapping = await get_column_mapping(self.guild_id)
+
+        logging.info(f"[CONFIG_UI] Initialized for guild {self.guild_id}")
+        logging.info(f"[CONFIG_UI] Detections: {list(self.detections.keys())}")
+        if self.current_mapping:
+            logging.info(f"[CONFIG_UI] Current mapping: discord={self.current_mapping.discord_column}, ign={self.current_mapping.ign_column}, registered={self.current_mapping.registered_column}")
+        else:
+            logging.warning("[CONFIG_UI] No current mapping found!")
+
+    def create_embed(self) -> discord.Embed:
+        """
+        Create the embed showing column configuration.
+        """
+        embed = discord.Embed(
+            title="📊 Google Sheet Column Assignment",
+            color=discord.Colour.green(),
+            description="Configure which columns contain your player data"
+        )
+
+        column_configs = [
+            ("Discord", "discord", self.current_mapping.discord_column if self.current_mapping else None),
+            ("IGN", "ign", self.current_mapping.ign_column if self.current_mapping else None),
+            ("Alt IGN", "alt_ign", self.current_mapping.alt_ign_column if self.current_mapping else None),
+            ("Pronouns", "pronouns", self.current_mapping.pronouns_column if self.current_mapping else None),
+            ("Registered", "registered", self.current_mapping.registered_column if self.current_mapping else None),
+            ("Check-in", "checkin", self.current_mapping.checkin_column if self.current_mapping else None),
+        ]
+
+        # Only add team section for doubleup mode
+        mode = get_event_mode_for_guild(self.guild_id)
+        if mode == "doubleup":
+            column_configs.append(("Team", "team", self.current_mapping.team_column if self.current_mapping else None))
+
+        # Build field content
+        for display_name, column_type, current_col in column_configs:
+            detection = self.detections.get(column_type)
+
+            if current_col:
+                status = current_col
+                confidence = "Manual"
+            elif detection:
+                status = detection.column_letter
+                confidence = f"({detection.confidence_score:.0f}% confidence)"
+            else:
+                status = "None"
+                confidence = "(Not detected)"
+
+            embed.add_field(
+                name=f"**{display_name}**",
+                value=f"**Column:** `{status}`\n**Status:** {confidence}",
+                inline=True
+            )
+
+        embed.set_footer(text="Use the buttons below to update column mappings")
+        return embed
+
+    def add_buttons(self):
+        """
+        Add all the buttons to the view.
+        """
+        column_configs = [
+            ("Discord", "discord", self.current_mapping.discord_column if self.current_mapping else None),
+            ("IGN", "ign", self.current_mapping.ign_column if self.current_mapping else None),
+            ("Alt IGN", "alt_ign", self.current_mapping.alt_ign_column if self.current_mapping else None),
+            ("Pronouns", "pronouns", self.current_mapping.pronouns_column if self.current_mapping else None),
+            ("Registered", "registered", self.current_mapping.registered_column if self.current_mapping else None),
+            ("Check-in", "checkin", self.current_mapping.checkin_column if self.current_mapping else None),
+        ]
+
+        # Only add team section for doubleup mode
+        mode = get_event_mode_for_guild(self.guild_id)
+        if mode == "doubleup":
+            column_configs.append(("Team", "team", self.current_mapping.team_column if self.current_mapping else None))
+
+        # Add update and remove buttons for each column in pairs
+        for display_name, column_type, _ in column_configs:
+            self.add_item(ColumnButton(column_type, display_name, "update"))
+            self.add_item(ColumnButton(column_type, display_name, "remove"))
+
+        # Add action buttons
+        self.add_item(ActionButton("detect", "🔍 Detect Columns", discord.ButtonStyle.secondary))
+        self.add_item(ActionButton("cancel", "❌ Cancel", discord.ButtonStyle.danger))
+
+    async def on_timeout(self) -> None:
+        """Handle view timeout."""
+        logging.info(f"[CONFIG_UI] View timed out for guild {self.guild_id}")
+
+    def parse_interaction(self, interaction: discord.Interaction):
+        """Parse interaction data to extract custom_id."""
+        if hasattr(interaction, 'data') and interaction.data:
+            return interaction.data.get("custom_id", "")
+        return ""
+
+    async def handle_component_interaction(self, interaction: discord.Interaction, component):
+        """Handle component interactions properly."""
+        if hasattr(component, 'custom_id'):
+            custom_id = component.custom_id
+            logging.info(f"[CONFIG_UI] Component interaction: {custom_id}")
+            await self.handle_button_callback(interaction, custom_id)
+            return True
+        return False
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """
+        Handle interactions for the LayoutView.
+        """
+        try:
+            # Try to get custom_id from interaction data
+            custom_id = self.parse_interaction(interaction)
+
+            if custom_id:
+                logging.info(f"[CONFIG_UI] Interaction received: {custom_id}")
+                await self.handle_button_callback(interaction, custom_id)
+                return True
+            else:
+                logging.warning(f"[CONFIG_UI] No custom_id found in interaction")
+                return False
+        except Exception as e:
+            logging.error(f"[CONFIG_UI] Error in interaction_check: {e}")
+            return False
+
+    async def handle_button_callback(self, interaction: discord.Interaction, custom_id: str):
+        """
+        Handle button callbacks.
+        """
+        if custom_id == "add_new_column":
+            await interaction.response.send_message(
+                "Add new column functionality coming soon!",
+                ephemeral=True
+            )
+        elif custom_id == "redetect_columns":
+            await interaction.response.send_message(
+                "Re-detect columns functionality coming soon!",
+                ephemeral=True
+            )
+        elif custom_id.startswith("remove_"):
+            column_type = custom_id.replace("remove_", "")
+            await interaction.response.send_message(
+                f"Remove {column_type} functionality coming soon!",
+                ephemeral=True
+            )
+        elif custom_id == "update_column":
+            await interaction.response.send_message(
+                "Update column functionality coming soon!",
+                ephemeral=True
+            )
+
+    async def initialize(self):
+        """
+        Initialize the view with current detections and mappings.
+        """
+        self.detections = await detect_sheet_columns(self.guild_id)
+        self.current_mapping = await get_column_mapping(self.guild_id)
+
+        logging.info(f"[CONFIG_UI] Initialized for guild {self.guild_id}")
+        logging.info(f"[CONFIG_UI] Detections: {list(self.detections.keys())}")
+        if self.current_mapping:
+            logging.info(f"[CONFIG_UI] Current mapping: discord={self.current_mapping.discord_column}, ign={self.current_mapping.ign_column}, registered={self.current_mapping.registered_column}")
+        else:
+            logging.warning("[CONFIG_UI] No current mapping found!")
+
+    def build_optimized_column_containers(self) -> Dict[str, ui.Container]:
+        """
+        Build optimized containers for each column type with minimal components.
+        """
+        containers = {}
+
+        logging.info(f"[CONFIG_UI] Building optimized column containers - current_mapping exists: {self.current_mapping is not None}")
+
+        column_configs = [
+            ("Discord", "discord", self.current_mapping.discord_column if self.current_mapping else None),
+            ("IGN", "ign", self.current_mapping.ign_column if self.current_mapping else None),
+            ("Alt IGN", "alt_ign", self.current_mapping.alt_ign_column if self.current_mapping else None),
+            ("Pronouns", "pronouns", self.current_mapping.pronouns_column if self.current_mapping else None),
+            ("Registered", "registered", self.current_mapping.registered_column if self.current_mapping else None),
+            ("Check-in", "checkin", self.current_mapping.checkin_column if self.current_mapping else None),
+        ]
+
+        # Only add team section for doubleup mode
+        mode = get_event_mode_for_guild(self.guild_id)
+        if mode == "doubleup":
+            column_configs.append(("Team", "team", self.current_mapping.team_column if self.current_mapping else None))
+
+        for i, (display_name, column_type, current_col) in enumerate(column_configs):
+            detection = self.detections.get(column_type)
+
+            logging.info(f"[CONFIG_UI] Processing {column_type}: current_col={current_col}, detection={detection.column_letter if detection else None}")
+
+            if current_col:
+                # User has manually set this column
+                status = current_col
+            elif detection:
+                # Show detected column with confidence
+                status = f"{detection.column_letter} ({detection.confidence_score:.0f}%)"
+            else:
+                # No detection available
+                status = "None"
+
+            # Create compact content: "Discord: A (95%)" [Update] [Remove]
+            content = f"**{display_name}**: {status}"
+
+            # Create separate container for this column with minimal components
+            container_num = i + 1  # container1, container2, etc.
+            container_key = f'container{container_num}'
+
+            # Use a single container with TextDisplay and ActionRow containing buttons
+            containers[container_key] = ui.Container(
+                ui.TextDisplay(content=content),
+                ui.ActionRow(
+                    ui.Button(
+                        style=discord.ButtonStyle.primary,
+                        label="Update",
+                        custom_id=f"update_{column_type}",
+                    ),
+                    ui.Button(
+                        style=discord.ButtonStyle.danger,
+                        label="Remove",
+                        custom_id=f"remove_{column_type}",
+                    ),
+                ),
+                accent_colour=discord.Colour.green()
+            )
+
+        # Only build the number of containers we actually need
+        # This prevents extra "Loading..." containers
+        max_containers = len(column_configs)
+        for i in range(max_containers + 1, 8):  # Clear any extra containers
+            container_key = f'container{i}'
+            if hasattr(self, container_key):
+                container = getattr(self, container_key)
+                container.children = []
+                container._children = []
+
+        logging.info(f"[CONFIG_UI] Built {len(containers)} optimized containers (cleared extras)")
+        return containers
+
+    def build_container(self) -> ui.Container:
+        """
+        Build the main container using the exact template structure.
+        """
+        sections = self.build_sections()
+
+        # Build the container following your template exactly
+        container_children = [
+            ui.TextDisplay(content="# Google Sheet Column Assignment"),
+            ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
+        ]
+
+        # Add each section
+        container_children.extend(sections)
+
+        # Add Update Column button at the end
+        container_children.append(
+            ui.ActionRow(
+                ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Update Column",
+                    custom_id="update_column",
+                ),
+            )
+        )
+
+        # Create the container with all children
+        container = ui.Container(
+            *container_children,
+            accent_colour=discord.Colour(9225410),
+        )
+
+        return container
+
+    async def respond_with_ui(self, interaction: discord.Interaction):
+        """
+        Send the ephemeral UI response using LayoutView with optimized containers.
+        """
+        await self.initialize()
+
+        # Build optimized containers for each column
+        containers = self.build_optimized_column_containers()
+
+        # Create a new view with only the containers that have content
+        new_view = ui.LayoutView()
+
+        # Add title container
+        new_view.add_item(self.title_container)
+
+        # Only add containers that actually have content
+        active_containers = 0
+        for i in range(1, 8):  # containers 1-7
+            container_key = f'container{i}'
+            if container_key in containers and containers[container_key].children:
+                # Update the existing container
+                container = getattr(self, container_key)
+                container.children = containers[container_key].children
+                container._children = containers[container_key]._children
+                new_view.add_item(container)
+                active_containers += 1
+
+        # Add action container
+        new_view.add_item(self.action_container)
+
+        # Count total components in the new view
+        total_components = 0
+        for item in new_view.children:
+            if hasattr(item, 'children'):
+                total_components += len(item.children)
+
+        logging.info(f"[CONFIG_UI] Built {active_containers} active column containers")
+        logging.info(f"[CONFIG_UI] Total components in new view: {total_components}")
+
+        if total_components > 40:
+            logging.error(f"[CONFIG_UI] Component count ({total_components}) exceeds Discord's 40-component limit!")
+            # Fallback to simpler view if still over limit
+            await self.send_simple_view(interaction)
+            return
+
+        await interaction.response.send_message(view=new_view, ephemeral=True)
+
+    async def respond_with_ui_refresh(self, interaction: discord.Interaction):
+        """
+        Refresh the UI with updated detections after using interaction.followup.
+        """
+        # Build optimized containers for each column
+        containers = self.build_optimized_column_containers()
+
+        # Create a new view with only the containers that have content
+        new_view = ui.LayoutView()
+
+        # Add title container
+        new_view.add_item(self.title_container)
+
+        # Only add containers that actually have content
+        active_containers = 0
+        for i in range(1, 8):  # containers 1-7
+            container_key = f'container{i}'
+            if container_key in containers and containers[container_key].children:
+                # Update the existing container
+                container = getattr(self, container_key)
+                container.children = containers[container_key].children
+                container._children = containers[container_key]._children
+                new_view.add_item(container)
+                active_containers += 1
+
+        # Add action container
+        new_view.add_item(self.action_container)
+
+        await interaction.followup.send(
+            content="🔄 Columns re-detected. Interface updated below:",
+            view=new_view,
+            ephemeral=True
+        )
+
+    async def send_simple_view(self, interaction: discord.Interaction):
+        """
+        Send a simplified view that fits within component limits.
+        """
+        # Create a single container with all info and essential actions
+        content_lines = ["# Google Sheet Column Assignment", ""]
+
+        column_configs = [
+            ("Discord", "discord"),
+            ("IGN", "ign"),
+            ("Alt IGN", "alt_ign"),
+            ("Pronouns", "pronouns"),
+            ("Registered", "registered"),
+            ("Check-in", "checkin"),
+        ]
+
+        mode = get_event_mode_for_guild(self.guild_id)
+        if mode == "doubleup":
+            column_configs.append(("Team", "team"))
+
+        for display_name, column_type in column_configs:
+            current_col = getattr(self.current_mapping, f"{column_type}_column", None) if self.current_mapping else None
+            detection = self.detections.get(column_type)
+
+            if current_col:
+                status = current_col
+            elif detection:
+                status = f"{detection.column_letter} ({detection.confidence_score:.0f}%)"
+            else:
+                status = "None"
+
+            content_lines.append(f"**{display_name}**: {status}")
+
+        content_lines.append("")
+        content_lines.append("Use `/gal config` to update column mappings.")
+
+        simple_container = ui.Container(
+            ui.TextDisplay(content="\n".join(content_lines)),
+            ui.ActionRow(
+                ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Update Columns",
+                    custom_id="open_full_config"
+                ),
+            ),
+            accent_colour=discord.Colour.green()
+        )
+
+        simple_view = ui.LayoutView()
+        simple_view.add_item(simple_container)
+
+        await interaction.response.send_message(view=simple_view, ephemeral=True)
+
+    async def handle_button_callback(self, interaction: discord.Interaction, custom_id: str):
+        """
+        Handle button callbacks for the LayoutView.
+        """
+        logging.info(f"[CONFIG_UI] Processing button callback: {custom_id}")
+
+        if custom_id.startswith("update_"):
+            column_type = custom_id.replace("update_", "")
+            logging.info(f"[CONFIG_UI] Opening update modal for column: {column_type}")
+            modal = ColumnUpdateModal(self, column_type)
+            await interaction.response.send_modal(modal)
+        elif custom_id.startswith("remove_"):
+            column_type = custom_id.replace("remove_", "")
+            logging.info(f"[CONFIG_UI] Opening remove confirmation modal for column: {column_type}")
+            modal = ColumnRemoveConfirmModal(self, column_type)
+            await interaction.response.send_modal(modal)
+        elif custom_id == "detect_columns":
+            logging.info(f"[CONFIG_UI] Starting column detection")
+            await interaction.response.defer(ephemeral=True)
+            try:
+                # Force refresh detection
+                self.detections = await detect_sheet_columns(self.guild_id, force_refresh=True)
+                await self.initialize()
+
+                # Send updated view with new detections
+                await self.respond_with_ui_refresh(interaction)
+            except Exception as e:
+                logging.error(f"[CONFIG_UI] Detection failed: {e}")
+                await interaction.followup.send(
+                    content=f"❌ Failed to detect columns: {e}",
+                    ephemeral=True
+                )
+        elif custom_id == "cancel_config":
+            logging.info(f"[CONFIG_UI] Canceling configuration")
+            await interaction.response.edit_message(
+                content="Configuration cancelled.",
+                view=None
+            )
+        else:
+            logging.warning(f"[CONFIG_UI] Unknown action: {custom_id}")
+            await interaction.response.send_message(
+                content=f"Unknown action: {custom_id}",
+                ephemeral=True
+            )
+
+    async def handle_remove_column(self, interaction: discord.Interaction, column_type: str):
+        """
+        Handle removal of a column mapping.
+        """
+        if column_type == "discord":
+            self.current_mapping.discord_column = None
+        elif column_type == "ign":
+            self.current_mapping.ign_column = None
+        elif column_type == "alt_ign":
+            self.current_mapping.alt_ign_column = None
+        elif column_type == "pronouns":
+            self.current_mapping.pronouns_column = None
+        elif column_type == "registered":
+            self.current_mapping.registered_column = None
+        elif column_type == "checkin":
+            self.current_mapping.checkin_column = None
+        elif column_type == "team":
+            self.current_mapping.team_column = None
+
+        await save_column_mapping(self.guild_id, self.current_mapping)
+        await interaction.response.edit_message(
+            content=f"✅ Removed {column_type.replace('_', ' ').title()} column mapping",
+            view=None
+        )
+
+    async def handle_update_column(self, interaction: discord.Interaction):
+        """
+        Handle column update request.
+        """
+        # Create a modal for column selection
+        modal = ColumnSelectModal(self)
+        await interaction.response.send_modal(modal)
+
+    async def handle_redetect_columns(self, interaction: discord.Interaction):
+        """
+        Handle re-detection of columns.
+        """
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Force refresh detection
+            self.detections = await detect_sheet_columns(self.guild_id, force_refresh=True)
+
+            # Send updated UI
+            container = self.build_container()
+            await interaction.followup.send(
+                content="🔄 Columns re-detected. Updated mappings below:",
+                view=ui.View(container),
+                ephemeral=True
+            )
+
+        except Exception as e:
+            await interaction.followup.send(
+                content=f"❌ Failed to re-detect columns: {e}",
+                ephemeral=True
+            )
+
+
+class ColumnUpdateModal(ui.Modal):
+    """
+    Modal for updating a column mapping.
+    """
+
+    def __init__(self, parent_view: ColumnMappingView, column_type: str):
+        column_display_name = column_type.replace('_', ' ').title()
+        super().__init__(title=f"Update {column_display_name} Column")
+        self.parent_view = parent_view
+        self.column_type = column_type
+
+        # Get current value for this column
+        current_mapping = parent_view.current_mapping
+        current_value = getattr(current_mapping, f"{column_type}_column", "") if current_mapping else ""
+
+        # Get detected value
+        detection = parent_view.detections.get(column_type)
+        detected_value = detection.column_letter if detection else ""
+
+        self.add_item(ui.TextInput(
+            label="Column Letter",
+            placeholder="e.g., A, B, C, D",
+            default=current_value or detected_value,
+            style=discord.TextStyle.short,
+            required=True,
+            max_length=3
+        ))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """
+        Handle column update submission with auto-save.
+        """
+        column_letter = self.children[0].value.upper().strip()
+
+        # Validate column letter format
+        if not column_letter or not column_letter[0].isalpha():
+            await interaction.response.send_message(
+                "❌ Invalid column letter. Please use a letter like A, B, C, etc.",
+                ephemeral=True
+            )
+            return
+
+        # Update the mapping
+        mapping = self.parent_view.current_mapping
+        if self.column_type == "discord":
+            mapping.discord_column = column_letter
+        elif self.column_type == "ign":
+            mapping.ign_column = column_letter
+        elif self.column_type == "alt_ign":
+            mapping.alt_ign_column = column_letter
+        elif self.column_type == "pronouns":
+            mapping.pronouns_column = column_letter
+        elif self.column_type == "registered":
+            mapping.registered_column = column_letter
+        elif self.column_type == "checkin":
+            mapping.checkin_column = column_letter
+        elif self.column_type == "team":
+            mapping.team_column = column_letter
+
+        # Auto-save the mapping
+        await save_column_mapping(self.parent_view.guild_id, mapping)
+
+        column_display_name = self.column_type.replace('_', ' ').title()
+        await interaction.response.send_message(
+            f"✅ Updated {column_display_name} column to {column_letter} and saved automatically.",
+            ephemeral=True
+        )
+
+
+class ColumnRemoveConfirmModal(ui.Modal):
+    """
+    Modal for confirming column removal with button confirmation.
+    """
+
+    def __init__(self, parent_view: ColumnMappingView, column_type: str):
+        column_display_name = column_type.replace('_', ' ').title()
+        super().__init__(title=f"Remove {column_display_name} Column")
+        self.parent_view = parent_view
+        self.column_type = column_type
+
+        # Get current value for confirmation
+        current_mapping = parent_view.current_mapping
+        current_value = getattr(current_mapping, f"{column_type}_column", "") if current_mapping else "None"
+
+        self.add_item(ui.TextInput(
+            label=f"Are you sure you want to remove {column_display_name} column?",
+            placeholder=f"Current value: {current_value or 'None'}",
+            style=discord.TextStyle.short,
+            required=False,
+            default="Type CONFIRM to remove this column mapping"
+        ))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """
+        Handle column removal confirmation.
+        """
+        confirmation = self.children[0].value.strip().upper()
+
+        if confirmation != "CONFIRM":
+            await interaction.response.send_message(
+                "❌ Removal cancelled. You must type 'CONFIRM' to proceed.",
+                ephemeral=True
+            )
+            return
+
+        # Update the mapping to remove the column
+        mapping = self.parent_view.current_mapping
+        if self.column_type == "discord":
+            mapping.discord_column = None
+        elif self.column_type == "ign":
+            mapping.ign_column = None
+        elif self.column_type == "alt_ign":
+            mapping.alt_ign_column = None
+        elif self.column_type == "pronouns":
+            mapping.pronouns_column = None
+        elif self.column_type == "registered":
+            mapping.registered_column = None
+        elif self.column_type == "checkin":
+            mapping.checkin_column = None
+        elif self.column_type == "team":
+            mapping.team_column = None
+
+        # Auto-save the mapping
+        await save_column_mapping(self.parent_view.guild_id, mapping)
+
+        column_display_name = self.column_type.replace('_', ' ').title()
+        await interaction.response.send_message(
+            f"✅ Removed {column_display_name} column mapping and saved automatically.",
+            ephemeral=True
+        )
+
+
+class SettingsView(ui.LayoutView):
+    """
+    Configuration UI for general bot settings using discord.py v2 components.
+    """
+
+    def __init__(self, guild_id: str):
+        super().__init__(timeout=300)
+        self.guild_id = guild_id
+        self.settings = self._load_settings()
+
+    def _load_settings(self) -> Dict[str, Any]:
+        """
+        Load current settings from config and persistence.
+        """
+        # Get sheet settings
+        mode = get_event_mode_for_guild(self.guild_id)
+        sheet_settings = get_sheet_settings(mode)
+
+        # Get guild-specific data
+        guild_data = get_guild_data(self.guild_id)
+
+        settings = {
+            "header_line_num": sheet_settings.get("header_line_num", 1),
+            "max_players": sheet_settings.get("max_players", 24),
+            "mode": mode,
+            "log_channel": _FULL_CFG.get("channels", {}).get("log_channel", "bot-log"),
+            "unified_channel": _FULL_CFG.get("channels", {}).get("unified_channel", "🎫registration"),
+        }
+
+        return settings
+
+    def build_sections(self) -> List[ui.Section]:
+        """
+        Build sections for each setting.
+        """
+        sections = []
+
+        # Sheet settings
+        sheet_settings = [
+            ("Header Line Number", "header_line_num", str(self.settings["header_line_num"])),
+            ("Max Players", "max_players", str(self.settings["max_players"])),
+            ("Event Mode", "mode", self.settings["mode"]),
+        ]
+
+        for display_name, key, value in sheet_settings:
+            section = ui.Section(
+                ui.TextDisplay(content=f"{display_name}: {value}"),
+                accessory=ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Edit",
+                    custom_id=f"edit_{key}",
+                ),
+            )
+            sections.append(section)
+
+        # Channel settings
+        channel_settings = [
+            ("Log Channel", "log_channel", self.settings["log_channel"]),
+            ("Unified Channel", "unified_channel", self.settings["unified_channel"]),
+        ]
+
+        for display_name, key, value in channel_settings:
+            section = ui.Section(
+                ui.TextDisplay(content=f"{display_name}: {value}"),
+                accessory=ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Edit",
+                    custom_id=f"edit_{key}",
+                ),
+            )
+            sections.append(section)
+
+        return sections
+
+    def build_container(self) -> ui.Container:
+        """
+        Build the main container for settings.
+        """
+        sections = self.build_sections()
+
+        container = ui.Container(
+            ui.TextDisplay(content="# Bot Configuration"),
+            ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
+            ui.TextDisplay(content="## Sheet Settings"),
+            ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
+            *sections[:3],  # Sheet settings
+            ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
+            ui.TextDisplay(content="## Channel Settings"),
+            ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
+            *sections[3:],  # Channel settings
+            accent_colour=discord.Colour(9225410),
+        )
+
+        return container
+
+    async def respond_with_ui(self, interaction: discord.Interaction):
+        """
+        Send the ephemeral UI response.
+        """
+        container = self.build_container()
+        complete_view = ui.View(container)
+
+        await interaction.response.send_message(
+            view=complete_view,
+            ephemeral=True
+        )
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """
+        Handle interactions for the SettingsView.
+        """
+        custom_id = interaction.data.get("custom_id", "")
+        if custom_id.startswith("edit_"):
+            setting_key = custom_id.replace("edit_", "")
+            modal = SettingsEditModal(self, setting_key)
+            await interaction.response.send_modal(modal)
+        return True
+
+
+class SettingsEditModal(ui.Modal):
+    """
+    Modal for editing a specific setting.
+    """
+
+    def __init__(self, parent_view: SettingsView, setting_key: str):
+        super().__init__(title=f"Edit {setting_key.replace('_', ' ').title()}")
+        self.parent_view = parent_view
+        self.setting_key = setting_key
+
+        # Configure the text input based on setting type
+        current_value = str(parent_view.settings[setting_key])
+
+        if setting_key in ["header_line_num", "max_players"]:
+            label = setting_key.replace('_', ' ').title()
+            placeholder = "Enter a number"
+        elif setting_key == "mode":
+            label = "Event Mode"
+            placeholder = "normal or doubleup"
+        else:
+            label = setting_key.replace('_', ' ').title()
+            placeholder = "Enter new value"
+
+        self.add_item(ui.TextInput(
+            label=label,
+            placeholder=placeholder,
+            default=current_value,
+            style=discord.TextStyle.short,
+            required=True
+        ))
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """
+        Handle setting edit submission.
+        """
+        new_value = self.children[0].value.strip()
+
+        # Validate based on setting type
+        if self.setting_key in ["header_line_num", "max_players"]:
+            try:
+                new_value = int(new_value)
+                if new_value < 1:
+                    raise ValueError("Value must be positive")
+            except ValueError:
+                await interaction.response.send_message(
+                    "❌ Please enter a valid positive number",
+                    ephemeral=True
+                )
+                return
+        elif self.setting_key == "mode":
+            if new_value not in ["normal", "doubleup"]:
+                await interaction.response.send_message(
+                    "❌ Mode must be 'normal' or 'doubleup'",
+                    ephemeral=True
+                )
+                return
+
+        # Save the setting
+        if self.setting_key == "mode":
+            # Save to persistence for event mode
+            from core.persistence import set_event_mode_for_guild
+            set_event_mode_for_guild(self.parent_view.guild_id, new_value)
+        else:
+            # Save to guild data for other settings
+            guild_data = get_guild_data(self.parent_view.guild_id)
+            guild_data[f"setting_{self.setting_key}"] = new_value
+            update_guild_data(self.parent_view.guild_id, guild_data)
+
+        await interaction.response.send_message(
+            f"✅ Updated {self.setting_key.replace('_', ' ').title()} to {new_value}",
+            ephemeral=True
+        )
+
+

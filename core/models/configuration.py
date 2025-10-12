@@ -42,10 +42,10 @@ class ConfigurationType(Enum):
 class ConfigurationValue(BaseModel):
     """Represents a single configuration value."""
     
-    key: str
-    value: Any
-    category: ConfigurationCategory
-    value_type: ConfigurationType
+    key: str = ""
+    value: Any = None
+    category: ConfigurationCategory = ConfigurationCategory.GENERAL
+    value_type: ConfigurationType = ConfigurationType.STRING
     description: Optional[str] = None
     default_value: Any = None
     is_required: bool = False
@@ -141,7 +141,7 @@ class ConfigurationValue(BaseModel):
 class Configuration(BaseModel):
     """Represents a collection of configuration values."""
     
-    name: str
+    name: str = ""
     version: str = "1.0.0"
     description: Optional[str] = None
     is_active: bool = True
@@ -295,10 +295,10 @@ class Configuration(BaseModel):
 class ConfigurationHistory(BaseModel):
     """Represents a change history for configuration values."""
     
-    configuration_id: str
-    key: str
-    old_value: Any
-    new_value: Any
+    configuration_id: str = ""
+    key: str = ""
+    old_value: Any = None
+    new_value: Any = None
     changed_by: Optional[str] = None
     change_reason: Optional[str] = None
     rollback_available: bool = True

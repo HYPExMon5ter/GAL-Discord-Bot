@@ -44,8 +44,8 @@ class RegistrationStatus(Enum):
 class TournamentRegistration(BaseModel):
     """Represents a user's registration for a tournament."""
     
-    tournament_id: str
-    user_id: str
+    tournament_id: str = ""
+    user_id: str = ""
     status: RegistrationStatus = RegistrationStatus.PENDING
     registration_date: datetime = field(default_factory=datetime.utcnow)
     partner_id: Optional[str] = None  # For doubles tournaments
@@ -69,7 +69,7 @@ class TournamentRegistration(BaseModel):
 class Tournament(BaseModel):
     """Represents a tournament."""
     
-    name: str
+    name: str = ""
     description: Optional[str] = None
     tournament_type: TournamentType = TournamentType.SINGLES
     status: TournamentStatus = TournamentStatus.DRAFT
@@ -163,9 +163,9 @@ class Tournament(BaseModel):
 class TournamentMatch(BaseModel):
     """Represents a match within a tournament."""
     
-    tournament_id: str
-    round_number: int
-    match_number: int
+    tournament_id: str = ""
+    round_number: int = 1
+    match_number: int = 1
     player1_id: Optional[str] = None
     player2_id: Optional[str] = None
     player1_score: Optional[int] = None

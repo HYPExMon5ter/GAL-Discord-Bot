@@ -197,7 +197,7 @@ class Event:
 class TournamentEvent(Event):
     """Tournament-specific event."""
     
-    tournament_id: str
+    tournament_id: str = ""
     tournament_name: Optional[str] = None
     
     def __post_init__(self):
@@ -213,7 +213,7 @@ class TournamentEvent(Event):
 class UserEvent(Event):
     """User-specific event."""
     
-    user_id: str
+    user_id: str = ""
     username: Optional[str] = None
     
     def __post_init__(self):
@@ -230,7 +230,7 @@ class UserEvent(Event):
 class GuildEvent(Event):
     """Guild-specific event."""
     
-    guild_id: str
+    guild_id: str = ""
     guild_name: Optional[str] = None
     
     def __post_init__(self):
@@ -247,7 +247,7 @@ class GuildEvent(Event):
 class ConfigurationEvent(Event):
     """Configuration-specific event."""
     
-    configuration_key: str
+    configuration_key: str = ""
     old_value: Optional[Any] = None
     new_value: Optional[Any] = None
     

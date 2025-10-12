@@ -72,6 +72,36 @@ core/models/ (Data Models)
   - References: Database schema, API schemas, Business rules
   - Referenced by: All components, Developers, API consumers
 
+#### Frontend System Documentation (NEW)
+- **[Frontend Components Documentation](./frontend-components.md)** - React components and hooks
+  - References: API Integration docs, Dashboard Operations SOP
+  - Referenced by: Frontend developers, Dashboard operators
+
+- **[API Integration Documentation](./api-integration.md)** - Frontend-backend API contracts
+  - References: API Backend System, Frontend Components docs
+  - Referenced by: Frontend developers, API consumers
+
+- **[Developer Documentation](./developer-documentation.md)** - Development guidelines and best practices
+  - References: All component docs, Dashboard Deployment SOP
+  - Referenced by: All developers, New team members
+
+#### Live Graphics Dashboard Documentation
+- **[Live Graphics Dashboard System](./live-graphics-dashboard.md)** - Dashboard architecture and implementation
+  - References: Frontend components, API integration, Dashboard deployment SOP
+  - Referenced by: Dashboard operators, Frontend developers, System administrators
+
+- **[Frontend Components Documentation](./frontend-components.md)** - React component architecture
+  - References: Developer documentation, API integration, Dashboard operations SOP
+  - Referenced by: Frontend developers, UI/UX team, Dashboard operators
+
+- **[API Integration Documentation](./api-integration.md)** - Frontend-backend integration patterns
+  - References: API backend system, Frontend components, WebSocket integration
+  - Referenced by: Frontend developers, API consumers, Integration testers
+
+- **[Developer Documentation](./developer-documentation.md)** - Development workflows and guidelines
+  - References: Frontend components, API integration, System architecture
+  - Referenced by: All developers, Code reviewers, Onboarding materials
+
 #### Legacy Documentation
 - **[Core Modules](./core-modules.md)** - Legacy bot components
   - References: Integration modules, Helper modules
@@ -98,6 +128,27 @@ core/models/ (Data Models)
 
 - **[Event System Monitoring SOP](../sops/event-system-monitoring.md)** - Event system monitoring
   - References: Event system docs, Troubleshooting SOP
+
+#### Dashboard Operations SOPs (NEW)
+- **[Dashboard Operations SOP](../sops/dashboard-operations.md)** - Live Graphics Dashboard operations
+  - References: Live Graphics Dashboard docs, Frontend components docs
+  - Referenced by: Dashboard operators, Content creators
+
+- **[Graphics Management SOP](../sops/graphics-management.md)** - Graphics creation and template management
+  - References: Dashboard Operations SOP, Canvas Locking SOP
+  - Referenced by: Content managers, Graphic designers
+
+- **[Dashboard Deployment SOP](../sops/dashboard-deployment.md)** - Frontend deployment and CI/CD
+  - References: Frontend components docs, API Deployment SOP
+  - Referenced by: Frontend developers, DevOps team
+
+- **[Canvas Locking Management SOP](../sops/canvas-locking-management.md)** - Canvas lock system administration
+  - References: Dashboard Operations SOP, API Integration docs
+  - Referenced by: System administrators, Dashboard operators
+
+- **[Dashboard Security SOP](../sops/dashboard-security.md)** - Dashboard authentication and access control
+  - References: Security SOP, Dashboard Operations SOP
+  - Referenced by: Security administrators, System administrators
   - Referenced by: System administrators, Monitoring team
 
 - **[DAL Migration SOP](../sops/dal-migration.md)** - Data Access Layer migration
@@ -127,6 +178,27 @@ core/models/ (Data Models)
 - **[Emergency Rollback SOP](../sops/emergency-rollback.md)** - Emergency deployment rollback procedures
   - References: API Deployment SOP, Deployment SOP, Troubleshooting SOP
   - Referenced by: DevOps team, System administrators, On-call engineers
+
+#### Live Graphics Dashboard SOPs
+- **[Dashboard Operations SOP](../sops/dashboard-operations.md)** - Dashboard graphic management and operations
+  - References: Frontend components, Canvas locking management SOP, Dashboard security SOP
+  - Referenced by: Dashboard operators, Graphics team, System administrators
+
+- **[Graphics Management SOP](../sops/graphics-management.md)** - Template and graphic lifecycle management
+  - References: Dashboard operations SOP, Frontend components, Developer documentation
+  - Referenced by: Graphics team, Template developers, Quality assurance
+
+- **[Dashboard Deployment SOP](../sops/dashboard-deployment.md)** - Frontend build and deployment procedures
+  - References: API deployment SOP, Frontend components, Developer documentation
+  - Referenced by: DevOps team, Frontend developers, System administrators
+
+- **[Canvas Locking Management SOP](../sops/canvas-locking-management.md)** - Canvas lock conflict resolution
+  - References: Dashboard operations SOP, API integration, WebSocket documentation
+  - Referenced by: Dashboard operators, Graphics team, System administrators
+
+- **[Dashboard Security SOP](../sops/dashboard-security.md)** - Dashboard authentication and session management
+  - References: Security SOP, API integration, Frontend components
+  - Referenced by: Dashboard operators, Security team, System administrators
 
 ## Integration Points
 

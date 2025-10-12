@@ -27,6 +27,8 @@ Frontend (Next.js) ←→ API Gateway ←→ Backend Services
                             WebSocket Server
                                    ↓
                             Database Layer
+                                   ↓
+                          JSON Serialization Layer
 ```
 
 ## REST API Integration
@@ -907,6 +909,354 @@ export class ApiRecovery {
 
 export const apiRecovery = new ApiRecovery();
 ```
+
+## JSON Serialization Handling
+
+### Overview
+Due to SQLite limitations, complex data structures must be serialized to JSON strings before database storage and deserialized after retrieval. This section documents the JSON serialization patterns used in the Live Graphics Dashboard API integration.
+
+### Graphics Data Serialization
+
+#### Backend Implementation
+```python
+# api/services/graphics_service.py
+import json
+from typing import Dict, Any
+
+class GraphicsService:
+    def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, Any]:
+        """Create a new graphic with proper JSON serialization"""
+        from ..models import Graphic
+        
+        db_graphic = Graphic(
+            title=graphic.title,
+            # Serialize Python dict to JSON string for SQLite compatibility
+            data_json=json.dumps(graphic.data_json or {}),
+            created_by=created_by,
+            archived=False
+        )
+        
+        self.db.add(db_graphic)
+        self.db.commit()
+        self.db.refresh(db_graphic)
+        
+        return {
+            "id": db_graphic.id,
+            "title": db_graphic.title,
+            # Deserialize JSON string back to Python dict for API response
+            "data_json": json.loads(db_graphic.data_json) if db_graphic.data_json else {},
+            "created_by": db_graphic.created_by,
+            "created_at": db_graphic.created_at,
+            "updated_at": db_graphic.updated_at,
+            "archived": db_graphic.archived
+        }
+    
+    def get_graphic_by_id(self, graphic_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve graphic with proper JSON deserialization"""
+        from ..models import Graphic
+        
+        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
+        
+        if not graphic:
+            return None
+        
+        return {
+            "id": graphic.id,
+            "title": graphic.title,
+            # Handle potential eval() usage from legacy code
+            "data_json": eval(graphic.data_json) if graphic.data_json else {},
+            "created_by": graphic.created_by,
+            "created_at": graphic.created_at,
+            "updated_at": graphic.updated_at,
+            "archived": graphic.archived
+        }
+    
+    def update_graphic(self, graphic_id: int, graphic_update: GraphicUpdate, user_name: str) -> Optional[Dict[str, Any]]:
+        """Update graphic with JSON serialization"""
+        from ..models import Graphic
+        
+        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
+        
+        if not graphic:
+            return None
+        
+        if graphic_update.title is not None:
+            graphic.title = graphic_update.title
+        
+        if graphic_update.data_json is not None:
+            # Serialize updated data to JSON string
+            graphic.data_json = json.dumps(graphic_update.data_json)
+        
+        graphic.updated_at = datetime.utcnow()
+        
+        self.db.commit()
+        self.db.refresh(graphic)
+        
+        return {
+            "id": graphic.id,
+            "title": graphic.title,
+            "data_json": eval(graphic.data_json) if graphic.data_json else {},
+            "created_by": graphic.created_by,
+            "created_at": graphic.created_at,
+            "updated_at": graphic.updated_at,
+            "archived": graphic.archived
+        }
+```
+
+#### Frontend Integration
+```typescript
+// dashboard/hooks/use-graphics.ts
+import { useState, useEffect, useCallback } from 'react';
+import { Graphic, CreateGraphicRequest, UpdateGraphicRequest } from '@/types';
+import { graphicsApi } from '@/lib/api';
+
+export function useGraphics() {
+  const [graphics, setGraphics] = useState<Graphic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const createGraphic = useCallback(async (data: CreateGraphicRequest): Promise<Graphic | null> => {
+    try {
+      // Frontend sends data_json as object, backend handles serialization
+      const newGraphic = await graphicsApi.create(data);
+      setGraphics(prev => [newGraphic, ...prev]);
+      return newGraphic;
+    } catch (err) {
+      setError('Failed to create graphic');
+      console.error('Error creating graphic:', err);
+      return null;
+    }
+  }, []);
+
+  const updateGraphic = useCallback(async (id: number, data: UpdateGraphicRequest): Promise<Graphic | null> => {
+    try {
+      // Frontend can send data_json as string or object
+      const updatedGraphic = await graphicsApi.update(id, data);
+      setGraphics(prev => 
+        prev.map(g => g.id === id ? updatedGraphic : g)
+      );
+      return updatedGraphic;
+    } catch (err) {
+      setError('Failed to update graphic');
+      console.error('Error updating graphic:', err);
+      return null;
+    }
+  }, []);
+
+  return {
+    graphics,
+    loading,
+    error,
+    createGraphic,
+    updateGraphic,
+    // ... other methods
+  };
+}
+```
+
+### Type Definitions
+```typescript
+// dashboard/types/index.ts
+export interface CreateGraphicRequest {
+  title: string;
+  data_json?: any; // JSON object - frontend sends as object, backend serializes
+}
+
+export interface UpdateGraphicRequest {
+  title?: string;
+  data_json?: string; // JSON string - can be either string or object
+}
+
+export interface Graphic {
+  id: number;
+  title: string;
+  data_json: string; // JSON string from backend, parsed in frontend
+  created_by: string;
+  updated_at: string;
+  archived: boolean;
+  canvas_lock?: CanvasLock;
+}
+```
+
+### API Client Implementation
+```typescript
+// dashboard/lib/api.ts
+export const graphicsApi = {
+  create: async (data: CreateGraphicRequest): Promise<Graphic> => {
+    const response: AxiosResponse<Graphic> = await api.post('/graphics', data);
+    return response.data;
+  },
+
+  update: async (id: number, data: UpdateGraphicRequest): Promise<Graphic> => {
+    const response: AxiosResponse<Graphic> = await api.put(`/graphics/${id}`, data);
+    return response.data;
+  },
+
+  getAll: async (): Promise<Graphic[]> => {
+    const response: AxiosResponse<Graphic[]> = await api.get('/graphics');
+    return response.data.map(graphic => ({
+      ...graphic,
+      // Ensure data_json is properly handled on frontend
+      data_json: typeof graphic.data_json === 'string' 
+        ? graphic.data_json 
+        : JSON.stringify(graphic.data_json)
+    }));
+  }
+};
+```
+
+### Frontend Component Usage
+```typescript
+// dashboard/components/graphics/GraphicsTab.tsx
+const handleCreateGraphic = useCallback(async (data: { title: string }) => {
+  try {
+    const canvasData = {
+      elements: [],
+      settings: {
+        width: 1920,
+        height: 1080,
+        backgroundColor: '#000000'
+      }
+    };
+    
+    // Send data_json as object - backend will serialize
+    const result = await createGraphic({
+      title: data.title,
+      data_json: canvasData, // Object, not string
+      created_by: username || 'Dashboard User'
+    });
+    return !!result;
+  } catch (error) {
+    console.error('Failed to create graphic:', error);
+    return false;
+  }
+}, [createGraphic]);
+
+const handleSaveGraphic = useCallback(async (data: { title: string; data_json: string }) => {
+  if (!editingGraphic) return false;
+  
+  try {
+    // Canvas editor sends data_json as string - backend handles as-is
+    const result = await updateGraphic(editingGraphic.id, data);
+    return !!result;
+  } catch (error) {
+    console.error('Failed to update graphic:', error);
+    return false;
+  }
+}, [editingGraphic, updateGraphic]);
+```
+
+### Error Handling and Validation
+
+#### JSON Serialization Error Handling
+```typescript
+// lib/api/validation.ts
+export function validateGraphicData(data: any): boolean {
+  try {
+    // Validate data structure
+    if (!data || typeof data !== 'object') {
+      return false;
+    }
+    
+    // Check for required fields
+    if (data.elements && !Array.isArray(data.elements)) {
+      return false;
+    }
+    
+    if (data.settings && typeof data.settings !== 'object') {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Graphic data validation error:', error);
+    return false;
+  }
+}
+
+export function safeJsonParse(jsonString: string): any {
+  try {
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.error('JSON parse error:', error);
+    return {};
+  }
+}
+```
+
+#### Backend Error Handling
+```python
+# api/services/graphics_service.py
+def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, Any]:
+    """Create a new graphic with robust error handling"""
+    try:
+        from ..models import Graphic
+        
+        # Validate data_json before serialization
+        data_to_serialize = graphic.data_json or {}
+        
+        # Ensure data is JSON serializable
+        try:
+            json_str = json.dumps(data_to_serialize)
+        except (TypeError, ValueError) as e:
+            logger.error(f"JSON serialization error: {e}")
+            json_str = json.dumps({})  # Fallback to empty object
+        
+        db_graphic = Graphic(
+            title=graphic.title,
+            data_json=json_str,
+            created_by=created_by,
+            archived=False
+        )
+        
+        self.db.add(db_graphic)
+        self.db.commit()
+        self.db.refresh(db_graphic)
+        
+        return {
+            "id": db_graphic.id,
+            "title": db_graphic.title,
+            "data_json": json.loads(db_graphic.data_json) if db_graphic.data_json else {},
+            "created_by": db_graphic.created_by,
+            "created_at": db_graphic.created_at,
+            "updated_at": db_graphic.updated_at,
+            "archived": db_graphic.archived
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating graphic: {e}")
+        self.db.rollback()
+        raise
+```
+
+### Migration Notes
+
+#### Legacy Code Handling
+The system may contain legacy code using `eval()` for JSON deserialization. This is being phased out in favor of `json.loads()`:
+
+```python
+# Legacy approach (being replaced)
+"data_json": eval(graphic.data_json) if graphic.data_json else {},
+
+# New approach (preferred)
+"data_json": json.loads(graphic.data_json) if graphic.data_json else {},
+```
+
+#### Data Migration Strategy
+1. **Gradual Migration**: Update create/update operations first
+2. **Data Validation**: Implement validation before migration
+3. **Backward Compatibility**: Support both formats during transition
+4. **Testing**: Comprehensive testing of serialization/deserialization
+5. **Monitoring**: Monitor for serialization errors in production
+
+### Best Practices
+
+1. **Consistent Serialization**: Always use `json.dumps()` for database storage
+2. **Proper Deserialization**: Always use `json.loads()` for API responses
+3. **Error Handling**: Implement robust error handling for JSON operations
+4. **Data Validation**: Validate data structure before serialization
+5. **Type Safety**: Use TypeScript interfaces for frontend data structures
+6. **Testing**: Test with various data types and edge cases
 
 ## Performance Optimization
 

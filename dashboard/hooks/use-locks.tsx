@@ -15,10 +15,13 @@ export function useLocks() {
     setError(null);
     try {
       const locksData = await lockApi.getStatus();
-      setLocks(locksData);
+      // Ensure locksData is an array, default to empty array if not
+      setLocks(Array.isArray(locksData) ? locksData : []);
     } catch (err) {
       setError('Failed to fetch locks');
       console.error('Failed to fetch locks:', err);
+      // Set locks to empty array on error to prevent errors
+      setLocks([]);
     } finally {
       setLoading(false);
     }

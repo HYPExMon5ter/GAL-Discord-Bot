@@ -4,6 +4,7 @@ Service layer for graphics management
 
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
+import json
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
@@ -27,7 +28,7 @@ class GraphicsService:
         
         db_graphic = Graphic(
             title=graphic.title,
-            data_json=graphic.data_json or {},
+            data_json=json.dumps(graphic.data_json or {}),
             created_by=created_by,
             archived=False
         )
@@ -39,7 +40,7 @@ class GraphicsService:
         return {
             "id": db_graphic.id,
             "title": db_graphic.title,
-            "data_json": db_graphic.data_json,
+            "data_json": json.loads(db_graphic.data_json) if db_graphic.data_json else {},
             "created_by": db_graphic.created_by,
             "created_at": db_graphic.created_at,
             "updated_at": db_graphic.updated_at,
@@ -61,7 +62,7 @@ class GraphicsService:
             {
                 "id": graphic.id,
                 "title": graphic.title,
-                "data_json": graphic.data_json,
+                "data_json": eval(graphic.data_json) if graphic.data_json else {},
                 "created_by": graphic.created_by,
                 "created_at": graphic.created_at,
                 "updated_at": graphic.updated_at,
@@ -82,7 +83,7 @@ class GraphicsService:
         return {
             "id": graphic.id,
             "title": graphic.title,
-            "data_json": graphic.data_json,
+            "data_json": eval(graphic.data_json) if graphic.data_json else {},
             "created_by": graphic.created_by,
             "created_at": graphic.created_at,
             "updated_at": graphic.updated_at,
@@ -102,7 +103,7 @@ class GraphicsService:
             graphic.title = graphic_update.title
         
         if graphic_update.data_json is not None:
-            graphic.data_json = graphic_update.data_json
+            graphic.data_json = json.dumps(graphic_update.data_json)
         
         graphic.updated_at = datetime.utcnow()
         
@@ -112,7 +113,7 @@ class GraphicsService:
         return {
             "id": graphic.id,
             "title": graphic.title,
-            "data_json": graphic.data_json,
+            "data_json": eval(graphic.data_json) if graphic.data_json else {},
             "created_by": graphic.created_by,
             "created_at": graphic.created_at,
             "updated_at": graphic.updated_at,

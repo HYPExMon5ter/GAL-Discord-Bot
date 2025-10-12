@@ -1,7 +1,7 @@
 ---
 id: agent.readme
 version: 1.0
-last_updated: 2025-10-11
+last_updated: 2025-01-11
 tags: [agent, docs, overview]
 ---
 

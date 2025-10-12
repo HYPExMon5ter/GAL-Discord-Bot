@@ -11,8 +11,8 @@ import {
 } from '@/types';
 
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
-  ? '/api' 
-  : 'http://localhost:8000';
+  ? '/api/v1' 
+  : 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -46,12 +46,12 @@ api.interceptors.response.use(
 
 export const authApi = {
   login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response: AxiosResponse<AuthResponse> = await api.post('/auth/login', data);
+    const response: AxiosResponse<AuthResponse> = await axios.post(`${API_BASE_URL.replace('/api/v1', '')}/auth/login`, data);
     return response.data;
   },
 
   logout: async (): Promise<void> => {
-    await api.post('/auth/logout');
+    await axios.post(`${API_BASE_URL.replace('/api/v1', '')}/auth/logout`);
   },
 };
 

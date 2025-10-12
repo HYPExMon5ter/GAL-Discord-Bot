@@ -385,12 +385,144 @@ assets/
 - Performance optimization
 - Troubleshooting techniques
 
+## JSON Serialization and Data Management
+
+### Overview
+Due to SQLite database limitations, all graphic data must be properly serialized to JSON format before storage. This section outlines the procedures for handling JSON serialization in graphic creation and management.
+
+### Serialization Requirements
+
+#### 1. Data Structure Standards
+All graphic data must follow a standardized JSON structure:
+```json
+{
+  "elements": [
+    {
+      "id": "element_001",
+      "type": "text",
+      "content": "Player Name",
+      "position": {"x": 100, "y": 200},
+      "style": {"fontSize": 24, "color": "#FFFFFF"}
+    }
+  ],
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "backgroundColor": "#000000",
+    "duration": 5000
+  },
+  "metadata": {
+    "template": "lower_third_v1",
+    "created": "2025-01-11T10:00:00Z",
+    "version": "1.0"
+  }
+}
+```
+
+#### 2. Backend Serialization Procedures
+The graphics service automatically handles JSON serialization:
+- **Storage**: Python objects are converted to JSON strings using `json.dumps()`
+- **Retrieval**: JSON strings are converted back to objects using `json.loads()`
+- **Validation**: Data structure is validated before serialization
+- **Error Handling**: Fallback to empty object for invalid data
+
+#### 3. Frontend Data Handling
+Frontend components must properly handle JSON data:
+- **Creation**: Send data as JavaScript objects
+- **Editing**: Canvas editor provides structured data interface
+- **Display**: Parse JSON strings for rendering
+- **Validation**: Client-side validation before API calls
+
+### Data Integrity Procedures
+
+#### 1. Validation Before Serialization
+```python
+def validate_graphic_data(data: dict) -> bool:
+    """Validate graphic data structure before serialization"""
+    required_fields = ['elements', 'settings']
+    
+    for field in required_fields:
+        if field not in data:
+            return False
+    
+    # Validate elements array
+    if not isinstance(data['elements'], list):
+        return False
+    
+    # Validate each element
+    for element in data['elements']:
+        if not isinstance(element, dict) or 'id' not in element:
+            return False
+    
+    return True
+```
+
+#### 2. Error Handling and Recovery
+- **Serialization Errors**: Log error and use default empty object
+- **Deserialization Errors**: Return empty object and log warning
+- **Data Corruption**: Identify and flag corrupted records
+- **Recovery Procedures**: Restore from backup or recreate from template
+
+#### 3. Data Migration Procedures
+When updating data structures:
+1. **Backup**: Create backup of existing data
+2. **Migration Script**: Write script to transform data
+3. **Validation**: Test migration on sample data
+4. **Rollback Plan**: Prepare rollback procedures
+5. **Monitoring**: Monitor for issues after migration
+
+### Troubleshooting JSON Serialization Issues
+
+#### Common Issues and Solutions
+
+1. **"Cannot store Python dictionary in SQLite" Error**
+   - **Cause**: Attempting to store Python objects directly
+   - **Solution**: Ensure `json.dumps()` is used before database storage
+   - **Prevention**: Always validate serialization in development
+
+2. **Malformed JSON Data**
+   - **Cause**: Invalid JSON structure or encoding issues
+   - **Solution**: Use `json.loads()` with error handling
+   - **Prevention**: Implement schema validation
+
+3. **Data Loss During Serialization**
+   - **Cause**: Non-serializable data types
+   - **Solution**: Convert all data to JSON-compatible types
+   - **Prevention**: Define strict data type requirements
+
+4. **Performance Issues with Large JSON**
+   - **Cause**: Excessively large graphic data structures
+   - **Solution**: Implement data compression and optimization
+   - **Prevention**: Set size limits for graphic data
+
+#### Diagnostic Procedures
+1. **Check Application Logs**: Look for JSON serialization errors
+2. **Database Inspection**: Verify data format in database
+3. **API Testing**: Test create/update operations directly
+4. **Frontend Debugging**: Monitor network requests and responses
+
+### Best Practices
+
+#### Development Guidelines
+1. **Consistent Data Structure**: Use standardized JSON schema
+2. **Validation**: Implement client and server-side validation
+3. **Error Handling**: Provide meaningful error messages
+4. **Testing**: Test with various data types and edge cases
+5. **Documentation**: Document data structure requirements
+
+#### Performance Optimization
+1. **Data Compression**: Minimize JSON size where possible
+2. **Caching**: Cache parsed JSON data on frontend
+3. **Lazy Loading**: Load large graphics data on demand
+4. **Monitoring**: Monitor JSON processing performance
+
 ## Documentation Requirements
 
 ### Template Documentation
 Each template must include:
 - Purpose and use case description
 - Data binding specifications
+- JSON structure requirements
 - Styling customization options
 - Usage examples and screenshots
 
@@ -398,6 +530,13 @@ Each template must include:
 - Maintain change logs for all templates
 - Document update procedures
 - Track template usage statistics
+- Record data structure changes
+
+### Technical Documentation
+- JSON schema definitions
+- API integration examples
+- Error handling procedures
+- Performance optimization guidelines
 - Archive deprecated versions
 
 ## References

@@ -14,10 +14,13 @@ export function useGraphics() {
       setLoading(true);
       setError(null);
       const data = await graphicsApi.getAll();
-      setGraphics(data);
+      // Ensure data is an array, default to empty array if not
+      setGraphics(Array.isArray(data) ? data : []);
     } catch (err) {
       setError('Failed to fetch graphics');
       console.error('Error fetching graphics:', err);
+      // Set graphics to empty array on error to prevent filter errors
+      setGraphics([]);
     } finally {
       setLoading(false);
     }

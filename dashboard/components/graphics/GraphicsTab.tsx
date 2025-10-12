@@ -22,23 +22,29 @@ export function GraphicsTab() {
   const { graphics, loading, error, refetch, createGraphic, deleteGraphic, archiveGraphic, updateGraphic } = useGraphics();
   const { locks } = useLocks();
 
-  const filteredGraphics = graphics.filter(graphic =>
+  // Ensure graphics is always an array to prevent filter errors
+  const safeGraphics = Array.isArray(graphics) ? graphics : [];
+
+  const filteredGraphics = safeGraphics.filter(graphic =>
     graphic.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     graphic.created_by.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleCreateGraphic = useCallback(async (data: { title: string }) => {
     try {
+      const canvasData = {
+        elements: [],
+        settings: {
+          width: 1920,
+          height: 1080,
+          backgroundColor: '#000000'
+        }
+      };
+      
       const result = await createGraphic({
         title: data.title,
-        data_json: JSON.stringify({
-          elements: [],
-          settings: {
-            width: 1920,
-            height: 1080,
-            backgroundColor: '#000000'
-          }
-        })
+        data_json: canvasData, // Send as object, not string
+        created_by: username || 'Dashboard User' // Add the required created_by field
       });
       return !!result;
     } catch (error) {
@@ -95,7 +101,7 @@ export function GraphicsTab() {
     return locks.find(lock => lock.graphic_id === graphicId);
   };
 
-  if (loading && graphics.length === 0) {
+  if (loading && safeGraphics.length === 0) {
     return (
           <div className="flex items-center justify-center py-12">
         <RefreshCw className="h-6 w-6 animate-spin mr-2" />

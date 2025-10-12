@@ -14,10 +14,13 @@ export function useArchive() {
       setLoading(true);
       setError(null);
       const data = await archiveApi.getAll();
-      setArchivedGraphics(data);
+      // Ensure data is an array, default to empty array if not
+      setArchivedGraphics(Array.isArray(data) ? data : []);
     } catch (err) {
       setError('Failed to fetch archived graphics');
       console.error('Error fetching archived graphics:', err);
+      // Set archivedGraphics to empty array on error to prevent errors
+      setArchivedGraphics([]);
     } finally {
       setLoading(false);
     }

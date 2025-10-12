@@ -250,6 +250,183 @@ api/
 
 **For Implementation Details**: See `api/main.py` for environment variable handling and configuration patterns
 
+## Graphics Service and JSON Serialization
+
+### Graphics Service (`services/graphics_service.py`)
+**Purpose**: Business logic layer for graphics management with proper JSON serialization
+
+**Key Features**:
+- **JSON Serialization**: Automatic serialization/deserialization for SQLite compatibility
+- **Canvas Locking**: Real-time canvas editing lock management
+- **Archive Management**: Graphic archiving and restoration procedures
+- **Error Handling**: Robust error handling for serialization issues
+
+**Implementation Details**:
+
+#### JSON Serialization Pattern
+```python
+def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, Any]:
+    """Create a new graphic with proper JSON serialization"""
+    from ..models import Graphic
+    
+    db_graphic = Graphic(
+        title=graphic.title,
+        # Serialize Python dict to JSON string for SQLite compatibility
+        data_json=json.dumps(graphic.data_json or {}),
+        created_by=created_by,
+        archived=False
+    )
+    
+    self.db.add(db_graphic)
+    self.db.commit()
+    self.db.refresh(db_graphic)
+    
+    return {
+        "id": db_graphic.id,
+        "title": db_graphic.title,
+        # Deserialize JSON string back to Python dict for API response
+        "data_json": json.loads(db_graphic.data_json) if db_graphic.data_json else {},
+        "created_by": db_graphic.created_by,
+        "created_at": db_graphic.created_at,
+        "updated_at": db_graphic.updated_at,
+        "archived": db_graphic.archived
+    }
+```
+
+#### Canvas Locking System
+```python
+def acquire_lock(self, lock_request: CanvasLockCreate) -> Dict[str, Any]:
+    """Acquire a canvas lock for editing"""
+    from ..models import CanvasLock
+    
+    # Check if there's an existing active lock
+    existing_lock = self.get_active_lock(lock_request.graphic_id)
+    
+    if existing_lock:
+        # If lock belongs to the same user and is still valid, extend it
+        if existing_lock.user_name == lock_request.user_name and existing_lock.expires_at > datetime.utcnow():
+            existing_lock.expires_at = datetime.utcnow() + timedelta(minutes=5)
+            self.db.commit()
+            self.db.refresh(existing_lock)
+            
+            return {
+                "id": existing_lock.id,
+                "graphic_id": existing_lock.graphic_id,
+                "user_name": existing_lock.user_name,
+                "locked": True,
+                "locked_at": existing_lock.locked_at,
+                "expires_at": existing_lock.expires_at
+            }
+        
+        # Lock is owned by someone else
+        return {
+            "locked": True,
+            "locked_by": existing_lock.user_name,
+            "expires_at": existing_lock.expires_at,
+            "can_edit": False
+        }
+    
+    # Create new lock
+    new_lock = CanvasLock(
+        graphic_id=lock_request.graphic_id,
+        user_name=lock_request.user_name,
+        locked=True,
+        locked_at=datetime.utcnow(),
+        expires_at=datetime.utcnow() + timedelta(minutes=5)
+    )
+    
+    self.db.add(new_lock)
+    self.db.commit()
+    self.db.refresh(new_lock)
+    
+    return {
+        "id": new_lock.id,
+        "graphic_id": new_lock.graphic_id,
+        "user_name": new_lock.user_name,
+        "locked": True,
+        "locked_at": new_lock.locked_at,
+        "expires_at": new_lock.expires_at,
+        "can_edit": True
+    }
+```
+
+#### Error Handling and Recovery
+```python
+def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, Any]:
+    """Create a new graphic with robust error handling"""
+    try:
+        from ..models import Graphic
+        
+        # Validate data_json before serialization
+        data_to_serialize = graphic.data_json or {}
+        
+        # Ensure data is JSON serializable
+        try:
+            json_str = json.dumps(data_to_serialize)
+        except (TypeError, ValueError) as e:
+            logger.error(f"JSON serialization error: {e}")
+            json_str = json.dumps({})  # Fallback to empty object
+        
+        db_graphic = Graphic(
+            title=graphic.title,
+            data_json=json_str,
+            created_by=created_by,
+            archived=False
+        )
+        
+        self.db.add(db_graphic)
+        self.db.commit()
+        self.db.refresh(db_graphic)
+        
+        return {
+            "id": db_graphic.id,
+            "title": db_graphic.title,
+            "data_json": json.loads(db_graphic.data_json) if db_graphic.data_json else {},
+            "created_by": db_graphic.created_by,
+            "created_at": db_graphic.created_at,
+            "updated_at": db_graphic.updated_at,
+            "archived": db_graphic.archived
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating graphic: {e}")
+        self.db.rollback()
+        raise
+```
+
+### Graphics API Endpoints (`routers/graphics.py`)
+**Purpose**: REST API endpoints for graphics management
+
+**Key Endpoints**:
+- `GET /graphics` - List all graphics (with optional archive filtering)
+- `POST /graphics` - Create new graphic
+- `GET /graphics/{id}` - Get specific graphic
+- `PUT /graphics/{id}` - Update graphic
+- `DELETE /graphics/{id}` - Delete graphic (soft delete via archive)
+- `POST /lock/{id}` - Acquire canvas lock
+- `DELETE /lock/{id}` - Release canvas lock
+- `GET /lock/status` - Get lock status
+
+**For Implementation Details**: See `api/routers/graphics.py` for:
+- API endpoint implementations
+- Request/response validation
+- Error handling patterns
+- Authentication requirements
+
+### Graphics Schemas (`schemas/graphics.py`)
+**Purpose**: Pydantic models for graphics data validation
+
+**Key Models**:
+- `GraphicCreate` - Request model for graphic creation
+- `GraphicUpdate` - Request model for graphic updates
+- `CanvasLockCreate` - Request model for lock acquisition
+- `LockStatusResponse` - Response model for lock status
+
+**For Implementation Details**: See `api/schemas/graphics.py` for:
+- Data validation rules
+- Type definitions
+- Serialization patterns
+
 ## Related Documentation
 
 - [Data Access Layer](./data-access-layer.md) - Database interaction layer

@@ -34,7 +34,7 @@ export interface LoginRequest {
 
 export interface CreateGraphicRequest {
   title: string;
-  data_json?: string;
+  data_json?: any; // JSON object, not string
 }
 
 export interface UpdateGraphicRequest {

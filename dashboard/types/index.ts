@@ -1,8 +1,10 @@
 export interface Graphic {
   id: number;
   title: string;
+  event_name?: string;
   data_json: string;
   created_by: string;
+  created_at: string;
   updated_at: string;
   archived: boolean;
   canvas_lock?: CanvasLock;
@@ -34,11 +36,13 @@ export interface LoginRequest {
 
 export interface CreateGraphicRequest {
   title: string;
+  event_name?: string;
   data_json?: any; // JSON object, not string
 }
 
 export interface UpdateGraphicRequest {
   title?: string;
+  event_name?: string;
   data_json?: string;
 }
 

@@ -5,20 +5,20 @@ import { Graphic } from '@/types';
 import { useGraphics } from '@/hooks/use-graphics';
 import { useLocks } from '@/hooks/use-locks';
 import { useAuth } from '@/hooks/use-auth';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GraphicCard } from './GraphicCard';
+import { GraphicsTable } from './GraphicsTable';
 import { CreateGraphicDialog } from './CreateGraphicDialog';
-import { CanvasEditor } from '@/components/canvas/CanvasEditor';
 import { Plus, Search, RefreshCw, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export function GraphicsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingGraphic, setEditingGraphic] = useState<Graphic | null>(null);
   
   const { username } = useAuth();
+  const router = useRouter();
   const { graphics, loading, error, refetch, createGraphic, deleteGraphic, archiveGraphic, updateGraphic } = useGraphics();
   const { locks } = useLocks();
 
@@ -27,53 +27,56 @@ export function GraphicsTab() {
 
   const filteredGraphics = safeGraphics.filter(graphic =>
     graphic.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    graphic.created_by.toLowerCase().includes(searchTerm.toLowerCase())
+    (graphic.event_name && graphic.event_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  const handleCreateGraphic = useCallback(async (data: { title: string }) => {
+  const handleCreateGraphic = useCallback(async (data: { title: string; event_name?: string }) => {
     try {
+      console.log('Creating graphic with data:', data);
+      
       const canvasData = {
         elements: [],
         settings: {
           width: 1920,
           height: 1080,
-          backgroundColor: '#000000'
+          backgroundColor: '#ffffff'
         }
       };
       
       const result = await createGraphic({
         title: data.title,
-        data_json: canvasData, // Send as object, not string
-        created_by: username || 'Dashboard User' // Add the required created_by field
+        event_name: data.event_name,
+        data_json: canvasData // Send as object (create endpoint expects dict)
       });
+      
+      console.log('Create graphic result:', result);
+      
+      if (result && result.id) {
+        console.log('Navigating to canvas editor for graphic ID:', result.id);
+        // Navigate to canvas editor after successful creation
+        router.push(`/canvas/edit/${result.id}`);
+      } else {
+        console.error('No result or ID returned from createGraphic');
+      }
+      
       return !!result;
     } catch (error) {
       console.error('Failed to create graphic:', error);
       return false;
     }
-  }, [createGraphic]);
+  }, [createGraphic, router]);
 
   const handleEditGraphic = useCallback((graphic: Graphic) => {
-    setEditingGraphic(graphic);
-  }, []);
-
-  const handleSaveGraphic = useCallback(async (data: { title: string; data_json: string }) => {
-    if (!editingGraphic) return false;
-    
-    try {
-      const result = await updateGraphic(editingGraphic.id, data);
-      return !!result;
-    } catch (error) {
-      console.error('Failed to update graphic:', error);
-      return false;
-    }
-  }, [editingGraphic, updateGraphic]);
+    console.log('Editing graphic:', graphic);
+    router.push(`/canvas/edit/${graphic.id}`);
+  }, [router]);
 
   const handleDuplicateGraphic = useCallback(async (graphic: Graphic) => {
     try {
       const canvasData = JSON.parse(graphic.data_json || '{}');
       await createGraphic({
         title: `${graphic.title} (Copy)`,
+        event_name: graphic.event_name,
         data_json: JSON.stringify(canvasData)
       });
     } catch (error) {
@@ -91,11 +94,34 @@ export function GraphicsTab() {
 
   const handleArchiveGraphic = useCallback(async (graphic: Graphic) => {
     try {
-      await archiveGraphic(graphic.id);
+      const success = await archiveGraphic(graphic.id);
+      if (success) {
+        // Show success message
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.textContent = `Graphic "${graphic.title}" archived successfully!`;
+        document.body.appendChild(successMessage);
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+      }
     } catch (error) {
       console.error('Failed to archive graphic:', error);
+      // Show error message
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.textContent = `Failed to archive graphic "${graphic.title}". Please try again.`;
+      document.body.appendChild(errorMessage);
+      setTimeout(() => {
+        document.body.removeChild(errorMessage);
+      }, 5000);
     }
   }, [archiveGraphic]);
+
+  const handleViewGraphic = useCallback((graphic: Graphic) => {
+    // Open OBS view in new tab
+    window.open(`/canvas/view/${graphic.id}`, '_blank');
+  }, []);
 
   const getLockForGraphic = (graphicId: number) => {
     return locks.find(lock => lock.graphic_id === graphicId);
@@ -132,7 +158,7 @@ export function GraphicsTab() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search graphics by title or creator..."
+            placeholder="Search graphics by title or event name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -162,7 +188,7 @@ export function GraphicsTab() {
         </Card>
       )}
 
-      {/* Graphics Grid */}
+      {/* Graphics Table */}
       {filteredGraphics.length === 0 ? (
         <Card>
           <CardHeader className="text-center py-12">
@@ -187,19 +213,19 @@ export function GraphicsTab() {
           </CardHeader>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredGraphics.map((graphic) => (
-            <GraphicCard
-              key={graphic.id}
-              graphic={graphic}
-              lock={getLockForGraphic(graphic.id)}
+        <Card>
+          <CardContent className="p-0">
+            <GraphicsTable
+              graphics={filteredGraphics}
+              loading={loading}
               onEdit={handleEditGraphic}
               onDuplicate={handleDuplicateGraphic}
               onDelete={handleDeleteGraphic}
               onArchive={handleArchiveGraphic}
+              onView={handleViewGraphic}
             />
-          ))}
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Create Dialog */}
@@ -208,15 +234,6 @@ export function GraphicsTab() {
         onOpenChange={setCreateDialogOpen}
         onCreate={handleCreateGraphic}
       />
-
-      {/* Canvas Editor */}
-      {editingGraphic && (
-        <CanvasEditor
-          graphic={editingGraphic}
-          onClose={() => setEditingGraphic(null)}
-          onSave={handleSaveGraphic}
-        />
-      )}
     </div>
   );
 }

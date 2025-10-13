@@ -76,8 +76,35 @@ export function useGraphics() {
     }
   }, []);
 
+  const getGraphic = useCallback(async (id: number): Promise<Graphic | null> => {
+    try {
+      const graphic = await graphicsApi.getById(id);
+      return graphic;
+    } catch (err) {
+      setError('Failed to fetch graphic');
+      console.error('Error fetching graphic:', err);
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     fetchGraphics();
+    
+    // Listen for refresh events from canvas editor
+    const handleRefresh = () => {
+      console.log('Refreshing graphics list after canvas save');
+      fetchGraphics();
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('refreshGraphics', handleRefresh);
+    }
+    
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('refreshGraphics', handleRefresh);
+      }
+    };
   }, [fetchGraphics]);
 
   return {
@@ -89,6 +116,7 @@ export function useGraphics() {
     updateGraphic,
     deleteGraphic,
     archiveGraphic,
+    getGraphic,
   };
 }
 

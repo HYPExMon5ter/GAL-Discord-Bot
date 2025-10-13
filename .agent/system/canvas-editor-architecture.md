@@ -1,7 +1,7 @@
 ---
 id: system.canvas-editor-architecture
 version: 2.1
-last_updated: 2025-10-12
+last_updated: 2025-10-13
 tags: [canvas, editor, frontend, architecture, route-based]
 ---
 

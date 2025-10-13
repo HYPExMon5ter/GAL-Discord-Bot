@@ -1,7 +1,7 @@
 ---
 id: system.api_integration
 version: 2.0
-last_updated: 2025-10-11
+last_updated: 2025-10-13
 tags: [system, api, integration, frontend, backend, websocket]
 ---
 

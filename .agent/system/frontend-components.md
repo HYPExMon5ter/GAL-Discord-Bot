@@ -1,7 +1,7 @@
 ---
 id: system.frontend_components
 version: 2.0
-last_updated: 2025-10-11
+last_updated: 2025-10-13
 tags: [system, frontend, components, react, dashboard]
 ---
 

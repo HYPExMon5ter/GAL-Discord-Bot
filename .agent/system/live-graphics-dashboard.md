@@ -1,7 +1,7 @@
 ---
 id: system.live-graphics-dashboard
 version: 2.0
-last_updated: 2025-10-11
+last_updated: 2025-10-13
 tags: [dashboard, frontend, backend, graphics, authentication, canvas-locking]
 ---
 
@@ -37,8 +37,9 @@ The Live Graphics Dashboard 2.0 is a comprehensive web-based platform for creati
 
 ### 🎨 Graphics Management
 - **CRUD Operations**: Create, read, update, and delete graphics
-- **Canvas Editor**: Modal-based editing interface with lock integration
-- **Search Functionality**: Filter graphics by title or creator
+- **Canvas Editor**: Full-screen route-based editing interface with advanced features
+- **Table View**: Sortable table interface replacing card-based UI
+- **Search Functionality**: Filter graphics by title or event name
 - **Status Indicators**: Visual badges for locked and active graphics
 - **Real-time Updates**: Live status updates via WebSocket connections
 
@@ -67,6 +68,7 @@ The Live Graphics Dashboard 2.0 is a comprehensive web-based platform for creati
 - `GET /api/v1/graphics` - List all active graphics
 - `POST /api/v1/graphics` - Create new graphic
 - `GET /api/v1/graphics/{id}` - Get specific graphic
+- `GET /api/v1/graphics/{id}/view` - Public OBS browser source view (NEW)
 - `PUT /api/v1/graphics/{id}` - Update graphic (requires unlock)
 - `DELETE /api/v1/graphics/{id}` - Delete graphic (requires unlock, admin only)
 
@@ -92,6 +94,7 @@ The Live Graphics Dashboard 2.0 is a comprehensive web-based platform for creati
 CREATE TABLE graphics (
     id INTEGER PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
+    event_name VARCHAR(255),                    -- NEW
     data_json TEXT DEFAULT '{}',
     created_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

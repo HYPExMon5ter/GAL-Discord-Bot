@@ -12,7 +12,7 @@ import {
 
 const API_BASE_URL = process.env.NODE_ENV === 'production' 
   ? '/api/v1' 
-  : 'http://localhost:8000/api/v1';
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1');
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -57,8 +57,8 @@ export const authApi = {
 
 export const graphicsApi = {
   getAll: async (): Promise<Graphic[]> => {
-    const response: AxiosResponse<Graphic[]> = await api.get('/graphics');
-    return response.data;
+    const response: AxiosResponse<{graphics: Graphic[]}> = await api.get('/graphics');
+    return response.data.graphics;
   },
 
   getById: async (id: number): Promise<Graphic> => {
@@ -87,8 +87,8 @@ export const graphicsApi = {
 
 export const archiveApi = {
   getAll: async (): Promise<ArchivedGraphic[]> => {
-    const response: AxiosResponse<ArchivedGraphic[]> = await api.get('/archive');
-    return response.data;
+    const response: AxiosResponse<{archives: ArchivedGraphic[]}> = await api.get('/archive');
+    return response.data.archives;
   },
 
   restore: async (id: number): Promise<void> => {
@@ -117,7 +117,7 @@ export const lockApi = {
   },
 
   refresh: async (graphicId: number): Promise<CanvasLock> => {
-    const response: AxiosResponse<CanvasLock> = await api.put(`/lock/${graphicId}`);
+    const response: AxiosResponse<CanvasLock> = await api.post(`/lock/${graphicId}/refresh`);
     return response.data;
   },
 };

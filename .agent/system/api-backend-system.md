@@ -1,7 +1,7 @@
 ---
 id: system.api_backend_system
 version: 1.0
-last_updated: 2025-01-11
+last_updated: 2025-10-13
 tags: [api, backend, fastapi, authentication, documentation]
 ---
 

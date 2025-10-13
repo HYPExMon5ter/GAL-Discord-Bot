@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 class GraphicBase(BaseModel):
     """Base schema for graphics"""
     title: str = Field(..., min_length=1, max_length=255, description="Graphic title")
+    event_name: Optional[str] = Field(None, max_length=255, description="Event name")
     data_json: Optional[Dict[str, Any]] = Field(default=None, description="Canvas data as JSON")
 
 
@@ -21,12 +22,16 @@ class GraphicCreate(GraphicBase):
 class GraphicUpdate(BaseModel):
     """Schema for updating an existing graphic"""
     title: Optional[str] = Field(None, min_length=1, max_length=255, description="Graphic title")
-    data_json: Optional[Dict[str, Any]] = Field(None, description="Canvas data as JSON")
+    event_name: Optional[str] = Field(None, max_length=255, description="Event name")
+    data_json: Optional[str] = Field(None, description="Canvas data as JSON string")
 
 
-class GraphicResponse(GraphicBase):
+class GraphicResponse(BaseModel):
     """Schema for graphic response"""
     id: int
+    title: str
+    event_name: Optional[str]
+    data_json: Optional[str]  # Store as string in database, return as string in API
     created_by: str
     created_at: datetime
     updated_at: datetime

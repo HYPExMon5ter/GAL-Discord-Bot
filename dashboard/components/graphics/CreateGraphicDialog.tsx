@@ -5,7 +5,6 @@ import { CreateGraphicRequest } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Plus } from 'lucide-react';
 
@@ -17,6 +16,7 @@ interface CreateGraphicDialogProps {
 
 export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGraphicDialogProps) {
   const [title, setTitle] = useState('');
+  const [eventName, setEventName] = useState('');
   const [loading, setLoading] = useState(false);
   const { username } = useAuth();
 
@@ -28,10 +28,14 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
     setLoading(true);
     
     try {
-      const success = await onCreate({ title: title.trim() });
+      const success = await onCreate({ 
+        title: title.trim(),
+        event_name: eventName.trim() || undefined
+      });
       
       if (success) {
         setTitle('');
+        setEventName('');
         onOpenChange(false);
       }
     } finally {
@@ -42,6 +46,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
   const handleClose = () => {
     if (!loading) {
       setTitle('');
+      setEventName('');
       onOpenChange(false);
     }
   };
@@ -61,7 +66,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="title">Graphic Title</Label>
+            <label htmlFor="title" className="text-sm font-medium">Graphic Title</label>
             <Input
               id="title"
               placeholder="Enter a descriptive title for this graphic..."
@@ -73,6 +78,21 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
             />
             <p className="text-xs text-muted-foreground">
               Choose a clear name that describes the graphic&apos;s purpose or content.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="eventName" className="text-sm font-medium">Event Name</label>
+            <Input
+              id="eventName"
+              placeholder="Enter the event name (optional)..."
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              disabled={loading}
+              maxLength={100}
+            />
+            <p className="text-xs text-muted-foreground">
+              Specify the event this graphic is for (e.g., &quot;Tournament Finals&quot;, &quot;Weekly Show&quot;).
             </p>
           </div>
 

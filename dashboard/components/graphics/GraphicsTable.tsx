@@ -1,0 +1,294 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import { Graphic } from '@/types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { 
+  ChevronUp, 
+  ChevronDown, 
+  Edit, 
+  Copy, 
+  Archive, 
+  Trash2, 
+  Eye,
+  RotateCcw,
+  ExternalLink 
+} from 'lucide-react';
+
+interface GraphicsTableProps {
+  graphics: Graphic[];
+  loading: boolean;
+  onEdit: (graphic: Graphic) => void;
+  onDuplicate: (graphic: Graphic) => void;
+  onArchive: (graphic: Graphic) => void;
+  onDelete: (graphic: Graphic) => void;
+  onView: (graphic: Graphic) => void;
+  onUnarchive?: (graphic: Graphic) => void;
+  onRestore?: (graphic: Graphic) => void;
+  isArchived?: boolean;
+}
+
+type SortField = 'title' | 'event_name' | 'updated_at';
+type SortDirection = 'asc' | 'desc';
+
+export function GraphicsTable({ 
+  graphics, 
+  loading, 
+  onEdit, 
+  onDuplicate, 
+  onArchive, 
+  onDelete, 
+  onView,
+  onUnarchive,
+  onRestore,
+  isArchived = false 
+}: GraphicsTableProps) {
+  const [sortField, setSortField] = useState<SortField>('updated_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  const sortedGraphics = useMemo(() => {
+    return [...graphics].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortField) {
+        case 'title':
+          aValue = a.title?.toLowerCase() || '';
+          bValue = b.title?.toLowerCase() || '';
+          break;
+        case 'event_name':
+          aValue = a.event_name?.toLowerCase() || '';
+          bValue = b.event_name?.toLowerCase() || '';
+          break;
+
+        case 'updated_at':
+          aValue = new Date(a.updated_at);
+          bValue = new Date(b.updated_at);
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [graphics, sortField, sortDirection]);
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) {
+      return <ChevronUp className="h-4 w-4 text-gray-400" />;
+    }
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="h-4 w-4 text-blue-600" />
+    ) : (
+      <ChevronDown className="h-4 w-4 text-blue-600" />
+    );
+  };
+
+  const ActionButtons = ({ graphic }: { graphic: Graphic }) => {
+    if (isArchived) {
+      return (
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDuplicate(graphic)}
+            className="h-8 px-2"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+          {onUnarchive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onUnarchive(graphic)}
+              className="h-8 px-2"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </Button>
+          )}
+          {onRestore && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onRestore(graphic)}
+              className="h-8 px-2"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(graphic)}
+            className="h-8 px-2 text-red-600 hover:text-red-700"
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onView(graphic)}
+            className="h-8 px-2"
+          >
+            <Eye className="h-3 w-3" />
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onEdit(graphic)}
+          className="h-8 px-2"
+        >
+          <Edit className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onDuplicate(graphic)}
+          className="h-8 px-2"
+        >
+          <Copy className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onArchive(graphic)}
+          className="h-8 px-2"
+        >
+          <Archive className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onDelete(graphic)}
+          className="h-8 px-2 text-red-600 hover:text-red-700"
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onView(graphic)}
+          className="h-8 px-2"
+        >
+          <Eye className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-2">Loading graphics...</span>
+      </div>
+    );
+  }
+
+  if (graphics.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">
+          {isArchived ? 'No archived graphics found' : 'No graphics found'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="border-b border-gray-200">
+            <th className="text-center py-3 px-4 font-medium text-gray-700">
+              <button
+                onClick={() => handleSort('title')}
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors"
+              >
+                Graphic Name
+                <SortIcon field="title" />
+              </button>
+            </th>
+            <th className="text-center py-3 px-4 font-medium text-gray-700">
+              <button
+                onClick={() => handleSort('event_name')}
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors"
+              >
+                Event Name
+                <SortIcon field="event_name" />
+              </button>
+            </th>
+            <th className="text-center py-3 px-4 font-medium text-gray-700">
+              <button
+                onClick={() => handleSort('updated_at')}
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors"
+              >
+                Last Edited
+                <SortIcon field="updated_at" />
+              </button>
+            </th>
+
+            <th className="text-center py-3 px-4 font-medium text-gray-700">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedGraphics.map((graphic) => (
+            <tr 
+              key={graphic.id} 
+              className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+            >
+              <td className="text-center py-3 px-4">
+                <div className="font-medium text-gray-900">{graphic.title}</div>
+              </td>
+              <td className="text-center py-3 px-4">
+                <div className="text-gray-600">
+                  {graphic.event_name || <span className="text-gray-400 italic">No event</span>}
+                </div>
+              </td>
+              <td className="text-center py-3 px-4">
+                <div className="text-sm text-gray-600">
+                  {formatDate(graphic.updated_at)}
+                </div>
+              </td>
+
+              <td className="text-center py-3 px-4">
+                <ActionButtons graphic={graphic} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

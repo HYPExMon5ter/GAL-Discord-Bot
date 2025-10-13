@@ -29,7 +29,7 @@ interface GraphicsTableProps {
   isArchived?: boolean;
 }
 
-type SortField = 'title' | 'event_name' | 'updated_at';
+type SortField = 'title' | 'event_name' | 'updated_at' | 'archived_at';
 type SortDirection = 'asc' | 'desc';
 
 export function GraphicsTable({ 
@@ -75,6 +75,10 @@ export function GraphicsTable({
           aValue = new Date(a.updated_at);
           bValue = new Date(b.updated_at);
           break;
+        case 'archived_at':
+          aValue = new Date(a.archived_at || a.updated_at);
+          bValue = new Date(b.archived_at || b.updated_at);
+          break;
         default:
           return 0;
       }
@@ -94,6 +98,13 @@ export function GraphicsTable({
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  const getDisplayDate = (graphic: any) => {
+    if (isArchived && graphic.archived_at) {
+      return formatDate(graphic.archived_at);
+    }
+    return formatDate(graphic.updated_at);
   };
 
   const SortIcon = ({ field }: { field: SortField }) => {
@@ -124,7 +135,8 @@ export function GraphicsTable({
               variant="ghost"
               size="sm"
               onClick={() => onUnarchive(graphic)}
-              className="h-8 px-2"
+              className="h-8 px-2 text-green-600 hover:text-green-700"
+              title="Restore to active"
             >
               <RotateCcw className="h-3 w-3" />
             </Button>
@@ -134,7 +146,19 @@ export function GraphicsTable({
               variant="ghost"
               size="sm"
               onClick={() => onRestore(graphic)}
-              className="h-8 px-2"
+              className="h-8 px-2 text-green-600 hover:text-green-700"
+              title="Restore to active"
+            >
+              <RotateCcw className="h-3 w-3" />
+            </Button>
+          )}
+          {onArchive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onArchive(graphic)}
+              className="h-8 px-2 text-green-600 hover:text-green-700"
+              title="Restore to active"
             >
               <RotateCcw className="h-3 w-3" />
             </Button>
@@ -161,14 +185,7 @@ export function GraphicsTable({
 
     return (
       <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onEdit(graphic)}
-          className="h-8 px-2"
-        >
-          <Edit className="h-3 w-3" />
-        </Button>
+        {/* Edit button removed for archived graphics */}
         <Button
           variant="ghost"
           size="sm"
@@ -181,9 +198,14 @@ export function GraphicsTable({
           variant="ghost"
           size="sm"
           onClick={() => onArchive(graphic)}
-          className="h-8 px-2"
+          className="h-8 px-2 text-green-600 hover:text-green-700"
+          title={isArchived ? "Restore to active" : "Archive graphic"}
         >
-          <Archive className="h-3 w-3" />
+          {isArchived ? (
+            <RotateCcw className="h-3 w-3" />
+          ) : (
+            <Archive className="h-3 w-3" />
+          )}
         </Button>
         <Button
           variant="ghost"
@@ -232,7 +254,7 @@ export function GraphicsTable({
             <th className="text-center py-3 px-4 font-medium text-gray-700">
               <button
                 onClick={() => handleSort('title')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors"
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full"
               >
                 Graphic Name
                 <SortIcon field="title" />
@@ -241,7 +263,7 @@ export function GraphicsTable({
             <th className="text-center py-3 px-4 font-medium text-gray-700">
               <button
                 onClick={() => handleSort('event_name')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors"
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full"
               >
                 Event Name
                 <SortIcon field="event_name" />
@@ -249,16 +271,18 @@ export function GraphicsTable({
             </th>
             <th className="text-center py-3 px-4 font-medium text-gray-700">
               <button
-                onClick={() => handleSort('updated_at')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors"
+                onClick={() => handleSort(isArchived ? 'archived_at' : 'updated_at')}
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full"
               >
-                Last Edited
-                <SortIcon field="updated_at" />
+                {isArchived ? 'Archive Date' : 'Last Edited'}
+                <SortIcon field={isArchived ? 'archived_at' : 'updated_at'} />
               </button>
             </th>
 
             <th className="text-center py-3 px-4 font-medium text-gray-700">
-              Actions
+              <div className="flex items-center justify-center">
+                Actions
+              </div>
             </th>
           </tr>
         </thead>
@@ -278,7 +302,7 @@ export function GraphicsTable({
               </td>
               <td className="text-center py-3 px-4">
                 <div className="text-sm text-gray-600">
-                  {formatDate(graphic.updated_at)}
+                  {getDisplayDate(graphic)}
                 </div>
               </td>
 

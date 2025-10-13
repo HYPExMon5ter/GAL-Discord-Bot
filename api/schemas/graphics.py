@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class GraphicBase(BaseModel):
     """Base schema for graphics"""
     title: str = Field(..., min_length=1, max_length=255, description="Graphic title")
-    event_name: Optional[str] = Field(None, max_length=255, description="Event name")
+    event_name: str = Field(..., min_length=1, max_length=255, description="Event name (required)")
     data_json: Optional[Dict[str, Any]] = Field(default=None, description="Canvas data as JSON")
 
 
@@ -22,7 +22,7 @@ class GraphicCreate(GraphicBase):
 class GraphicUpdate(BaseModel):
     """Schema for updating an existing graphic"""
     title: Optional[str] = Field(None, min_length=1, max_length=255, description="Graphic title")
-    event_name: Optional[str] = Field(None, max_length=255, description="Event name")
+    event_name: Optional[str] = Field(None, min_length=1, max_length=255, description="Event name")
     data_json: Optional[str] = Field(None, description="Canvas data as JSON string")
 
 
@@ -78,7 +78,6 @@ class LockStatusResponse(BaseModel):
 
 class ArchiveActionRequest(BaseModel):
     """Schema for archive action requests"""
-    graphic_id: int
     reason: Optional[str] = Field(None, max_length=500, description="Reason for archiving")
 
 

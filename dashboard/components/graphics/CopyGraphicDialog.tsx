@@ -1,37 +1,49 @@
 'use client';
 
-import { useState } from 'react';
-import { CreateGraphicRequest } from '@/types';
+import React, { useState } from 'react';
+import { Graphic } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus } from 'lucide-react';
+import { Copy } from 'lucide-react';
 
-interface CreateGraphicDialogProps {
+interface CopyGraphicDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (data: CreateGraphicRequest) => Promise<boolean>;
+  onCopy: (title: string, eventName?: string) => Promise<boolean>;
+  sourceGraphic: Graphic | null;
 }
 
-export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGraphicDialogProps) {
+export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }: CopyGraphicDialogProps) {
   const [title, setTitle] = useState('');
   const [eventName, setEventName] = useState('');
   const [loading, setLoading] = useState(false);
   const { username } = useAuth();
 
+  // Reset form when dialog opens or source graphic changes
+  React.useEffect(() => {
+    if (open && sourceGraphic) {
+      setTitle(`${sourceGraphic.title} (Copy)`);
+      setEventName(sourceGraphic.event_name || '');
+    } else if (!open) {
+      setTitle('');
+      setEventName('');
+    }
+  }, [open, sourceGraphic]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!title.trim() || !eventName.trim()) return;
+    if (!title.trim() || !eventName.trim() || !sourceGraphic) return;
 
     setLoading(true);
     
     try {
-      const success = await onCreate({ 
-        title: title.trim(),
-        event_name: eventName.trim()
-      });
+      const success = await onCopy(
+        title.trim(),
+        eventName.trim()
+      );
       
       if (success) {
         setTitle('');
@@ -51,16 +63,18 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
     }
   };
 
+  if (!sourceGraphic) return null;
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5" />
-            Create New Graphic
+            <Copy className="h-5 w-5" />
+            Copy Graphic
           </DialogTitle>
           <DialogDescription>
-            Create a new broadcast graphic. You can edit and customize it after creation.
+            Create a copy of &quot;{sourceGraphic.title}&quot;. You can customize the title and event name for the new graphic.
           </DialogDescription>
         </DialogHeader>
 
@@ -69,7 +83,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
             <label htmlFor="title" className="text-sm font-medium">Graphic Title</label>
             <Input
               id="title"
-              placeholder="Enter a descriptive title for this graphic..."
+              placeholder="Enter a title for the copied graphic..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
@@ -77,7 +91,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
               maxLength={100}
             />
             <p className="text-xs text-muted-foreground">
-              Choose a clear name that describes the graphic&apos;s purpose or content.
+              Choose a unique name for this copy of the graphic.
             </p>
           </div>
 
@@ -93,7 +107,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
               maxLength={100}
             />
             <p className="text-xs text-muted-foreground">
-              Specify the event this graphic is for (e.g., &quot;Tournament Finals&quot;, &quot;Weekly Show&quot;).
+              Specify the event this copied graphic is for.
             </p>
           </div>
 
@@ -110,7 +124,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
               type="submit"
               disabled={!title.trim() || !eventName.trim() || loading}
             >
-              {loading ? 'Creating...' : 'Create & Start Editing'}
+              {loading ? 'Copying...' : 'Copy Graphic'}
             </Button>
           </DialogFooter>
         </form>

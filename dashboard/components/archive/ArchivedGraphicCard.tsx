@@ -46,7 +46,7 @@ export function ArchivedGraphicCard({
               </div>
               <div className="flex items-center gap-2">
                 <Calendar className="h-3 w-3" />
-                Archived on {formatDate(graphic.archived_at)}
+                Archived on {graphic.archived_at ? formatDate(graphic.archived_at) : 'Unknown date'}
               </div>
             </CardDescription>
           </div>

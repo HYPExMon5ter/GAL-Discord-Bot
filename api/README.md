@@ -54,100 +54,78 @@ http://localhost:8000
 - `POST /auth/refresh` - Refresh JWT token
 - `GET /auth/verify` - Verify current token validity
 
-### Tournament Management (`/api/v1/tournaments`)
-- `GET /api/v1/tournaments/` - List tournaments with pagination
-- `GET /api/v1/tournaments/{id}` - Get specific tournament
-- `POST /api/v1/tournaments/` - Create new tournament
-- `PUT /api/v1/tournaments/{id}` - Update tournament
-- `DELETE /api/v1/tournaments/{id}` - Delete tournament
-- `GET /api/v1/tournaments/{id}/statistics` - Tournament statistics
+### Graphics Management (`/api/v1/graphics`)
+- `GET /api/v1/graphics/` - List all graphics (paginated)
+- `GET /api/v1/graphics/{id}` - Get specific graphic by ID
+- `POST /api/v1/graphics/` - Create new graphic
+- `PUT /api/v1/graphics/{id}` - Update existing graphic
+- `DELETE /api/v1/graphics/{id}` - Soft delete graphic (archives it)
+- `POST /api/v1/graphics/{id}/duplicate` - Duplicate existing graphic
 
-### User Management (`/api/v1/users`)
-- `GET /api/v1/users/` - List users with pagination
-- `GET /api/v1/users/{id}` - Get specific user
-- `GET /api/v1/users/discord/{discord_id}` - Get user by Discord ID
-- `POST /api/v1/users/` - Create new user
-- `PUT /api/v1/users/{id}` - Update user
-- `DELETE /api/v1/users/{id}` - Delete user
-- `GET /api/v1/users/statistics/overview` - User statistics
+### Archive Management (`/api/v1/archive`)
+- `POST /api/v1/archive/{graphic_id}` - Archive a graphic (requires empty body `{}`)
+- `POST /api/v1/archive/{graphic_id}/restore` - Restore archived graphic
+- `GET /api/v1/archive/` - List archived graphics (paginated)
+- `DELETE /api/v1/archive/{graphic_id}/permanent` - Permanently delete archived graphic (admin only)
 
-### Configuration Management (`/api/v1/configuration`)
-- `GET /api/v1/configuration/` - List all configurations
-- `GET /api/v1/configuration/{key}` - Get specific configuration
-- `PUT /api/v1/configuration/{key}` - Update configuration
-- `POST /api/v1/configuration/{key}` - Create new configuration
-- `DELETE /api/v1/configuration/{key}` - Delete configuration
-- `GET /api/v1/configuration/category/{category}` - Get configurations by category
-- `POST /api/v1/configuration/bulk-update` - Bulk update configurations
+### Lock Management (`/api/v1/lock`)
+- `POST /api/v1/lock/{graphic_id}` - Acquire edit lock for graphic
+- `DELETE /api/v1/lock/{graphic_id}` - Release edit lock for graphic
+- `GET /api/v1/lock/{graphic_id}/status` - Get lock status for specific graphic
+- `GET /api/v1/lock/status` - Get status of all active locks
 
-### WebSocket (`/api/v1/ws`)
-- `WebSocket /api/v1/ws/{token}` - Real-time updates
-- `GET /api/v1/ws/status` - WebSocket connection status
+### Maintenance Endpoints (`/api/v1/maintenance`)
+- `POST /api/v1/maintenance/cleanup-locks` - Clean up expired locks (maintenance)
 
-## WebSocket Events
+## Lock Management
 
-### Connection
-```javascript
-const ws = new WebSocket('ws://localhost:8000/api/v1/ws/{jwt_token}');
-```
+### Lock System
+Graphics use a lock system to prevent concurrent editing:
+- **Lock Duration**: 5 minutes (300 seconds)
+- **Auto-Expiration**: Locks expire automatically
+- **Single User**: Only one user can edit a graphic at a time
+- **Visual Indicators**: Frontend shows lock status and countdown
 
-### Message Types
-- `ping` - Keep-alive ping
-- `pong` - Keep-alive response
-- `subscribe` - Subscribe to specific events
-- `tournament_update` - Tournament data changes
-- `user_update` - User data changes
-- `configuration_update` - Configuration changes
-- `system_notification` - System notifications
+### Lock Workflow
+1. **Acquire Lock**: `POST /api/v1/lock/{graphic_id}`
+2. **Check Status**: `GET /api/v1/lock/{graphic_id}/status`
+3. **Release Lock**: `DELETE /api/v1/lock/{graphic_id}`
+4. **Cleanup**: `POST /api/v1/maintenance/cleanup-locks`
 
-### Example Messages
-```json
-// Ping
-{
-  "type": "ping"
-}
+## Archive System
 
-// Subscribe to tournaments
-{
-  "type": "subscribe",
-  "event_type": "tournament_update"
-}
+### Archive Workflow
+Graphics can be archived to preserve them while removing them from active view:
+1. **Archive**: `POST /api/v1/archive/{graphic_id}` (requires empty body `{}`)
+2. **Restore**: `POST /api/v1/archive/{graphic_id}/restore`
+3. **Permanent Delete**: `DELETE /api/v1/archive/{graphic_id}/permanent` (admin only)
 
-// Tournament update (server → client)
-{
-  "type": "tournament_update",
-  "data": {
-    "id": 1,
-    "name": "Tournament Name",
-    "status": "active"
-  },
-  "timestamp": "2025-10-10T20:00:00Z"
-}
-```
+### Archive States
+- **Active**: `archived = false` - Visible in main graphics list
+- **Archived**: `archived = true` - Visible in archive tab only
+- **Permanently Deleted**: Removed from database entirely
 
 ## Request/Response Examples
 
-### Get Tournaments
+### Get Graphics
 ```http
-GET /api/v1/tournaments/?skip=0&limit=10&status=active
+GET /api/v1/graphics/?skip=0&limit=10
 Authorization: Bearer {token}
 ```
 
 Response:
 ```json
 {
-  "tournaments": [
+  "graphics": [
     {
-      "id": 1,
-      "name": "Summer Tournament",
-      "description": "Annual summer competition",
-      "status": "active",
-      "max_participants": 100,
-      "current_participants": 45,
-      "start_date": "2025-06-01T18:00:00Z",
-      "end_date": "2025-06-03T20:00:00Z",
-      "created_at": "2025-05-01T10:00:00Z",
-      "updated_at": "2025-06-01T18:30:00Z"
+      "id": 13,
+      "title": "Title",
+      "event_name": "Event Name",
+      "data_json": {},
+      "created_by": "username",
+      "created_at": "2025-01-09T10:00:00Z",
+      "updated_at": "2025-01-09T10:30:00Z",
+      "archived": false
     }
   ],
   "total": 1,
@@ -156,33 +134,58 @@ Response:
 }
 ```
 
-### Create Tournament
+### Create Graphic
 ```http
-POST /api/v1/tournaments/
+POST /api/v1/graphics/
 Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-  "name": "New Tournament",
-  "description": "A new exciting tournament",
-  "max_participants": 50,
-  "start_date": "2025-12-01T18:00:00Z",
-  "end_date": "2025-12-03T20:00:00Z"
+  "title": "New Graphic",
+  "event_name": "Event Name",
+  "data_json": {}
 }
 ```
 
-### Update Configuration
+### Archive Graphic
 ```http
-PUT /api/v1/configuration/tournament_settings
+POST /api/v1/archive/13
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message": "Graphic archived successfully",
+  "graphic_id": 13,
+  "archived_at": "2025-01-09T10:30:00Z"
+}
+```
+
+### Acquire Lock
+```http
+POST /api/v1/lock/13
 Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-  "value": {
-    "auto_checkin": true,
-    "checkin_reminder_minutes": 30
-  },
-  "description": "Tournament check-in settings"
+  "graphic_id": 13
+}
+```
+
+Response:
+```json
+{
+  "success": true,
+  "lock_id": 5,
+  "graphic_id": 13,
+  "locked_by": "username",
+  "expires_at": "2025-01-09T10:35:00Z",
+  "can_edit": true
 }
 ```
 

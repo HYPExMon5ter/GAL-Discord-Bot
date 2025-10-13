@@ -10,16 +10,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GraphicsTable } from './GraphicsTable';
 import { CreateGraphicDialog } from './CreateGraphicDialog';
+import { CopyGraphicDialog } from './CopyGraphicDialog';
 import { Plus, Search, RefreshCw, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export function GraphicsTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [graphicToCopy, setGraphicToCopy] = useState<Graphic | null>(null);
   
   const { username } = useAuth();
   const router = useRouter();
-  const { graphics, loading, error, refetch, createGraphic, deleteGraphic, archiveGraphic, updateGraphic } = useGraphics();
+  const { graphics, loading, error, refetch, createGraphic, deleteGraphic, archiveGraphic, updateGraphic, duplicateGraphic } = useGraphics();
   const { locks } = useLocks();
 
   // Ensure graphics is always an array to prevent filter errors
@@ -71,18 +74,40 @@ export function GraphicsTab() {
     router.push(`/canvas/edit/${graphic.id}`);
   }, [router]);
 
-  const handleDuplicateGraphic = useCallback(async (graphic: Graphic) => {
+  const handleDuplicateGraphic = useCallback((graphic: Graphic) => {
+    setGraphicToCopy(graphic);
+    setCopyDialogOpen(true);
+  }, []);
+
+  const handleCopyGraphic = useCallback(async (title: string, eventName?: string) => {
+    if (!graphicToCopy) return false;
+    
     try {
-      const canvasData = JSON.parse(graphic.data_json || '{}');
-      await createGraphic({
-        title: `${graphic.title} (Copy)`,
-        event_name: graphic.event_name,
-        data_json: JSON.stringify(canvasData)
-      });
+      const result = await duplicateGraphic(graphicToCopy.id, title, eventName);
+      if (result) {
+        // Show success message
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.textContent = `Graphic "${graphicToCopy.title}" copied successfully!`;
+        document.body.appendChild(successMessage);
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+        return true;
+      }
     } catch (error) {
-      console.error('Failed to duplicate graphic:', error);
+      console.error('Failed to copy graphic:', error);
+      // Show error message
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.textContent = `Failed to copy graphic "${graphicToCopy.title}". Please try again.`;
+      document.body.appendChild(errorMessage);
+      setTimeout(() => {
+        document.body.removeChild(errorMessage);
+      }, 5000);
     }
-  }, [createGraphic]);
+    return false;
+  }, [duplicateGraphic, graphicToCopy]);
 
   const handleDeleteGraphic = useCallback(async (graphic: Graphic) => {
     try {
@@ -233,6 +258,14 @@ export function GraphicsTab() {
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
         onCreate={handleCreateGraphic}
+      />
+
+      {/* Copy Dialog */}
+      <CopyGraphicDialog
+        open={copyDialogOpen}
+        onOpenChange={setCopyDialogOpen}
+        onCopy={handleCopyGraphic}
+        sourceGraphic={graphicToCopy}
       />
     </div>
   );

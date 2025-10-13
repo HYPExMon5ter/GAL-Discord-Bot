@@ -52,6 +52,18 @@ export function useGraphics() {
     }
   }, []);
 
+  const duplicateGraphic = useCallback(async (id: number, newTitle?: string, newEventName?: string): Promise<Graphic | null> => {
+    try {
+      const duplicatedGraphic = await graphicsApi.duplicate(id, newTitle, newEventName);
+      setGraphics(prev => [duplicatedGraphic, ...prev]);
+      return duplicatedGraphic;
+    } catch (err) {
+      setError('Failed to duplicate graphic');
+      console.error('Error duplicating graphic:', err);
+      return null;
+    }
+  }, []);
+
   const deleteGraphic = useCallback(async (id: number): Promise<boolean> => {
     try {
       await graphicsApi.delete(id);
@@ -114,6 +126,7 @@ export function useGraphics() {
     refetch: fetchGraphics,
     createGraphic,
     updateGraphic,
+    duplicateGraphic,
     deleteGraphic,
     archiveGraphic,
     getGraphic,

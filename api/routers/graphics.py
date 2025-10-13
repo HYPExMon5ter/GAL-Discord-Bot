@@ -3,9 +3,9 @@ API router for graphics management
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 
 from ..dependencies import get_db
@@ -129,6 +129,47 @@ async def update_graphic(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update graphic: {str(e)}"
+        )
+
+
+@router.post("/graphics/{graphic_id}/duplicate", response_model=GraphicResponse)
+async def duplicate_graphic(
+    graphic_id: int,
+    duplicate_request: Optional[Dict[str, Any]] = Body(None),
+    new_title: Optional[str] = None,
+    new_event_name: Optional[str] = None,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Duplicate a graphic
+    """
+    try:
+        service = GraphicsService(db)
+        
+        # Extract parameters from either request body or query params
+        title = new_title
+        event_name = new_event_name
+        
+        if duplicate_request:
+            title = duplicate_request.get('new_title') or title
+            event_name = duplicate_request.get('new_event_name') or event_name
+        
+        result = service.duplicate_graphic(graphic_id, current_user.username, title, event_name)
+        
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Graphic not found"
+            )
+        
+        return GraphicResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to duplicate graphic: {str(e)}"
         )
 
 
@@ -268,7 +309,7 @@ async def get_all_lock_status(
 @router.post("/archive/{graphic_id}", response_model=ArchiveResponse)
 async def archive_graphic(
     graphic_id: int,
-    archive_request: Optional[ArchiveActionRequest] = None,
+    archive_request: Optional[ArchiveActionRequest] = Body(None),
     current_user: TokenData = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -375,8 +416,16 @@ async def permanent_delete_archive(
                 detail="Admin access required"
             )
         
-        # TODO: Implement permanent deletion
-        return {"message": "Permanent deletion not yet implemented"}
+        service = GraphicsService(db)
+        success = service.permanent_delete_graphic(graphic_id, current_user.username)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Archived graphic not found or could not be deleted"
+            )
+        
+        return {"message": "Graphic permanently deleted successfully"}
     except HTTPException:
         raise
     except Exception as e:

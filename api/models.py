@@ -16,6 +16,7 @@ class Graphic(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False, index=True)
+    event_name = Column(String(255), nullable=True, index=True)
     data_json = Column(Text, default="{}")
     created_by = Column(String(255), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -27,7 +28,7 @@ class Graphic(Base):
     archives = relationship("Archive", back_populates="graphic", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<Graphic(id={self.id}, title='{self.title}', created_by='{self.created_by}')>"
+        return f"<Graphic(id={self.id}, title='{self.title}', event_name='{self.event_name}', created_by='{self.created_by}')>"
 
 
 class CanvasLock(Base):

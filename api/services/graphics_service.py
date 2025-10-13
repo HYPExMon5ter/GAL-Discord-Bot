@@ -28,6 +28,7 @@ class GraphicsService:
         
         db_graphic = Graphic(
             title=graphic.title,
+            event_name=graphic.event_name,
             data_json=json.dumps(graphic.data_json or {}),
             created_by=created_by,
             archived=False
@@ -40,7 +41,8 @@ class GraphicsService:
         return {
             "id": db_graphic.id,
             "title": db_graphic.title,
-            "data_json": json.loads(db_graphic.data_json) if db_graphic.data_json else {},
+            "event_name": db_graphic.event_name,
+            "data_json": db_graphic.data_json,  # Keep as string for frontend compatibility
             "created_by": db_graphic.created_by,
             "created_at": db_graphic.created_at,
             "updated_at": db_graphic.updated_at,
@@ -62,7 +64,8 @@ class GraphicsService:
             {
                 "id": graphic.id,
                 "title": graphic.title,
-                "data_json": eval(graphic.data_json) if graphic.data_json else {},
+                "event_name": graphic.event_name,
+                "data_json": graphic.data_json,  # Keep as string for frontend compatibility
                 "created_by": graphic.created_by,
                 "created_at": graphic.created_at,
                 "updated_at": graphic.updated_at,
@@ -83,7 +86,8 @@ class GraphicsService:
         return {
             "id": graphic.id,
             "title": graphic.title,
-            "data_json": eval(graphic.data_json) if graphic.data_json else {},
+            "event_name": graphic.event_name,
+            "data_json": graphic.data_json,  # Keep as string for frontend compatibility
             "created_by": graphic.created_by,
             "created_at": graphic.created_at,
             "updated_at": graphic.updated_at,
@@ -102,8 +106,11 @@ class GraphicsService:
         if graphic_update.title is not None:
             graphic.title = graphic_update.title
         
+        if graphic_update.event_name is not None:
+            graphic.event_name = graphic_update.event_name
+        
         if graphic_update.data_json is not None:
-            graphic.data_json = json.dumps(graphic_update.data_json)
+            graphic.data_json = graphic_update.data_json
         
         graphic.updated_at = datetime.utcnow()
         
@@ -113,11 +120,45 @@ class GraphicsService:
         return {
             "id": graphic.id,
             "title": graphic.title,
-            "data_json": eval(graphic.data_json) if graphic.data_json else {},
+            "event_name": graphic.event_name,
+            "data_json": graphic.data_json,  # Keep as string for frontend compatibility
             "created_by": graphic.created_by,
             "created_at": graphic.created_at,
             "updated_at": graphic.updated_at,
             "archived": graphic.archived
+        }
+    
+    def duplicate_graphic(self, graphic_id: int, user_name: str, new_title: Optional[str] = None, new_event_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Duplicate a graphic"""
+        from ..models import Graphic
+        
+        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
+        
+        if not graphic:
+            return None
+        
+        # Create a new graphic with the same data
+        new_graphic = Graphic(
+            title=new_title or f"{graphic.title} (Copy)",
+            event_name=new_event_name if new_event_name is not None else graphic.event_name,
+            data_json=graphic.data_json,  # Copy the canvas data
+            created_by=user_name,
+            archived=False
+        )
+        
+        self.db.add(new_graphic)
+        self.db.commit()
+        self.db.refresh(new_graphic)
+        
+        return {
+            "id": new_graphic.id,
+            "title": new_graphic.title,
+            "event_name": new_graphic.event_name,
+            "data_json": new_graphic.data_json,  # Keep as string for frontend compatibility
+            "created_by": new_graphic.created_by,
+            "created_at": new_graphic.created_at,
+            "updated_at": new_graphic.updated_at,
+            "archived": new_graphic.archived
         }
     
     def delete_graphic(self, graphic_id: int, user_name: str, is_admin: bool = False) -> bool:
@@ -144,30 +185,37 @@ class GraphicsService:
         """Acquire a canvas lock for editing"""
         from ..models import CanvasLock
         
-        # Check if there's an existing active lock
-        existing_lock = self.get_active_lock(lock_request.graphic_id)
+        # Check if there's an existing active lock (get the actual model object)
+        existing_lock_model = self.db.query(CanvasLock).filter(
+            and_(
+                CanvasLock.graphic_id == lock_request.graphic_id,
+                CanvasLock.locked == True,
+                CanvasLock.expires_at > datetime.utcnow()
+            )
+        ).first()
         
-        if existing_lock:
+        if existing_lock_model:
             # If lock belongs to the same user and is still valid, extend it
-            if existing_lock.user_name == lock_request.user_name and existing_lock.expires_at > datetime.utcnow():
-                existing_lock.expires_at = datetime.utcnow() + timedelta(minutes=5)
+            if existing_lock_model.user_name == lock_request.user_name:
+                existing_lock_model.expires_at = datetime.utcnow() + timedelta(minutes=5)
                 self.db.commit()
-                self.db.refresh(existing_lock)
+                self.db.refresh(existing_lock_model)
                 
                 return {
-                    "id": existing_lock.id,
-                    "graphic_id": existing_lock.graphic_id,
-                    "user_name": existing_lock.user_name,
+                    "id": existing_lock_model.id,
+                    "graphic_id": existing_lock_model.graphic_id,
+                    "user_name": existing_lock_model.user_name,
                     "locked": True,
-                    "locked_at": existing_lock.locked_at,
-                    "expires_at": existing_lock.expires_at
+                    "locked_at": existing_lock_model.locked_at,
+                    "expires_at": existing_lock_model.expires_at,
+                    "can_edit": True
                 }
             
             # Lock is owned by someone else
             return {
                 "locked": True,
-                "locked_by": existing_lock.user_name,
-                "expires_at": existing_lock.expires_at,
+                "locked_by": existing_lock_model.user_name,
+                "expires_at": existing_lock_model.expires_at,
                 "can_edit": False
             }
         
@@ -342,3 +390,29 @@ class GraphicsService:
             "graphic_id": graphic_id,
             "restored_at": restore_archive.archived_at
         }
+    
+    def permanent_delete_graphic(self, graphic_id: int, user_name: str) -> bool:
+        """Permanently delete an archived graphic"""
+        from ..models import Graphic, Archive
+        
+        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
+        
+        if not graphic:
+            return False
+        
+        if not graphic.archived:
+            return False  # Only archived graphics can be permanently deleted
+        
+        # Create final archive record before deletion
+        final_archive = Archive(
+            graphic_id=graphic_id,
+            archived_by=user_name,
+            reason="Permanently deleted"
+        )
+        
+        # Delete the graphic
+        self.db.delete(graphic)
+        self.db.add(final_archive)
+        self.db.commit()
+        
+        return True

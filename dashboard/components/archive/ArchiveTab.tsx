@@ -4,15 +4,19 @@ import { useState, useCallback } from 'react';
 import { ArchivedGraphic } from '@/types';
 import { useArchive } from '@/hooks/use-archive';
 import { useAuth } from '@/hooks/use-auth';
+import { archiveApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArchivedGraphicCard } from './ArchivedGraphicCard';
+import { GraphicsTable } from '../graphics/GraphicsTable';
+import { CopyGraphicDialog } from '../graphics/CopyGraphicDialog';
 import { Badge } from '@/components/ui/badge';
-import { Search, RefreshCw, AlertCircle, Archive, Shield } from 'lucide-react';
+import { Search, RefreshCw, AlertCircle, Archive, Shield, Copy } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export function ArchiveTab() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [graphicToCopy, setGraphicToCopy] = useState<ArchivedGraphic | null>(null);
   
   const { username } = useAuth();
   const { 
@@ -29,14 +33,33 @@ export function ArchiveTab() {
 
   const filteredGraphics = archivedGraphics.filter(graphic =>
     graphic.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (graphic.event_name && graphic.event_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
     graphic.created_by.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleRestoreGraphic = useCallback(async (graphic: ArchivedGraphic) => {
     try {
-      await restoreGraphic(graphic.id);
+      const success = await restoreGraphic(graphic.id);
+      if (success) {
+        // Show success message
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.textContent = `Graphic "${graphic.title}" restored successfully!`;
+        document.body.appendChild(successMessage);
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+      }
     } catch (error) {
       console.error('Failed to restore graphic:', error);
+      // Show error message
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.textContent = `Failed to restore graphic "${graphic.title}". Please try again.`;
+      document.body.appendChild(errorMessage);
+      setTimeout(() => {
+        document.body.removeChild(errorMessage);
+      }, 5000);
     }
   }, [restoreGraphic]);
 
@@ -47,6 +70,47 @@ export function ArchiveTab() {
       console.error('Failed to permanently delete graphic:', error);
     }
   }, [permanentDeleteGraphic]);
+
+  const handleDuplicateGraphic = useCallback((graphic: ArchivedGraphic) => {
+    setGraphicToCopy(graphic);
+    setCopyDialogOpen(true);
+  }, []);
+
+  const handleCopyGraphic = useCallback(async (title: string, eventName?: string) => {
+    if (!graphicToCopy) return false;
+    
+    try {
+      // Convert ArchivedGraphic to Graphic format for copying
+      const result = await archiveApi.copyFromArchived(graphicToCopy.id, title, eventName);
+      if (result) {
+        // Show success message
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.textContent = `Archived graphic "${graphicToCopy.title}" copied successfully!`;
+        document.body.appendChild(successMessage);
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to copy archived graphic:', error);
+      // Show error message
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.textContent = `Failed to copy archived graphic "${graphicToCopy.title}". Please try again.`;
+      document.body.appendChild(errorMessage);
+      setTimeout(() => {
+        document.body.removeChild(errorMessage);
+      }, 5000);
+    }
+    return false;
+  }, [graphicToCopy]);
+
+  const handleViewGraphic = useCallback((graphic: ArchivedGraphic) => {
+    // Open OBS view in new tab
+    window.open(`/canvas/view/${graphic.id}`, '_blank');
+  }, []);
 
   if (loading && archivedGraphics.length === 0) {
     return (
@@ -135,7 +199,7 @@ export function ArchiveTab() {
         </Card>
       )}
 
-      {/* Archived Graphics Grid */}
+      {/* Archived Graphics Table */}
       {filteredGraphics.length === 0 ? (
         <Card>
           <CardHeader className="text-center py-12">
@@ -152,55 +216,29 @@ export function ArchiveTab() {
           </CardHeader>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredGraphics.map((graphic) => (
-            <ArchivedGraphicCard
-              key={graphic.id}
-              graphic={graphic}
-              onRestore={handleRestoreGraphic}
-              onPermanentDelete={handlePermanentDeleteGraphic}
-              isAdmin={isAdmin}
+        <Card>
+          <CardContent className="p-0">
+            <GraphicsTable
+              graphics={filteredGraphics}
+              loading={loading}
+              onEdit={() => {}} // No editing for archived graphics
+              onDuplicate={handleDuplicateGraphic}
+              onDelete={handlePermanentDeleteGraphic}
+              onArchive={handleRestoreGraphic} // Use restore instead of archive
+              onView={handleViewGraphic}
+              isArchived={true}
             />
-          ))}
-        </div>
-      )}
-
-      {/* Archive Stats */}
-      {archivedGraphics.length > 0 && (
-        <Card className="border-muted">
-          <CardHeader>
-            <CardTitle className="text-lg">Archive Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold">{archivedGraphics.length}</p>
-                <p className="text-sm text-muted-foreground">Total Archived</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {archivedGraphics.filter(g => g.created_by === username).length}
-                </p>
-                <p className="text-sm text-muted-foreground">Your Graphics</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {new Set(archivedGraphics.map(g => g.created_by)).size}
-                </p>
-                <p className="text-sm text-muted-foreground">Contributors</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold">
-                  {archivedGraphics.filter(g => 
-                    new Date(g.archived_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-                  ).length}
-                </p>
-                <p className="text-sm text-muted-foreground">Archived This Week</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Copy Dialog */}
+      <CopyGraphicDialog
+        open={copyDialogOpen}
+        onOpenChange={setCopyDialogOpen}
+        onCopy={handleCopyGraphic}
+        sourceGraphic={graphicToCopy}
+      />
     </div>
   );
 }

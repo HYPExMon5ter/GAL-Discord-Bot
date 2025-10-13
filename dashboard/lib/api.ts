@@ -76,12 +76,20 @@ export const graphicsApi = {
     return response.data;
   },
 
+  duplicate: async (id: number, newTitle?: string, newEventName?: string): Promise<Graphic> => {
+    const response: AxiosResponse<Graphic> = await api.post(`/graphics/${id}/duplicate`, {
+      new_title: newTitle,
+      new_event_name: newEventName
+    });
+    return response.data;
+  },
+
   delete: async (id: number): Promise<void> => {
     await api.delete(`/graphics/${id}`);
   },
 
   archive: async (id: number): Promise<void> => {
-    await api.post(`/archive/${id}`);
+    await api.post(`/archive/${id}`, {});
   },
 };
 
@@ -96,7 +104,14 @@ export const archiveApi = {
   },
 
   permanentDelete: async (id: number): Promise<void> => {
-    await api.delete(`/archive/${id}`);
+    await api.delete(`/archive/${id}/permanent`);
+  },
+  copyFromArchived: async (id: number, title: string, eventName?: string): Promise<Graphic> => {
+    const response: AxiosResponse<Graphic> = await api.post(`/graphics/${id}/duplicate`, {
+      new_title: title,
+      new_event_name: eventName
+    });
+    return response.data;
   },
 };
 

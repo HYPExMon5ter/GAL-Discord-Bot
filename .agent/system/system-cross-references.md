@@ -55,6 +55,18 @@ core/models/ (Data Models)
   - References: All component documentation
   - Referenced by: Onboarding materials, system design docs
 
+- **[Branding Guidelines](./branding-guidelines.md)** - Visual identity and UI standards
+  - References: Frontend Components, Dashboard Operations SOP
+  - Referenced by: Design Team, Frontend Developers, UI/UX Team
+
+- **[Access Control System](./access-control.md)** - Authentication and authorization framework
+  - References: API Backend System, Dashboard Security SOP, Security Management SOP
+  - Referenced by: Security Team, System Administrators, Development Team
+
+- **[WebSocket Integration](./websocket-integration.md)** - Real-time communication architecture
+  - References: Event System, API Backend System, Frontend Components
+  - Referenced by: Development Team, Infrastructure Team, Real-time Features
+
 #### Component Documentation
 - **[API Backend System](./api-backend-system.md)** - FastAPI application details
   - References: Data Models, Data Access Layer, Authentication SOP

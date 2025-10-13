@@ -158,6 +158,100 @@ interface TemplateSelectorProps {
 - Search functionality
 - Custom template creation
 
+### GraphicsTab Component
+**Purpose**: Main graphics management interface with table-based navigation
+
+```typescript
+interface GraphicsTabProps {
+  tournamentId?: string;
+  filters?: GraphicFilter;
+  defaultView?: 'active' | 'archived';
+}
+
+interface GraphicFilter {
+  search?: string;
+  event_name?: string;
+  created_by?: string;
+  date_range?: [Date, Date];
+}
+```
+
+**Features**:
+- Tab-based navigation (Active/Archived)
+- Table-based graphics display with sorting
+- Real-time search and filtering
+- Batch operations support
+- Integration with CopyGraphicDialog
+- Responsive design for mobile/desktop
+
+**Usage Example**:
+```jsx
+<GraphicsTab 
+  tournamentId="123"
+  filters={{
+    search: "template name",
+    event_name: "Tournament Name"
+  }}
+/>
+```
+
+### CreateGraphicDialog Component
+**Purpose**: Graphic creation with required event name field
+
+```typescript
+interface CreateGraphicDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCreate: (data: CreateGraphicData) => Promise<boolean>;
+  tournamentId?: string;
+  templateId?: string;
+}
+
+interface CreateGraphicData {
+  title: string;
+  event_name: string;
+  template_id: string;
+  tournament_id?: string;
+}
+```
+
+**Features**:
+- Required event name validation
+- Template selection interface
+- Form validation with error handling
+- Loading states during creation
+- Success/error feedback
+
+### CopyGraphicDialog Component
+**Purpose**: Duplicate existing graphics with custom naming and event name
+
+```typescript
+interface CopyGraphicDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCopy: (title: string, eventName?: string) => Promise<boolean>;
+  sourceGraphic: Graphic | null;
+}
+```
+
+**Features**:
+- Pre-populated title with "(Copy)" suffix
+- Editable event name field
+- Required field validation
+- Loading states during duplication
+- Success/error feedback
+- Automatic form reset on close
+
+**Usage Example**:
+```jsx
+<CopyGraphicDialog
+  open={copyDialogOpen}
+  onOpenChange={setCopyDialogOpen}
+  onCopy={handleCopyGraphic}
+  sourceGraphic={selectedGraphic}
+/>
+```
+
 ## Archive Components (`components/archive/`)
 
 ### ArchiveBrowser Component
@@ -192,27 +286,65 @@ interface ArchiveDetailsProps {
 
 ## Canvas Components (`components/canvas/`)
 
-### CanvasEditor Component
-**Purpose**: **DEPRECATED** Legacy modal-based canvas editing interface (replaced by route-based editor)
-**Status**: Use `/canvas/edit/{id}` route instead
+### CanvasEditor Component (Route-Based)
+**Purpose**: Route-based canvas editing interface with metadata editing capabilities
+**Route**: `/canvas/edit/{id}` (replaces legacy modal-based editor)
 
 ```typescript
 interface CanvasEditorProps {
-  canvas: Canvas;
   graphic: Graphic;
-  onSave: (canvas: Canvas) => void;
-  onPreview: (canvas: Canvas) => void;
+  onSave: (title: string, eventName: string, canvasData: any) => Promise<boolean>;
+  onCancel: () => void;
   locked?: boolean;
   lockInfo?: LockInfo;
 }
+
+// State management for metadata editing
+const [title, setTitle] = useState(graphic.title);
+const [eventName, setEventName] = useState(graphic.event_name);
 ```
 
 **Features**:
-- Drag and drop editing
-- Real-time collaboration
-- Layer management
-- Zoom and pan controls
-- Undo/redo functionality
+- **Metadata Editing**: Editable title and event name fields in header
+- **Route-Based Navigation**: Full-screen editing experience
+- **Required Field Validation**: Prevents saving without event name
+- **Canvas Locking**: Automatic lock acquisition and management
+- **Real-time Collaboration**: WebSocket-based live updates
+- **Drag and Drop Editing**: Visual canvas manipulation
+- **Layer Management**: Comprehensive layer controls
+- **Zoom and Pan Controls**: Canvas navigation features
+- **Undo/Redo Functionality**: Edit history management
+- **Auto-save**: Periodic saving of canvas state
+- **Responsive Design**: Mobile and desktop optimization
+
+**Metadata Editing Workflow**:
+1. Load graphic with current title and event name
+2. Display editable input fields in component header
+3. Validate required fields before save operations
+4. Include metadata in canvas save API calls
+5. Update UI state after successful save
+
+**Usage Example** (Route Implementation):
+```jsx
+// app/canvas/edit/[id]/page.tsx
+export default function EditCanvasPage({ params }: { params: { id: string } }) {
+  return (
+    <CanvasEditor
+      graphic={graphic}
+      onSave={handleSave}
+      onCancel={() => router.back()}
+      locked={isLocked}
+      lockInfo={lockInfo}
+    />
+  );
+}
+```
+
+**Integration with Lock System**:
+- Automatic lock acquisition on page load
+- Lock status display in component header
+- Lock refresh mechanism for extended editing sessions
+- Conflict resolution for simultaneous editing attempts
 
 ### CanvasPreview Component
 **Purpose**: Live canvas preview

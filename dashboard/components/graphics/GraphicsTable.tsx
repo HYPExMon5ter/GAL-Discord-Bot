@@ -184,13 +184,25 @@ export function GraphicsTable({
     }
 
     return (
-      <div className="flex items-center gap-1">
-        {/* Edit button removed for archived graphics */}
+      <div className="flex items-center justify-center gap-1">
+        {/* Edit button - only show for active graphics */}
+        {!isArchived && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(graphic)}
+            className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            title="Edit graphic"
+          >
+            <Edit className="h-3 w-3" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
           onClick={() => onDuplicate(graphic)}
-          className="h-8 px-2"
+          className="h-8 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+          title="Duplicate graphic"
         >
           <Copy className="h-3 w-3" />
         </Button>
@@ -198,7 +210,7 @@ export function GraphicsTable({
           variant="ghost"
           size="sm"
           onClick={() => onArchive(graphic)}
-          className="h-8 px-2 text-green-600 hover:text-green-700"
+          className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
           title={isArchived ? "Restore to active" : "Archive graphic"}
         >
           {isArchived ? (
@@ -211,7 +223,8 @@ export function GraphicsTable({
           variant="ghost"
           size="sm"
           onClick={() => onDelete(graphic)}
-          className="h-8 px-2 text-red-600 hover:text-red-700"
+          className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+          title="Delete graphic"
         >
           <Trash2 className="h-3 w-3" />
         </Button>
@@ -219,7 +232,8 @@ export function GraphicsTable({
           variant="ghost"
           size="sm"
           onClick={() => onView(graphic)}
-          className="h-8 px-2"
+          className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+          title="View in OBS"
         >
           <Eye className="h-3 w-3" />
         </Button>
@@ -248,39 +262,39 @@ export function GraphicsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse">
+      <table className="w-full border-collapse rounded-lg overflow-hidden">
         <thead>
-          <tr className="border-b border-gray-200">
-            <th className="text-center py-3 px-4 font-medium text-gray-700">
+          <tr className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+            <th className="text-center py-4 px-4 font-semibold text-gray-800">
               <button
                 onClick={() => handleSort('title')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full"
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full text-sm"
               >
                 Graphic Name
                 <SortIcon field="title" />
               </button>
             </th>
-            <th className="text-center py-3 px-4 font-medium text-gray-700">
+            <th className="text-center py-4 px-4 font-semibold text-gray-800">
               <button
                 onClick={() => handleSort('event_name')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full"
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full text-sm"
               >
                 Event Name
                 <SortIcon field="event_name" />
               </button>
             </th>
-            <th className="text-center py-3 px-4 font-medium text-gray-700">
+            <th className="text-center py-4 px-4 font-semibold text-gray-800">
               <button
                 onClick={() => handleSort(isArchived ? 'archived_at' : 'updated_at')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full"
+                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full text-sm"
               >
                 {isArchived ? 'Archive Date' : 'Last Edited'}
                 <SortIcon field={isArchived ? 'archived_at' : 'updated_at'} />
               </button>
             </th>
 
-            <th className="text-center py-3 px-4 font-medium text-gray-700">
-              <div className="flex items-center justify-center">
+            <th className="text-center py-4 px-4 font-semibold text-gray-800">
+              <div className="flex items-center justify-center text-sm">
                 Actions
               </div>
             </th>
@@ -290,23 +304,23 @@ export function GraphicsTable({
           {sortedGraphics.map((graphic) => (
             <tr 
               key={graphic.id} 
-              className="border-b border-gray-100 hover:bg-gray-50 transition-colors"
+              className="border-b border-gray-100"
             >
-              <td className="text-center py-3 px-4">
-                <div className="font-medium text-gray-900">{graphic.title}</div>
+              <td className="text-center py-4 px-4">
+                <div className="font-semibold text-gray-100">{graphic.title}</div>
               </td>
-              <td className="text-center py-3 px-4">
-                <div className="text-gray-600">
+              <td className="text-center py-4 px-4">
+                <div className="text-gray-200 font-medium">
                   {graphic.event_name || <span className="text-gray-400 italic">No event</span>}
                 </div>
               </td>
-              <td className="text-center py-3 px-4">
-                <div className="text-sm text-gray-600">
+              <td className="text-center py-4 px-4">
+                <div className="text-sm text-gray-300">
                   {getDisplayDate(graphic)}
                 </div>
               </td>
 
-              <td className="text-center py-3 px-4">
+              <td className="text-center py-4 px-4">
                 <ActionButtons graphic={graphic} />
               </td>
             </tr>

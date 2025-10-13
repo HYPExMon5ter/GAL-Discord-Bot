@@ -1,7 +1,7 @@
 ---
 id: system.architecture
 version: 2.0
-last_updated: 2025-10-11
+last_updated: 2025-01-13
 tags: [system, architecture, unified-data-flow, api-backend, event-system]
 ---
 

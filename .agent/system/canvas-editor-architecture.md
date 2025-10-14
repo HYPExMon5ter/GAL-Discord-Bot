@@ -20,10 +20,10 @@ The Canvas Editor is a full-screen, route-based interface for creating and editi
 </Modal>
 ```
 
-### Current Architecture (v2.1 - Route-Based)
+### Current Architecture (v2.1 - Route-Based with Visual Improvements)
 ```tsx
 // Route-based editing (CURRENT)
-/app/canvas/edit/[id]/page.tsx    # Full-screen editor
+/app/canvas/edit/[id]/page.tsx    # Full-screen editor with enhanced UI
 /app/canvas/view/[id]/page.tsx    # OBS browser source
 ```
 
@@ -34,30 +34,31 @@ The Canvas Editor is a full-screen, route-based interface for creating and editi
 
 **Key Features**:
 - Responsive canvas area with zoom controls (25%-400%)
-- 20px dotted grid system with snap-to-grid functionality
-- Collapsible sidebar with tabbed interface
+- 20px radial-gradient dotted grid system with snap-to-grid functionality
+- Collapsible sidebar with tabbed interface featuring blue accent active states
 - Element drag-and-drop with real-time positioning
 - Properties panel for element editing
 - Background image upload and management
+- Enhanced visual interface with lock banner removal and repositioned controls
 
 **Architecture**:
 ```tsx
 ┌─────────────────────────────────────────────────────────┐
-│ [Header] Back Button | Graphic Name | Save Button        │
+│ [Header] Back | Title/Event | Undo/Redo | Save/Cancel    │
 ├─────────────────────────────────────────────────────────┤
 │ ┌─────────┐                                       │         │
 │ │ Sidebar │         Canvas Area (Zoomable)     │         │
 │ │ (Collapse│                                       │         │
 │  dible) │    • Elements (text, shapes)      │         │
-│         │    • Background image              │         │
-│         │    • Grid overlay (20px dots)      │         │
-│         │    • Zoom 25%-400%                 │         │
+│ │ Tabs    │    • Background image              │         │
+│ │ (Blue   │    • Radial grid (20px dots)      │         │
+│ │ accents)│    • Zoom 25%-400%                 │         │
 │ └─────────┘                                       │         │
 │                                                 │         │
 │                                                 │         │
 └─────────────────────────────────────────────────────────┘
                                                       │
-                    [Grid][Snap][Zoom+/-] │ Bottom Controls
+          [Zoom] [Grid] [Snap] │ [Reset] [Fit] │ Controls
 ```
 
 ### 2. Canvas View Page (`/app/canvas/view/[id]/page.tsx`)
@@ -71,14 +72,17 @@ The Canvas Editor is a full-screen, route-based interface for creating and editi
 - Performance optimized for live streaming
 
 ### 3. Enhanced GraphicsTable Component
-**Purpose**: Table-based graphics management interface
+**Purpose**: Table-based graphics management interface with visual improvements
 
 **Key Features**:
-- Sortable columns (Graphic Name, Event Name, Last Edited)
+- Sortable columns (Graphic Name, Event Name, Last Edited) with gradient headers
 - Search functionality (title, event name)
-- Contextual action buttons per graphic
+- Contextual action buttons per graphic with improved alignment and hover effects
 - Active/Archived view toggle
 - Navigation-based editing workflow
+- Enhanced visibility with proper text contrast for dark backgrounds
+- Restored edit functionality for active graphics
+- Color-coded action buttons (blue for edit, purple for copy, green for archive, red for delete)
 
 ## State Management Architecture
 
@@ -135,13 +139,13 @@ const screenToCanvas = (screenX: number, screenY: number) => ({
 ```
 
 ### 2. Grid System
-**Grid Size**: 20px dotted grid
+**Grid Size**: 20px radial-gradient dotted grid (updated from linear lines)
 **Snap Tolerance**: 5px
-**Implementation**: CSS background pattern with JavaScript snap calculation
+**Implementation**: CSS radial-gradient background pattern with JavaScript snap calculation
 ```css
 .canvas-grid {
   background-image: 
-    radial-gradient(circle, #ccc 1px, transparent 1px);
+    radial-gradient(circle, rgba(200, 200, 200, 0.4) 1px, transparent 1px);
   background-size: 20px 20px;
   background-position: 0 0, 10px 10px;
 }
@@ -160,8 +164,9 @@ const screenToCanvas = (screenX: number, screenY: number) => ({
 **State Management**: React state with conditional rendering
 **Features**:
 - Context-sensitive content
-- Active state indicators
+- Enhanced active state indicators with blue accent colors (data-[state=active]:bg-blue-600)
 - Smooth transitions
+- Improved visual hierarchy with vibrant theme integration
 
 ## API Integration
 
@@ -283,6 +288,42 @@ dashboard/components/
 - URL routing requires proper parameter handling
 - Browser source URLs updated
 
+## Recent Visual Improvements (2025-01-13)
+
+### Lock Banner Removal
+- **Implementation**: Complete removal of LockBanner component and containing div
+- **Impact**: Cleaner interface with reduced visual clutter
+- **Functionality Preserved**: All lock management functionality remains intact through status indicators
+
+### Enhanced Grid System
+- **Previous**: Linear gradient lines with full grid coverage
+- **Current**: Radial-gradient dots with 20px spacing
+- **Benefits**: Better visual hierarchy, reduced visual noise, improved readability
+- **Implementation**: CSS radial-gradient with proper opacity for subtle appearance
+
+### Control Repositioning
+- **Header Area**: Undo/Redo buttons moved to top right near save/cancel actions
+- **Left Side**: Zoom controls (zoom in/out/percentage display) repositioned
+- **Right Side**: Reset and Fit buttons moved to opposite side for better workflow
+- **Bottom Area**: Removed duplicate controls to reduce redundancy
+
+### Tab Styling Enhancement
+- **Active State**: Blue accent colors (data-[state=active]:bg-blue-600 data-[state=active]:text-white)
+- **Visual Feedback**: Clear distinction between active and inactive tabs
+- **Theme Integration**: Consistent with overall vibrant UI theme
+
+### Dark Theme Integration
+- **Background**: Consistent with dashboard dark theme (#1a1a1a)
+- **Text Colors**: Enhanced contrast for improved readability
+- **UI Elements**: All components follow dark theme standards
+- **Accessibility**: Maintained proper contrast ratios
+
+### Graphics Table Integration
+- **Enhanced Visibility**: Improved text contrast and table header styling
+- **Action Buttons**: Color-coded with proper hover effects
+- **Edit Functionality**: Restored for active graphics with proper workflow
+- **Consistency**: Matches canvas editor visual improvements
+
 ## Future Enhancements
 
 ### Planned Features
@@ -300,6 +341,7 @@ dashboard/components/
 
 ---
 
-**Last Updated**: 2025-10-12  
+**Last Updated**: 2025-01-13  
 **Next Review**: After next major feature release  
 **Dependencies**: None (all components and APIs are stable)
+**Visual Improvements**: Complete lock banner removal, enhanced grid system, control repositioning, blue accent tab styling

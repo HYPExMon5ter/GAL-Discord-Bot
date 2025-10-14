@@ -37,11 +37,12 @@ The Live Graphics Dashboard 2.0 is a comprehensive web-based platform for creati
 
 ### 🎨 Graphics Management
 - **CRUD Operations**: Create, read, update, and delete graphics
-- **Canvas Editor**: Full-screen route-based editing interface with advanced features
-- **Table View**: Sortable table interface replacing card-based UI
+- **Canvas Editor**: Full-screen route-based editing interface with advanced features and visual improvements
+- **Enhanced Table View**: Sortable table interface with gradient headers, improved visibility, and color-coded action buttons
 - **Search Functionality**: Filter graphics by title or event name
 - **Status Indicators**: Visual badges for locked and active graphics
 - **Real-time Updates**: Live status updates via WebSocket connections
+- **Visual Improvements**: Enhanced dark theme integration, lock banner removal, improved grid system
 
 ### 🔒 Canvas Locking System
 - **Single-User Editing**: Only one user can edit a graphic at a time
@@ -170,9 +171,8 @@ DashboardLayout
 ├── Tabs
 │   ├── GraphicsTab
 │   │   ├── CreateGraphicDialog
-│   │   ├── GraphicCard
-│   │   │   └── LockBanner
-│   │   └── CanvasEditor
+│   │   ├── GraphicsTable (Enhanced with visual improvements)
+│   │   └── CanvasEditor (Updated with lock banner removal)
 │   │       └── LockStatus
 │   └── ArchiveTab
 │       ├── ArchivedGraphicCard

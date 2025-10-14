@@ -1,7 +1,7 @@
 ---
 id: system.cross_references
-version: 1.0
-last_updated: 2025-10-11
+version: 1.1
+last_updated: 2025-01-13
 tags: [cross-references, integration, system-links, documentation-map]
 ---
 
@@ -46,6 +46,138 @@ core/models/ (Data Models)
 └── Referenced by: All other components
 ```
 
+## Component Mapping Cross-References
+
+### Frontend Component Mappings
+#### Canvas Editor Component Structure Updates
+**File Location**: `dashboard/components/canvas/CanvasEditor.tsx`
+**Documentation**: `[Canvas Editor Visual Improvements Documentation](./canvas-editor-visual-improvements.md)`
+
+**Recent Structural Changes**:
+- **Lock Banner Removal**: Eliminated LockBanner component and containing div
+- **Grid System Update**: Changed from linear-gradient lines to radial-gradient dots
+- **Control Repositioning**: 
+  - Zoom controls moved to left side
+  - Reset/Fit buttons moved to right side  
+  - Undo/Redo buttons moved to header only
+- **Tab Styling Enhancement**: Added blue accent colors for active tabs
+
+**Component Hierarchy**:
+```
+CanvasEditor (Updated)
+├── Header
+│   ├── Title/Event Name Inputs
+│   ├── Undo/Redo Controls (Moved here)
+│   ├── Lock Status Display
+│   └── Save/Cancel Actions
+├── Toolbar
+│   ├── Zoom Controls (Left side - New position)
+│   └── View Controls (Right side - New position)
+├── Canvas Area
+│   ├── Canvas (with dot grid - New pattern)
+│   └── Element Overlays
+└── Sidebar
+    ├── Tab Navigation (with blue accents - New styling)
+    └── Content Panels
+```
+
+#### New Select Component Implementation
+**File Location**: `dashboard/components/ui/select.tsx`
+**Documentation**: `[Select Component Documentation](./select-component-documentation.md)`
+
+**Component Architecture**:
+```
+Select (Container)
+├── SelectTrigger (Button)
+├── SelectContent (Dropdown)
+│   └── SelectItem (Options)
+└── SelectValue (Display Text)
+```
+
+**Integration Points**:
+- **Canvas Editor**: Template selection, tool selection
+- **Graphics Management**: Category filtering, status selection
+- **Form Components**: All form-based inputs requiring selection
+
+#### Canvas Editor Visual Improvements Documentation
+**File Location**: `dashboard/components/canvas/CanvasEditor.tsx`
+**Documentation**: `[Frontend Components - Canvas Editor Updates](./frontend-components.md#canvas-editor-visual-enhancements)`
+**Related Documentation**: `[Canvas Editor Architecture](./canvas-editor-architecture.md#recent-visual-improvements-2025-01-13)`
+
+**Key Visual Changes**:
+- **Lock Banner Removal**: Complete elimination of editing banner for cleaner interface
+- **Grid System Enhancement**: Radial-gradient dots replacing linear grid lines
+- **Control Repositioning**: Optimized placement of zoom, reset, fit, and undo/redo controls
+- **Tab Styling**: Blue accent colors for active tab states
+- **Dark Theme Integration**: Consistent with overall dashboard vibrant theme
+
+#### Graphics Table Enhancements Documentation
+**File Location**: `dashboard/components/graphics/GraphicsTable.tsx`
+**Documentation**: `[Frontend Components - Graphics Table](./frontend-components.md#graphics-table-enhancements)`
+
+**Key Enhancements**:
+- **Action Button Alignment**: Improved centering with table rows
+- **Enhanced Visibility**: Gradient headers and improved text contrast
+- **Restored Edit Functionality**: Edit button available for active graphics
+- **Color-Coded Actions**: Blue (edit), purple (copy), green (archive), red (delete)
+- **Hover Effects**: Gradient hover states for improved UX
+- **Settings Pages**: Configuration options, theme selection
+
+#### Enhanced GraphicsTable Component
+**File Location**: `dashboard/components/graphics/GraphicsTable.tsx`
+**Documentation**: Referenced in `[Frontend Components Documentation](./frontend-components.md)`
+
+**Recent Enhancements**:
+- **Action Button Improvements**: Color-coded hover effects
+- **Header Enhancements**: Gradient backgrounds, improved contrast
+- **Row Visibility**: Enhanced hover effects, better text contrast
+- **Edit Functionality**: Restored for active graphics
+
+**Button Color Scheme**:
+- **Edit**: Blue hover effects
+- **Copy**: Purple hover effects
+- **Archive**: Green hover effects
+- **Delete**: Red hover effects
+- **View**: Gray hover effects
+
+### UI Component Integration Matrix
+
+| Component | Used By | Integration Type | Documentation |
+|-----------|---------|------------------|---------------|
+| CanvasEditor | Canvas editing routes | Main component | Canvas Editor Visual Improvements |
+| Select | Forms, Filters, Settings | UI component | Select Component Documentation |
+| GraphicsTable | GraphicsTab, ArchiveTab | Data display | Frontend Components |
+| Tabs | CanvasEditor, Settings | Navigation | Frontend Components |
+| Button | All components | UI element | Frontend Components |
+
+### File Location Cross-References
+
+#### Frontend Components Directory Structure
+```
+dashboard/components/
+├── ui/
+│   ├── select.tsx                    # New Select component
+│   ├── button.tsx                    # Enhanced button styling
+│   ├── tabs.tsx                      # Tab components with blue accents
+│   └── [other ui components]
+├── canvas/
+│   └── CanvasEditor.tsx              # Updated with visual improvements
+├── graphics/
+│   ├── GraphicsTable.tsx             # Enhanced with action improvements
+│   ├── GraphicsTab.tsx               # Uses GraphicsTable
+│   └── CopyGraphicDialog.tsx         # Uses Select component
+└── [other component directories]
+```
+
+#### Documentation File Cross-References
+```
+.agent/system/
+├── canvas-editor-visual-improvements.md    # NEW: Canvas Editor enhancements
+├── select-component-documentation.md      # NEW: Select component docs
+├── frontend-components.md                 # UPDATED: Enhanced component info
+└── system-cross-references.md             # UPDATED: This file
+```
+
 ## Documentation Cross-References
 
 ### System Documentation Map
@@ -86,15 +218,23 @@ core/models/ (Data Models)
 
 #### Frontend System Documentation (NEW)
 - **[Frontend Components Documentation](./frontend-components.md)** - React components and hooks
-  - References: API Integration docs, Dashboard Operations SOP
+  - References: API Integration docs, Dashboard Operations SOP, Canvas Editor Visual Improvements
   - Referenced by: Frontend developers, Dashboard operators
 
+- **[Canvas Editor Visual Improvements Documentation](./canvas-editor-visual-improvements.md)** - Canvas Editor UI enhancements
+  - References: Frontend Components Documentation, Canvas Editor Architecture, UI Customization Guidelines
+  - Referenced by: Frontend developers, UI/UX team, Canvas users
+
+- **[Select Component Documentation](./select-component-documentation.md)** - Custom Select component implementation
+  - References: Frontend Components Documentation, UI Customization Guidelines
+  - Referenced by: Frontend developers, Form implementers, Component library maintainers
+
 - **[API Integration Documentation](./api-integration.md)** - Frontend-backend API contracts
-  - References: API Backend System, Frontend Components docs
+  - References: API Backend System, Frontend Components docs, Select Component Documentation
   - Referenced by: Frontend developers, API consumers
 
 - **[Developer Documentation](./developer-documentation.md)** - Development guidelines and best practices
-  - References: All component docs, Dashboard Deployment SOP
+  - References: All component docs, Dashboard Deployment SOP, Canvas Editor Visual Improvements
   - Referenced by: All developers, New team members
 
 #### Live Graphics Dashboard Documentation

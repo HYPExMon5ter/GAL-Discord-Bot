@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Graphic } from '@/types';
+import { Graphic, ArchivedGraphic } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ interface CopyGraphicDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCopy: (title: string, eventName?: string) => Promise<boolean>;
-  sourceGraphic: Graphic | null;
+  sourceGraphic: Graphic | ArchivedGraphic | null;
 }
 
 export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }: CopyGraphicDialogProps) {

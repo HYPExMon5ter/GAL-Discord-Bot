@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LockBanner } from '@/components/locks/LockBanner';
 import {
   Save,
   ArrowLeft,
@@ -22,7 +21,13 @@ import {
   ChevronRight,
   Grid3X3,
   Move,
-  X
+  X,
+  User,
+  Trophy,
+  Medal,
+  Undo,
+  Redo,
+  Settings
 } from 'lucide-react';
 import { HistoryManager } from '@/lib/history-manager';
 
@@ -67,6 +72,24 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   
+  // Element snapping
+  const [snapToElements, setSnapToElements] = useState(true);
+  const [snapLines, setSnapLines] = useState<{x?: number, y?: number}[]>([]);
+  
+  // Event management
+  const [availableEvents, setAvailableEvents] = useState<string[]>([]);
+  const [showNewEventInput, setShowNewEventInput] = useState(false);
+  const [newEventName, setNewEventName] = useState('');
+  
+  // Font options
+  const fontOptions = [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Times New Roman', label: 'Times New Roman' },
+    { value: 'Helvetica', label: 'Helvetica' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: 'Verdana', label: 'Verdana' }
+  ];
+  
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -83,9 +106,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         data = {
           elements: [],
           settings: {
-            width: 1920,
-            height: 1080,
-            backgroundColor: '#ffffff'
+            width: 5000,
+            height: 5000,
+            backgroundColor: '#2a2a2a'
           }
         };
       }
@@ -98,9 +121,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       const defaultData = {
         elements: [],
         settings: {
-          width: 1920,
-          height: 1080,
-          backgroundColor: '#ffffff'
+          width: 5000,
+          height: 5000,
+          backgroundColor: '#2a2a2a'
         }
       };
       setCanvasData(defaultData);
@@ -127,6 +150,89 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     if (!gridSnapEnabled) return value;
     return Math.round(value / gridSize) * gridSize;
   }, [gridSnapEnabled]);
+
+  // Element snapping function
+  const snapToElementsFunc = useCallback((element: any, newX: number, newY: number) => {
+    if (!snapToElements) return { x: newX, y: newY };
+    
+    const snapThreshold = gridSize; // 20px
+    let snappedX = newX;
+    let snappedY = newY;
+    const newSnapLines: {x?: number, y?: number}[] = [];
+    
+    elements.forEach(otherElement => {
+      if (otherElement.id === element.id) return;
+      
+      // Snap to edges
+      const otherLeft = otherElement.x;
+      const otherRight = otherElement.x + (otherElement.width || 100);
+      const otherTop = otherElement.y;
+      const otherBottom = otherElement.y + (otherElement.height || 50);
+      
+      const elemLeft = newX;
+      const elemRight = newX + (element.width || 100);
+      const elemTop = newY;
+      const elemBottom = newY + (element.height || 50);
+      
+      // Check left edge snap
+      if (Math.abs(elemLeft - otherLeft) < snapThreshold) {
+        snappedX = otherLeft;
+        newSnapLines.push({ x: otherLeft });
+      }
+      if (Math.abs(elemLeft - otherRight) < snapThreshold) {
+        snappedX = otherRight;
+        newSnapLines.push({ x: otherRight });
+      }
+      
+      // Check right edge snap
+      if (Math.abs(elemRight - otherLeft) < snapThreshold) {
+        snappedX = otherLeft - (element.width || 100);
+        newSnapLines.push({ x: otherLeft });
+      }
+      if (Math.abs(elemRight - otherRight) < snapThreshold) {
+        snappedX = otherRight - (element.width || 100);
+        newSnapLines.push({ x: otherRight });
+      }
+      
+      // Check top edge snap
+      if (Math.abs(elemTop - otherTop) < snapThreshold) {
+        snappedY = otherTop;
+        newSnapLines.push({ y: otherTop });
+      }
+      if (Math.abs(elemTop - otherBottom) < snapThreshold) {
+        snappedY = otherBottom;
+        newSnapLines.push({ y: otherBottom });
+      }
+      
+      // Check bottom edge snap
+      if (Math.abs(elemBottom - otherTop) < snapThreshold) {
+        snappedY = otherTop - (element.height || 50);
+        newSnapLines.push({ y: otherTop });
+      }
+      if (Math.abs(elemBottom - otherBottom) < snapThreshold) {
+        snappedY = otherBottom - (element.height || 50);
+        newSnapLines.push({ y: otherBottom });
+      }
+      
+      // Check center alignment
+      const otherCenterX = otherLeft + (otherElement.width || 100) / 2;
+      const otherCenterY = otherTop + (otherElement.height || 50) / 2;
+      const elemCenterX = elemLeft + (element.width || 100) / 2;
+      const elemCenterY = elemTop + (element.height || 50) / 2;
+      
+      if (Math.abs(elemCenterX - otherCenterX) < snapThreshold) {
+        snappedX = otherCenterX - (element.width || 100) / 2;
+        newSnapLines.push({ x: otherCenterX });
+      }
+      if (Math.abs(elemCenterY - otherCenterY) < snapThreshold) {
+        snappedY = otherCenterY - (element.height || 50) / 2;
+        newSnapLines.push({ y: otherCenterY });
+      }
+    });
+    
+    setSnapLines(newSnapLines);
+    return { x: snappedX, y: snappedY };
+  }, [snapToElements, gridSize, elements]);
 
   // Background image upload handler
   const handleBackgroundUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -177,12 +283,12 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     const newElement = {
       id: Date.now().toString(),
       type: 'text',
-      content: 'Player Name',
+      content: 'Text',
       x: snapToGrid(100),
       y: snapToGrid(100),
       fontSize: 48,
       fontFamily: 'Arial',
-      color: '#FFFFFF',
+      color: '#000000',
       dataBinding: null
     };
     
@@ -196,17 +302,33 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     addToHistory(HistoryManager.createActionTypes.addElement(newElement));
   }, [snapToGrid, addToHistory]);
 
-  const addShapeElement = useCallback((shapeType: 'rectangle' | 'circle') => {
+  const addPropertyElement = useCallback((propertyType: 'player' | 'score' | 'placement') => {
+    const propertyConfig = {
+      player: { placeholderText: 'Player Name', defaultWidth: 150, defaultHeight: 40 },
+      score: { placeholderText: 'Score', defaultWidth: 100, defaultHeight: 40 },
+      placement: { placeholderText: 'Placement', defaultWidth: 120, defaultHeight: 40 }
+    };
+    
+    const config = propertyConfig[propertyType];
     const newElement = {
       id: Date.now().toString(),
-      type: shapeType,
-      x: snapToGrid(200),
-      y: snapToGrid(200),
-      width: snapToGrid(100),
-      height: snapToGrid(100),
-      backgroundColor: '#FF0000',
-      borderColor: '#FFFFFF',
-      borderWidth: 2
+      type: propertyType,
+      content: config.placeholderText,
+      x: snapToGrid(100),
+      y: snapToGrid(100),
+      width: snapToGrid(config.defaultWidth),
+      height: snapToGrid(config.defaultHeight),
+      fontSize: 24,
+      fontFamily: 'Arial',
+      color: '#000000',
+      backgroundColor: 'rgba(0, 0, 0, 0)',
+      dataBinding: {
+        source: 'api' as const,
+        field: `${propertyType}_name` as const,
+        apiEndpoint: null,
+        manualValue: null
+      },
+      isPlaceholder: true
     };
     
     setElements((prev: any[]) => [...prev, newElement]);
@@ -219,6 +341,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     addToHistory(HistoryManager.createActionTypes.addElement(newElement));
   }, [snapToGrid, addToHistory]);
 
+  // Removed shape elements - replaced with property elements
+
   const updateElement = useCallback((elementId: string, updates: Partial<any>) => {
     const currentElement = elements.find(el => el.id === elementId);
     if (!currentElement) return;
@@ -229,15 +353,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     if (updates.y !== undefined) processedUpdates.y = snapToGrid(updates.y);
     if (updates.width !== undefined) processedUpdates.width = snapToGrid(updates.width);
     if (updates.height !== undefined) processedUpdates.height = snapToGrid(updates.height);
-    
-    // Check if any updates would actually change the element
-    const hasChanges = Object.keys(processedUpdates).some(key => {
-      const currentValue = currentElement[key];
-      const newValue = processedUpdates[key];
-      return currentValue !== newValue;
-    });
-    
-    if (!hasChanges) return; // No need to update if nothing changed
     
     const updatedElement = { ...currentElement, ...processedUpdates };
     
@@ -274,7 +389,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   // Canvas controls
   const handleZoomIn = useCallback(() => {
-    const newZoom = Math.min(zoom * 1.2, 4.0); // 400% max
+    const newZoom = Math.min(zoom * 1.2, 5.0); // 500% max
     setZoom(newZoom);
     addToHistory(HistoryManager.createActionTypes.updateSettings(
       { zoom }, 
@@ -309,8 +424,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       if (container) {
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
-        const canvasWidth = canvasData?.settings?.width || 1920;
-        const canvasHeight = canvasData?.settings?.height || 1080;
+        const canvasWidth = canvasData?.settings?.width || 5000;
+        const canvasHeight = canvasData?.settings?.height || 5000;
         
         const scaleX = containerWidth / canvasWidth;
         const scaleY = containerHeight / canvasHeight;
@@ -421,7 +536,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.max(0.25, Math.min(4.0, zoom * delta));
+      const newZoom = Math.max(0.25, Math.min(5.0, zoom * delta));
       setZoom(newZoom);
     }
   }, [zoom]);
@@ -488,12 +603,19 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         const rawNewY = element.y + deltaY;
         
         // Apply snap to grid if enabled
-        const newX = snapToGrid(rawNewX);
-        const newY = snapToGrid(rawNewY);
+        let newX = snapToGrid(rawNewX);
+        let newY = snapToGrid(rawNewY);
+        
+        // Apply element snapping if enabled
+        if (snapToElements) {
+          const snapped = snapToElementsFunc(element, newX, newY);
+          newX = snapToGrid(snapped.x);
+          newY = snapToGrid(snapped.y);
+        }
         
         // Constrain to canvas boundaries
-        const canvasWidth = canvasData?.settings?.width || 1920;
-        const canvasHeight = canvasData?.settings?.height || 1080;
+        const canvasWidth = canvasData?.settings?.width || 5000;
+        const canvasHeight = canvasData?.settings?.height || 5000;
         
         const elementWidth = element.width || (element.type === 'text' ? 100 : 100);
         const elementHeight = element.height || (element.type === 'text' ? 50 : 100);
@@ -520,11 +642,12 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         y: e.clientY - dragStart.y
       });
     }
-  }, [isDragging, dragStart, zoom, elements, draggedElement, snapToGrid, updateElement, canvasData]);
+  }, [isDragging, dragStart, zoom, elements, draggedElement, snapToGrid, updateElement, canvasData, snapToElements, snapToElementsFunc]);
 
   const handleMouseUp = useCallback(() => {
     setDraggedElement(null);
     setIsDragging(false);
+    setSnapLines([]); // Clear snap lines when dragging stops
   }, []);
 
   // Keyboard shortcuts
@@ -616,9 +739,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         backgroundImage: backgroundImage,
         settings: {
           ...canvasData?.settings,
-          width: canvasData?.settings?.width || 1920,
-          height: canvasData?.settings?.height || 1080,
-          backgroundColor: canvasData?.settings?.backgroundColor || '#ffffff'
+          width: canvasData?.settings?.width || 5000,
+          height: canvasData?.settings?.height || 5000,
+          backgroundColor: canvasData?.settings?.backgroundColor || '#2a2a2a'
         }
       };
 
@@ -692,9 +815,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-white z-50 flex flex-col">
-      <div className="border-b bg-white p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="fixed inset-0 bg-background z-50 flex flex-col">
+      <div className="border-b bg-card p-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
           <Button
             variant="outline"
             size="sm"
@@ -704,22 +827,106 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
-          <div className="flex flex-col gap-1">
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="text-lg font-semibold border-0 p-0 h-7 bg-transparent focus-visible:ring-0"
-              placeholder="Graphic title..."
-            />
-            <Input
-              value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              className="text-sm text-gray-600 border-0 p-0 h-5 bg-transparent focus-visible:ring-0"
-              placeholder="Event name..."
-            />
+          <div className="flex items-center gap-4 flex-1">
+            <div className="flex items-center gap-2 flex-1">
+              <div className="relative group">
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="text-lg font-semibold bg-background/50 border border-input/50 rounded-md px-3 py-2 h-10 focus:bg-background focus:border-primary transition-colors"
+                  placeholder="Enter graphic title..."
+                />
+                <div className="absolute -top-6 left-0 text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                  Click to edit graphic title
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Event:</span>
+              <div className="relative group min-w-[200px]">
+                {showNewEventInput ? (
+                  <Input
+                    value={newEventName}
+                    onChange={(e) => setNewEventName(e.target.value)}
+                    onBlur={() => {
+                      if (newEventName.trim()) {
+                        setEventName(newEventName.trim());
+                        if (!availableEvents.includes(newEventName.trim())) {
+                          setAvailableEvents([...availableEvents, newEventName.trim()]);
+                        }
+                      }
+                      setShowNewEventInput(false);
+                      setNewEventName('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur();
+                      } else if (e.key === 'Escape') {
+                        setShowNewEventInput(false);
+                        setNewEventName('');
+                      }
+                    }}
+                    className="bg-background/50 border border-input/50 rounded-md px-3 py-2 h-10 text-sm focus:bg-background focus:border-primary transition-colors"
+                    placeholder="New event name..."
+                    autoFocus
+                  />
+                ) : (
+                  <Select
+                    value={eventName}
+                    onValueChange={(value) => {
+                      if (value === '__create_new__') {
+                        setShowNewEventInput(true);
+                      } else {
+                        setEventName(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="bg-background/50 border border-input/50 rounded-md h-10 text-sm hover:bg-background/80 transition-colors">
+                      <SelectValue placeholder="Select or create event..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__create_new__">+ Create New Event</SelectItem>
+                      {availableEvents.length > 0 && (
+                        <>
+                          <SelectItem value="" disabled className="text-muted-foreground">──────────</SelectItem>
+                          {availableEvents.map((event) => (
+                            <SelectItem key={event} value={event}>
+                              {event}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+                <div className="absolute -top-6 left-0 text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                  Click to select or create event
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleUndo}
+            disabled={!canUndo}
+            className="flex items-center gap-1"
+          >
+            <Undo className="h-4 w-4" />
+            Undo
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRedo}
+            disabled={!canRedo}
+            className="flex items-center gap-1"
+          >
+            <Redo className="h-4 w-4" />
+            Redo
+          </Button>
           <Button
             variant="outline"
             onClick={handleClose}
@@ -738,19 +945,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         </div>
       </div>
 
-      {lock && (
-        <div className="border-b bg-gray-50 px-4 py-3">
-          <LockBanner
-            lock={lock}
-            onRefresh={handleRefreshLockClick}
-            onRelease={handleReleaseLock}
-          />
-        </div>
-      )}
-
       <div className="flex-1 flex overflow-hidden">
-        <div className={`${sidebarCollapsed ? 'w-12' : 'w-80'} border-r bg-gray-50 flex flex-col transition-all duration-200`}>
-          <div className="p-2 border-b bg-white">
+        <div className={`${sidebarCollapsed ? 'w-12' : 'w-80'} border-r bg-muted flex flex-col transition-all duration-200`}>
+          <div className="p-2 border-b bg-card">
             <Button
               variant="ghost"
               size="sm"
@@ -763,11 +960,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
           {!sidebarCollapsed && (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col">
-              <div className="border-b bg-white px-2">
+              <div className="border-b bg-card px-2">
                 <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="design">Design</TabsTrigger>
-                  <TabsTrigger value="elements">Elements</TabsTrigger>
-                  <TabsTrigger value="data">Data</TabsTrigger>
+                  <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Design</TabsTrigger>
+                  <TabsTrigger value="elements" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Elements</TabsTrigger>
+                  <TabsTrigger value="data" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Data</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -808,19 +1005,28 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           variant="outline"
                           size="sm"
                           className="w-full justify-start"
-                          onClick={() => addShapeElement('rectangle')}
+                          onClick={() => addPropertyElement('player')}
                         >
-                          <Square className="h-4 w-4 mr-2" />
-                          Rectangle
+                          <User className="h-4 w-4 mr-2" />
+                          Player Property
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           className="w-full justify-start"
-                          onClick={() => addShapeElement('circle')}
+                          onClick={() => addPropertyElement('score')}
                         >
-                          <Circle className="h-4 w-4 mr-2" />
-                          Circle
+                          <Trophy className="h-4 w-4 mr-2" />
+                          Score Property
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={() => addPropertyElement('placement')}
+                        >
+                          <Medal className="h-4 w-4 mr-2" />
+                          Placement Property
                         </Button>
                       </CardContent>
                     </Card>
@@ -829,7 +1035,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm">Properties</CardTitle>
                       </CardHeader>
-                      <CardContent className="overflow-y-auto max-h-96">
+                      <CardContent>
                         {selectedElement ? (
                           <div className="space-y-4">
                             <div>
@@ -837,7 +1043,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               <div className="text-sm font-medium capitalize">{selectedElement.type}</div>
                             </div>
 
-                            {selectedElement.type === 'text' && (
+                            {(selectedElement.type === 'text' || ['player', 'score', 'placement'].includes(selectedElement.type)) && (
                               <>
                                 <div>
                                   <label className="text-xs text-muted-foreground">Content</label>
@@ -846,9 +1052,30 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                     onChange={(e) =>
                                       updateElement(selectedElement.id, { content: e.target.value })
                                     }
+                                    placeholder="Enter text content..."
                                   />
                                 </div>
                                 <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Font</label>
+                                    <Select
+                                      value={selectedElement.fontFamily || 'Arial'}
+                                      onValueChange={(value) =>
+                                        updateElement(selectedElement.id, { fontFamily: value })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="Select font..." />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {fontOptions.map((font) => (
+                                          <SelectItem key={font.value} value={font.value}>
+                                            {font.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
                                   <div>
                                     <label className="text-xs text-muted-foreground">Font Size</label>
                                     <Input
@@ -860,27 +1087,65 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                       }
                                     />
                                   </div>
-                                  <div>
-                                    <label className="text-xs text-muted-foreground">Color</label>
-                                    <Input
-                                      type="color"
-                                      value={selectedElement.color ?? '#ffffff'}
-                                      onChange={(e) =>
-                                        updateElement(selectedElement.id, { color: e.target.value })
-                                      }
-                                    />
-                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Color</label>
+                                  <Input
+                                    type="color"
+                                    value={selectedElement.color ?? '#000000'}
+                                    onChange={(e) =>
+                                      updateElement(selectedElement.id, { color: e.target.value })
+                                    }
+                                  />
                                 </div>
                               </>
                             )}
 
+                            {['player', 'score', 'placement'].includes(selectedElement.type) && (
+                              <>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Type</label>
+                                  <div className="text-sm font-medium capitalize flex items-center gap-2">
+                                    {selectedElement.type === 'player' && <User className="h-4 w-4" />}
+                                    {selectedElement.type === 'score' && <Trophy className="h-4 w-4" />}
+                                    {selectedElement.type === 'placement' && <Medal className="h-4 w-4" />}
+                                    {selectedElement.type} Property
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Data Binding</label>
+                                  <Select
+                                    value={selectedElement.dataBinding?.field || ''}
+                                    onValueChange={(value) =>
+                                      updateElement(selectedElement.id, {
+                                        dataBinding: {
+                                          ...selectedElement.dataBinding,
+                                          field: value as any
+                                        }
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select field..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="player_name">Player Name</SelectItem>
+                                      <SelectItem value="player_score">Player Score</SelectItem>
+                                      <SelectItem value="player_placement">Player Placement</SelectItem>
+                                      <SelectItem value="player_rank">Player Rank</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </>
+                            )}
+                            
                             {selectedElement.type !== 'text' && (
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <label className="text-xs text-muted-foreground">Fill</label>
+                                  <label className="text-xs text-muted-foreground">Background</label>
                                   <Input
                                     type="color"
-                                    value={selectedElement.backgroundColor ?? '#ffffff'}
+                                    value={selectedElement.backgroundColor ?? '#3B82F6'}
                                     onChange={(e) =>
                                       updateElement(selectedElement.id, { backgroundColor: e.target.value })
                                     }
@@ -890,7 +1155,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   <label className="text-xs text-muted-foreground">Border Color</label>
                                   <Input
                                     type="color"
-                                    value={selectedElement.borderColor ?? '#ffffff'}
+                                    value={selectedElement.borderColor ?? '#1E40AF'}
                                     onChange={(e) =>
                                       updateElement(selectedElement.id, { borderColor: e.target.value })
                                     }
@@ -901,9 +1166,20 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   <Input
                                     type="number"
                                     min={0}
-                                    value={selectedElement.borderWidth ?? 0}
+                                    value={selectedElement.borderWidth ?? 2}
                                     onChange={(e) =>
                                       updateElement(selectedElement.id, { borderWidth: Number(e.target.value) || 0 })
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Border Radius</label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={selectedElement.borderRadius ?? 8}
+                                    onChange={(e) =>
+                                      updateElement(selectedElement.id, { borderRadius: Number(e.target.value) || 0 })
                                     }
                                   />
                                 </div>
@@ -987,7 +1263,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               <div
                                 key={element.id}
                                 className={`flex items-center justify-between p-3 border rounded cursor-pointer ${
-                                  selectedElement?.id === element.id ? 'bg-blue-50 border-blue-300' : 'hover:bg-gray-50'
+                                  selectedElement?.id === element.id ? 'bg-blue-900/30 border-blue-400' : 'hover:bg-muted/80'
                                 }`}
                                 onClick={() => setSelectedElement(element)}
                               >
@@ -1040,13 +1316,18 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             </Select>
                           </div>
 
-                          {elements.filter((el: any) => el.type === 'text').map((element) => (
+                          {elements.filter((el: any) => el.type === 'text' || ['player', 'score', 'placement'].includes(el.type)).map((element) => (
                             <div key={element.id} className="space-y-2">
                               <div className="text-sm font-medium">{element.content}</div>
                               <Select
-                                value={element.dataBinding || ''}
+                                value={element.dataBinding?.field || ''}
                                 onValueChange={(value) =>
-                                  updateElement(element.id, { dataBinding: value })
+                                  updateElement(element.id, { 
+                                    dataBinding: { 
+                                      ...element.dataBinding, 
+                                      field: value 
+                                    } 
+                                  })
                                 }
                               >
                                 <SelectTrigger>
@@ -1072,19 +1353,19 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           )}
         </div>
 
-        <div className="flex-1 bg-gray-100 overflow-hidden relative">
+        <div className="flex-1 bg-muted overflow-hidden relative">
           <div
             ref={canvasRef}
-            className="absolute inset-0 bg-white shadow-lg"
+            className="absolute inset-0 bg-card shadow-lg"
             style={{
-              width: `${(canvasData?.settings?.width || 1920) * zoom}px`,
-              height: `${(canvasData?.settings?.height || 1080) * zoom}px`,
+              width: `${(canvasData?.settings?.width || 5000) * zoom}px`,
+              height: `${(canvasData?.settings?.height || 5000) * zoom}px`,
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: 'top left',
               backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
               backgroundSize: 'cover',
               backgroundPosition: 'center',
-              backgroundColor: canvasData?.settings?.backgroundColor || '#ffffff'
+              backgroundColor: canvasData?.settings?.backgroundColor || '#2a2a2a'
             }}
             onWheel={handleWheel}
             onMouseDown={handleMouseDown}
@@ -1096,14 +1377,43 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 className="absolute inset-0 pointer-events-none"
                 style={{
                   backgroundImage: `
-                    linear-gradient(to right, rgba(200, 200, 200, 0.3) 1px, transparent 1px),
-                    linear-gradient(to bottom, rgba(200, 200, 200, 0.3) 1px, transparent 1px)
+                    radial-gradient(circle, rgba(200, 200, 200, 0.4) 1px, transparent 1px)
                   `,
                   backgroundSize: `${gridSize}px ${gridSize}px`,
                   zIndex: 1000
                 }}
               />
             )}
+            
+            {/* Snap lines */}
+            {snapLines.map((line, index) => (
+              <div key={index}>
+                {line.x !== undefined && (
+                  <div
+                    className="absolute bg-blue-500 pointer-events-none"
+                    style={{
+                      left: `${line.x}px`,
+                      top: 0,
+                      width: '1px',
+                      height: '100%',
+                      zIndex: 1001
+                    }}
+                  />
+                )}
+                {line.y !== undefined && (
+                  <div
+                    className="absolute bg-blue-500 pointer-events-none"
+                    style={{
+                      left: 0,
+                      top: `${line.y}px`,
+                      width: '100%',
+                      height: '1px',
+                      zIndex: 1001
+                    }}
+                  />
+                )}
+              </div>
+            ))}
 
             {elements.map((element) => (
               <div
@@ -1122,38 +1432,20 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   setSelectedElement(element);
                 }}
               >
-                {element.type === 'text' && (
+                {(element.type === 'text' || ['player', 'score', 'placement'].includes(element.type)) && (
                   <div
                     style={{
-                      fontSize: `${element.fontSize}px`,
-                      color: element.color,
+                      fontSize: `${element.fontSize || 16}px`,
+                      color: element.color || '#000000',
                       fontFamily: element.fontFamily || 'Arial',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      backgroundColor: element.backgroundColor || 'rgba(0, 0, 0, 0)',
+                      padding: '4px 8px',
+                      borderRadius: '4px'
                     }}
                   >
-                    {element.content}
+                    {element.content || (element.type === 'text' ? 'Text' : element.placeholderText)}
                   </div>
-                )}
-                {element.type === 'rectangle' && (
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      backgroundColor: element.backgroundColor,
-                      border: `${element.borderWidth}px solid ${element.borderColor}`
-                    }}
-                  />
-                )}
-                {element.type === 'circle' && (
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      backgroundColor: element.backgroundColor,
-                      border: `${element.borderWidth}px solid ${element.borderColor}`,
-                      borderRadius: '50%'
-                    }}
-                  />
                 )}
               </div>
             ))}
@@ -1161,29 +1453,61 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         </div>
       </div>
 
-      <div className="border-t bg-white p-4">
+      <div className="border-t bg-card p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Button
-                variant={gridVisible ? "default" : "outline"}
-                size="sm"
-                onClick={toggleGrid}
-              >
-                <Grid3X3 className="h-4 w-4 mr-1" />
-                Grid
-              </Button>
-              <Button
-                variant={gridSnapEnabled ? "default" : "outline"}
-                size="sm"
-                onClick={toggleSnapToGrid}
-              >
-                <Move className="h-4 w-4 mr-1" />
-                Snap
-              </Button>
-            </div>
+          {/* Left side - Grid and Snap controls */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={gridVisible ? "default" : "outline"}
+              size="sm"
+              onClick={toggleGrid}
+            >
+              <Grid3X3 className="h-4 w-4 mr-1" />
+              Grid
+            </Button>
+            <Button
+              variant={gridSnapEnabled ? "default" : "outline"}
+              size="sm"
+              onClick={toggleSnapToGrid}
+            >
+              <Move className="h-4 w-4 mr-1" />
+              Snap
+            </Button>
+            <Button
+              variant={snapToElements ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                const newSnapToElements = !snapToElements;
+                setSnapToElements(newSnapToElements);
+                addToHistory(HistoryManager.createActionTypes.updateSettings(
+                  { snapToElements }, 
+                  { snapToElements: newSnapToElements },
+                  newSnapToElements ? 'Enable snap to elements' : 'Disable snap to elements'
+                ));
+              }}
+            >
+              <Settings className="h-4 w-4 mr-1" />
+              Snap Elements
+            </Button>
+          </div>
 
-            <div className="flex items-center gap-2">
+          {/* Right side - Zoom controls */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetZoom}
+            >
+              Reset
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFitToScreen}
+            >
+              Fit
+            </Button>
+            <div className="flex items-center gap-2 border-l pl-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -1199,42 +1523,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 variant="outline"
                 size="sm"
                 onClick={handleZoomIn}
-                disabled={zoom >= 4.0}
+                disabled={zoom >= 5.0}
               >
                 +
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleResetZoom}
-              >
-                Reset
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFitToScreen}
-              >
-                Fit
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleUndo}
-                disabled={!canUndo}
-              >
-                Undo
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRedo}
-                disabled={!canRedo}
-              >
-                Redo
               </Button>
             </div>
           </div>

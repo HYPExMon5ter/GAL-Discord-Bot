@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Graphic } from '@/types';
+import { Graphic, ArchivedGraphic } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
@@ -17,15 +17,15 @@ import {
 } from 'lucide-react';
 
 interface GraphicsTableProps {
-  graphics: Graphic[];
+  graphics: Graphic[] | ArchivedGraphic[];
   loading: boolean;
-  onEdit: (graphic: Graphic) => void;
-  onDuplicate: (graphic: Graphic) => void;
-  onArchive: (graphic: Graphic) => void;
-  onDelete: (graphic: Graphic) => void;
-  onView: (graphic: Graphic) => void;
-  onUnarchive?: (graphic: Graphic) => void;
-  onRestore?: (graphic: Graphic) => void;
+  onEdit: (graphic: Graphic | ArchivedGraphic) => void;
+  onDuplicate: (graphic: Graphic | ArchivedGraphic) => void;
+  onArchive: (graphic: Graphic | ArchivedGraphic) => void;
+  onDelete: (graphic: Graphic | ArchivedGraphic) => void;
+  onView: (graphic: Graphic | ArchivedGraphic) => void;
+  onUnarchive?: (graphic: Graphic | ArchivedGraphic) => void;
+  onRestore?: (graphic: Graphic | ArchivedGraphic) => void;
   isArchived?: boolean;
 }
 
@@ -76,8 +76,8 @@ export function GraphicsTable({
           bValue = new Date(b.updated_at);
           break;
         case 'archived_at':
-          aValue = new Date(a.archived_at || a.updated_at);
-          bValue = new Date(b.archived_at || b.updated_at);
+          aValue = new Date((a as ArchivedGraphic).archived_at || a.updated_at);
+          bValue = new Date((b as ArchivedGraphic).archived_at || b.updated_at);
           break;
         default:
           return 0;
@@ -100,9 +100,9 @@ export function GraphicsTable({
     });
   };
 
-  const getDisplayDate = (graphic: any) => {
-    if (isArchived && graphic.archived_at) {
-      return formatDate(graphic.archived_at);
+  const getDisplayDate = (graphic: Graphic | ArchivedGraphic) => {
+    if (isArchived && (graphic as ArchivedGraphic).archived_at) {
+      return formatDate((graphic as ArchivedGraphic).archived_at);
     }
     return formatDate(graphic.updated_at);
   };
@@ -118,7 +118,7 @@ export function GraphicsTable({
     );
   };
 
-  const ActionButtons = ({ graphic }: { graphic: Graphic }) => {
+  const ActionButtons = ({ graphic }: { graphic: Graphic | ArchivedGraphic }) => {
     if (isArchived) {
       return (
         <div className="flex items-center gap-1">

@@ -1,0 +1,114 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { CanvasEditor } from '@/components/canvas/CanvasEditor';
+import { useGraphics } from '@/hooks/use-graphics';
+import { useAuth } from '@/hooks/use-auth';
+import { Graphic } from '@/types';
+import { AlertCircle } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+
+export default function CanvasEditPage() {
+  const params = useParams();
+  const router = useRouter();
+  const { username } = useAuth();
+  const { getGraphic, updateGraphic } = useGraphics();
+  
+  const [graphic, setGraphic] = useState<Graphic | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const graphicId = params.id as string;
+
+  useEffect(() => {
+    const loadGraphic = async () => {
+      if (!graphicId) {
+        setError('No graphic ID provided');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const data = await getGraphic(parseInt(graphicId));
+        if (data) {
+          setGraphic(data);
+        } else {
+          setError('Graphic not found');
+        }
+      } catch (err) {
+        console.error('Failed to load graphic:', err);
+        setError('Failed to load graphic');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadGraphic();
+  }, [graphicId, getGraphic]);
+
+  const handleSave = async (data: { title: string; event_name: string; data_json: string }): Promise<boolean> => {
+    if (!graphic) return false;
+
+    try {
+      await updateGraphic(graphic.id, {
+        title: data.title,
+        event_name: data.event_name,
+        data_json: data.data_json
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to save graphic:', error);
+      return false;
+    }
+  };
+
+  const handleClose = () => {
+    // Trigger a refresh of the graphics list when returning to dashboard
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('refreshGraphics'));
+    }
+    router.push('/dashboard');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="w-96">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span>Loading graphic...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (error || !graphic) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="w-96">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 text-red-600">
+              <AlertCircle className="h-8 w-8" />
+              <div>
+                <p className="font-medium">Error</p>
+                <p className="text-sm">{error || 'Graphic not found'}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <CanvasEditor
+      graphic={graphic}
+      onSave={handleSave}
+      onClose={handleClose}
+    />
+  );
+}

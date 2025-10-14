@@ -416,3 +416,40 @@ class GraphicsService:
         self.db.commit()
         
         return True
+    
+    def refresh_lock(self, graphic_id: int, user_name: str) -> Dict[str, Any]:
+        """Refresh an existing canvas lock"""
+        from ..models import CanvasLock
+        
+        # Find existing active lock for this user and graphic
+        existing_lock = self.db.query(CanvasLock).filter(
+            and_(
+                CanvasLock.graphic_id == graphic_id,
+                CanvasLock.user_name == user_name,
+                CanvasLock.locked == True,
+                CanvasLock.expires_at > datetime.utcnow()
+            )
+        ).first()
+        
+        if not existing_lock:
+            return {
+                "success": False,
+                "message": "No active lock found for this user and graphic"
+            }
+        
+        # Extend the lock expiration
+        existing_lock.expires_at = datetime.utcnow() + timedelta(minutes=5)
+        self.db.commit()
+        self.db.refresh(existing_lock)
+        
+        return {
+            "id": existing_lock.id,
+            "graphic_id": existing_lock.graphic_id,
+            "user_name": existing_lock.user_name,
+            "locked": True,
+            "locked_at": existing_lock.locked_at,
+            "expires_at": existing_lock.expires_at,
+            "can_edit": True,
+            "success": True,
+            "message": "Lock refreshed successfully"
+        }

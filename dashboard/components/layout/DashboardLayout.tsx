@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { LogOut, Settings, Users, Lock, Palette } from 'lucide-react';
+import { LogOut, Settings, Users, Lock, Palette, Sparkles, Archive, Package } from 'lucide-react';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -42,35 +42,25 @@ export function DashboardLayout({
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Palette className="h-5 w-5 text-primary" />
-                </div>
+              <div className="flex items-center space-x-3">
+                <div className="text-4xl">🎬</div>
                 <div>
-                  <h1 className="text-xl font-bold">Live Graphics Dashboard</h1>
-                  <p className="text-sm text-muted-foreground">Broadcast Graphics Management</p>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Live Graphics Dashboard</h1>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-sm font-medium">{username}</p>
-                <p className="text-xs text-muted-foreground">
-                  {currentTime.toLocaleTimeString()}
-                </p>
-              </div>
-              
-              <Badge variant="secondary" className="flex items-center gap-1">
+              <Badge variant="secondary" className="flex items-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0">
                 <Lock className="h-3 w-3" />
                 Online
               </Badge>
               
               <Button
-                variant="outline"
+                variant="destructive"
                 size="sm"
                 onClick={logout}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-md hover:shadow-lg transition-all duration-200"
               >
                 <LogOut className="h-4 w-4" />
                 Sign Out
@@ -83,14 +73,18 @@ export function DashboardLayout({
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="graphics" className="flex items-center gap-2">
-              <Palette className="h-4 w-4" />
-              Active Graphics
+          <TabsList className="grid w-full grid-cols-2 bg-slate-800 p-1 rounded-xl shadow-lg">
+            <TabsTrigger 
+              value="graphics" 
+              className="flex items-center gap-2 bg-slate-700 text-slate-300 data-[state=active]:bg-blue-600 data-[state=active]:text-white hover:bg-slate-600 transition-all duration-200"
+            >
+              <span className="text-yellow-300">🎨</span> Active Graphics
             </TabsTrigger>
-            <TabsTrigger value="archive" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Archived Graphics
+            <TabsTrigger 
+              value="archive" 
+              className="flex items-center gap-2 bg-slate-700 text-slate-300 data-[state=active]:bg-blue-600 data-[state=active]:text-white hover:bg-slate-600 transition-all duration-200"
+            >
+              <span className="text-orange-300">📦</span> Archived Graphics
             </TabsTrigger>
           </TabsList>
           

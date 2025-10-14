@@ -1,8 +1,8 @@
 ---
 id: system.frontend_components
-version: 2.0
+version: 3.0
 last_updated: 2025-01-13
-tags: [system, frontend, components, react, dashboard]
+tags: [system, frontend, components, react, dashboard, property-elements, text-system, ui-components]
 ---
 
 # Frontend Components Documentation

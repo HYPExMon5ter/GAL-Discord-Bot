@@ -1,8 +1,8 @@
 ---
 id: system.canvas-editor-architecture
-version: 2.1
-last_updated: 2025-10-13
-tags: [canvas, editor, frontend, architecture, route-based]
+version: 3.0
+last_updated: 2025-01-13
+tags: [canvas, editor, frontend, architecture, route-based, text-elements, property-system]
 ---
 
 # Canvas Editor Architecture
@@ -324,6 +324,96 @@ dashboard/components/
 - **Edit Functionality**: Restored for active graphics with proper workflow
 - **Consistency**: Matches canvas editor visual improvements
 
+## Property Element System (v3.0)
+
+### Overview
+The canvas editor has evolved from a shape-based system to a sophisticated text-driven property system that supports dynamic data binding and professional typography.
+
+### Element Types
+```typescript
+type ElementType = 'text' | 'player' | 'score' | 'placement';
+
+interface PropertyElement {
+  id: string;
+  type: ElementType;
+  content: string;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  fontSize: number;
+  fontFamily: string;
+  color: string;
+  backgroundColor: string;
+  dataBinding?: {
+    source: 'api' | 'manual';
+    field: string;
+    apiEndpoint?: string;
+    manualValue?: string;
+  };
+  isPlaceholder: boolean;
+}
+```
+
+### Property Element Configuration
+- **Player Property**: Text element for player names with API data binding
+- **Score Property**: Text element for scores with API data binding
+- **Placement Property**: Text element for rankings/placements with API data binding
+- **Text Property**: Generic text element for static content
+
+### Data Binding System
+```typescript
+interface DataBinding {
+  source: 'api' | 'manual';
+  field: 'player_name' | 'player_score' | 'player_placement' | 'player_rank' | 'team_name';
+  apiEndpoint?: string;
+  manualValue?: string;
+}
+```
+
+### Typography System
+- **Font Options**: Arial, Times New Roman, Helvetica, Georgia, Verdana
+- **Default Styling**: Black text on transparent background
+- **Customization**: Full control over font size, color, and background
+- **Persistence**: Font settings saved with graphic data
+
+## Canvas Enhancements (v3.0)
+
+### Size and Zoom System
+- **Canvas Size**: 5000x5000 pixels (increased from 1920x1080)
+- **Zoom Range**: 25% to 500% (increased from 400% maximum)
+- **Zoom Controls**: Keyboard shortcuts (Ctrl/Cmd + scroll wheel) and button controls
+- **Smart Scaling**: Automatic fit-to-screen functionality
+
+### Element Snapping System
+- **Grid Snapping**: 20px grid with toggle control
+- **Element Snapping**: Elements snap to each other's edges and centers
+- **Visual Feedback**: Blue snap lines during dragging
+- **Snap Threshold**: 20px sensitivity matching grid system
+
+### View Mode Implementation
+- **Automatic Bounds Detection**: Smart canvas sizing based on content
+- **Background Priority**: Uses background image dimensions if available
+- **Element Bounds**: Calculates bounds from element positions if no background
+- **OBS Integration**: Optimized browser source rendering for live streaming
+
+### Event Management System
+- **Dropdown Interface**: Event name selection with create new option
+- **Event Persistence**: Event names saved across graphic sessions
+- **Inline Creation**: Text input appears when creating new events
+- **Event Storage**: Local storage with API persistence capability
+
+### UI Layout Improvements (v3.0)
+- **Header Design**: Side-by-side title and event editing with visual feedback
+- **Inline Editing**: Clear text inputs with hover tooltips
+- **Visual Indicators**: Editable field indicators with helpful tooltips
+- **Professional Styling**: Dark theme compliant with proper contrast
+
+### Text Editing Fixes (v3.0)
+- **Content Persistence**: Fixed text element content reversion issues
+- **Empty State Handling**: Proper support for empty text content
+- **Input Validation**: Enhanced input sanitization and validation
+
 ## Future Enhancements
 
 ### Planned Features
@@ -332,6 +422,12 @@ dashboard/components/
 - Advanced alignment and distribution tools
 - Template system for graphic reusability
 - Real-time collaboration features
+
+### Scalability Considerations
+- Support for larger canvases (4K, 8K)
+- Performance optimization for complex graphics
+- Cloud-based storage for media assets
+- Advanced animation capabilities
 
 ### Scalability Considerations
 - Support for larger canvases (4K, 8K)

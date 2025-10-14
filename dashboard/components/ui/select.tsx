@@ -59,7 +59,7 @@ export function SelectTrigger({ children, className = '' }: SelectTriggerProps) 
     <button
       type="button"
       data-select-trigger
-      className={`flex h-10 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm ring-offset-background shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+      className={`flex h-10 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm ring-offset-background hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       onClick={() => setIsOpen(!isOpen)}
       disabled={disabled}
     >
@@ -108,7 +108,7 @@ export function SelectContent({ children, className = '' }: SelectContentProps) 
   return (
     <div 
       ref={contentRef}
-      className={`absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md ${className}`}
+      className={`absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover text-popover-foreground ${className}`}
     >
       <div className="py-1">
         {children}

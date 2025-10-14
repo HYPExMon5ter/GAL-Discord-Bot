@@ -49,7 +49,7 @@ export function GraphicCard({
   }, [lock]);
 
   return (
-    <Card className={`${isLocked ? 'opacity-75 border-primary/50' : ''} transition-all duration-300 hover:shadow-lg hover:shadow-primary/10`}>
+    <Card className={`${isLocked ? 'opacity-75 border-primary/50' : ''} transition-all duration-300`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">

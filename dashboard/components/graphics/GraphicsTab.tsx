@@ -90,7 +90,7 @@ export function GraphicsTab() {
       if (result) {
         // Show success message
         const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
         successMessage.textContent = `Graphic "${graphicToCopy.title}" copied successfully!`;
         document.body.appendChild(successMessage);
         setTimeout(() => {
@@ -102,7 +102,7 @@ export function GraphicsTab() {
       console.error('Failed to copy graphic:', error);
       // Show error message
       const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
       errorMessage.textContent = `Failed to copy graphic "${graphicToCopy.title}". Please try again.`;
       document.body.appendChild(errorMessage);
       setTimeout(() => {
@@ -125,7 +125,7 @@ export function GraphicsTab() {
       if (success) {
         // Show success message
         const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
         successMessage.textContent = `Graphic "${graphicToDelete.title}" permanently deleted!`;
         document.body.appendChild(successMessage);
         setTimeout(() => {
@@ -145,7 +145,7 @@ export function GraphicsTab() {
       if (success) {
         // Show success message
         const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
         successMessage.textContent = `Graphic "${graphic.title}" archived successfully!`;
         document.body.appendChild(successMessage);
         setTimeout(() => {
@@ -156,7 +156,7 @@ export function GraphicsTab() {
       console.error('Failed to archive graphic:', error);
       // Show error message
       const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
       errorMessage.textContent = `Failed to archive graphic "${graphic.title}". Please try again.`;
       document.body.appendChild(errorMessage);
       setTimeout(() => {
@@ -198,7 +198,7 @@ export function GraphicsTab() {
         
         <Button 
           onClick={() => setCreateDialogOpen(true)} 
-          className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-200 text-white font-semibold"
+          className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-white font-semibold"
         >
           <Sparkles className="h-4 w-4" />
           <span>New Graphic</span>
@@ -229,7 +229,7 @@ export function GraphicsTab() {
 
       {/* Error State */}
       {error && (
-        <Card className="border-red-300 bg-gradient-to-r from-red-50 to-orange-50 shadow-md">
+        <Card className="border-red-300 bg-gradient-to-r from-red-50 to-orange-50">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3 text-red-800">
               <AlertCircle className="h-6 w-6 text-red-600" />
@@ -267,7 +267,7 @@ export function GraphicsTab() {
           </CardHeader>
         </Card>
       ) : (
-        <Card className="border-gray-200 shadow-md">
+        <Card className="border-gray-200">
           <CardContent className="p-0">
             <GraphicsTable
               graphics={filteredGraphics}

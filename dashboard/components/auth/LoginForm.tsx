@@ -47,10 +47,10 @@ export function LoginForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gal-deep-bg via-gal-card to-gal-deep-bg p-4">
       <div className="absolute inset-0 bg-gradient-to-br from-gal-purple/10 via-transparent to-gal-cyan/10"></div>
-      <Card className="w-full max-w-md border-border/20 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 gal-card shadow-2xl relative z-10">
+      <Card className="w-full max-w-md border-border/20 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 gal-card relative z-10">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-20 h-20 gal-gradient-primary rounded-2xl flex items-center justify-center text-white font-bold text-2xl gal-glow-primary shadow-lg">
+            <div className="w-20 h-20 gal-gradient-primary rounded-2xl flex items-center justify-center text-white font-bold text-2xl gal-glow-primary">
               GAL
             </div>
           </div>
@@ -90,7 +90,7 @@ export function LoginForm() {
             
             <Button
               type="submit"
-              className="w-full gal-button-primary text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
+              className="w-full gal-button-primary text-white font-semibold transition-all duration-300"
               disabled={loading}
             >
               <span className="flex items-center gap-2">

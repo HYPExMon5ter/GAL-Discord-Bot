@@ -9,7 +9,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "gal-button-primary text-primary-foreground hover:shadow-lg hover:shadow-primary/25",
+        default: "gal-button-primary text-primary-foreground",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
@@ -18,9 +18,9 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        gal: "gal-button-primary text-white hover:shadow-lg hover:shadow-primary/25",
-        galCyan: "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white hover:from-cyan-600 hover:to-cyan-700 shadow-md hover:shadow-lg transition-all duration-200",
-        galOutline: "border border-primary/50 text-primary hover:bg-primary/10 hover:border-primary hover:shadow-sm",
+        gal: "gal-button-primary text-white",
+        galCyan: "bg-gradient-to-r from-cyan-500 to-cyan-600 text-white hover:from-cyan-600 hover:to-cyan-700 transition-all duration-200",
+        galOutline: "border border-primary/50 text-primary hover:bg-primary/10 hover:border-primary",
       },
       size: {
         default: "h-10 px-4 py-2",

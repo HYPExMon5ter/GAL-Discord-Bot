@@ -545,14 +545,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     console.log('Mouse down:', { button: e.button, clientX: e.clientX, clientY: e.clientY });
     
-    // Temporarily bypass lock check for debugging
-    console.log('Lock status:', { 
-      hasLock: !!lock, 
-      lockUser: lock?.user_name, 
-      currentUser: username,
-      canEdit: true // Temporarily force enable for debugging
-    });
-    
     // Element dragging - check if clicking on an element or its children
     const target = e.target as HTMLElement;
     console.log('Target element:', target.tagName, target.className, target);
@@ -580,14 +572,15 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       }
     }
     
-    // Canvas panning - only if not clicking on an element and using middle or right mouse button
-    if (e.button === 1 || e.button === 2) {
+    // Canvas panning - if not clicking on an element, enable canvas drag
+    // Allow left-click (button 0) for empty area dragging, plus middle/right buttons
+    if (e.button === 0 || e.button === 1 || e.button === 2) {
       console.log('Starting canvas pan');
       setIsDragging(true);
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
       e.preventDefault();
     }
-  }, [pan, elements, lock, username]);
+  }, [pan, elements]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (draggedElement) {
@@ -945,8 +938,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        <div className={`${sidebarCollapsed ? 'w-12' : 'w-80'} border-r bg-muted flex flex-col transition-all duration-200`}>
+      <div className="flex-1 flex flex-col">
+        <div className="flex flex-1 overflow-hidden">
+          <div className={`${sidebarCollapsed ? 'w-12' : 'w-80'} border-r bg-muted flex flex-col transition-all duration-200`}>
           <div className="p-2 border-b bg-card">
             <Button
               variant="ghost"
@@ -1356,15 +1350,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         <div className="flex-1 bg-muted overflow-hidden relative">
           <div
             ref={canvasRef}
-            className="absolute inset-0 bg-card shadow-lg"
+            className="absolute inset-0 bg-card overflow-hidden"
             style={{
-              width: `${(canvasData?.settings?.width || 5000) * zoom}px`,
-              height: `${(canvasData?.settings?.height || 5000) * zoom}px`,
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: 'top left',
-              backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
               backgroundColor: canvasData?.settings?.backgroundColor || '#2a2a2a'
             }}
             onWheel={handleWheel}
@@ -1379,12 +1366,30 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   backgroundImage: `
                     radial-gradient(circle, rgba(200, 200, 200, 0.4) 1px, transparent 1px)
                   `,
-                  backgroundSize: `${gridSize}px ${gridSize}px`,
+                  backgroundSize: `${gridSize * zoom}px ${gridSize * zoom}px`,
+                  backgroundPosition: `${pan.x % (gridSize * zoom)}px ${pan.y % (gridSize * zoom)}px`,
                   zIndex: 1000
                 }}
               />
             )}
             
+            <div
+              style={{
+                width: `${(canvasData?.settings?.width || 5000) * zoom}px`,
+                height: `${(canvasData?.settings?.height || 5000) * zoom}px`,
+                transform: `translate(${pan.x}px, ${pan.y}px)`,
+                transformOrigin: 'top left',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
+                backgroundSize: `${(canvasData?.settings?.width || 5000) * zoom}px ${(canvasData?.settings?.height || 5000) * zoom}px`,
+                backgroundPosition: 'center',
+                backgroundColor: canvasData?.settings?.backgroundColor || '#2a2a2a'
+              }}
+            >
+            
+            {/* Snap lines */}
             {/* Snap lines */}
             {snapLines.map((line, index) => (
               <div key={index}>
@@ -1392,7 +1397,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   <div
                     className="absolute bg-blue-500 pointer-events-none"
                     style={{
-                      left: `${line.x}px`,
+                      left: `${line.x * zoom}px`,
                       top: 0,
                       width: '1px',
                       height: '100%',
@@ -1405,7 +1410,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                     className="absolute bg-blue-500 pointer-events-none"
                     style={{
                       left: 0,
-                      top: `${line.y}px`,
+                      top: `${line.y * zoom}px`,
                       width: '100%',
                       height: '1px',
                       zIndex: 1001
@@ -1421,10 +1426,10 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 data-element-id={element.id}
                 className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''}`}
                 style={{
-                  left: `${element.x}px`,
-                  top: `${element.y}px`,
-                  width: element.type === 'text' ? 'auto' : `${element.width}px`,
-                  height: element.type === 'text' ? 'auto' : `${element.height}px`,
+                  left: `${element.x * zoom}px`,
+                  top: `${element.y * zoom}px`,
+                  width: element.type === 'text' ? 'auto' : `${(element.width || 100) * zoom}px`,
+                  height: element.type === 'text' ? 'auto' : `${(element.height || 50) * zoom}px`,
                   zIndex: 1
                 }}
                 onClick={(e) => {
@@ -1435,13 +1440,13 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 {(element.type === 'text' || ['player', 'score', 'placement'].includes(element.type)) && (
                   <div
                     style={{
-                      fontSize: `${element.fontSize || 16}px`,
+                      fontSize: `${(element.fontSize || 16) * zoom}px`,
                       color: element.color || '#000000',
                       fontFamily: element.fontFamily || 'Arial',
                       whiteSpace: 'nowrap',
                       backgroundColor: element.backgroundColor || '#3B82F6',
-                      padding: '4px 8px',
-                      borderRadius: '4px'
+                      padding: `${4 * zoom}px ${8 * zoom}px`,
+                      borderRadius: `${4 * zoom}px`
                     }}
                   >
                     {element.content || (element.type === 'text' ? 'Text' : element.placeholderText)}
@@ -1450,83 +1455,85 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
               </div>
             ))}
           </div>
-        </div>
+          </div>
       </div>
+    </div>
 
       <div className="border-t bg-card p-4">
-        <div className="flex items-center justify-between">
-          {/* Left side - Grid and Snap controls */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant={gridVisible ? "default" : "outline"}
-              size="sm"
-              onClick={toggleGrid}
-            >
-              <Grid3X3 className="h-4 w-4 mr-1" />
-              Grid
-            </Button>
-            <Button
-              variant={gridSnapEnabled ? "default" : "outline"}
-              size="sm"
-              onClick={toggleSnapToGrid}
-            >
-              <Move className="h-4 w-4 mr-1" />
-              Snap
-            </Button>
-            <Button
-              variant={snapToElements ? "default" : "outline"}
-              size="sm"
-              onClick={() => {
-                const newSnapToElements = !snapToElements;
-                setSnapToElements(newSnapToElements);
-                addToHistory(HistoryManager.createActionTypes.updateSettings(
-                  { snapToElements }, 
-                  { snapToElements: newSnapToElements },
-                  newSnapToElements ? 'Enable snap to elements' : 'Disable snap to elements'
-                ));
-              }}
-            >
-              <Settings className="h-4 w-4 mr-1" />
-              Snap Elements
-            </Button>
-          </div>
+          <div className="flex items-center justify-between">
+            {/* Left side - Grid and Snap controls */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={gridVisible ? "default" : "outline"}
+                size="sm"
+                onClick={toggleGrid}
+              >
+                <Grid3X3 className="h-4 w-4 mr-1" />
+                Grid
+              </Button>
+              <Button
+                variant={gridSnapEnabled ? "default" : "outline"}
+                size="sm"
+                onClick={toggleSnapToGrid}
+              >
+                <Move className="h-4 w-4 mr-1" />
+                Snap
+              </Button>
+              <Button
+                variant={snapToElements ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  const newSnapToElements = !snapToElements;
+                  setSnapToElements(newSnapToElements);
+                  addToHistory(HistoryManager.createActionTypes.updateSettings(
+                    { snapToElements }, 
+                    { snapToElements: newSnapToElements },
+                    newSnapToElements ? 'Enable snap to elements' : 'Disable snap to elements'
+                  ));
+                }}
+              >
+                <Settings className="h-4 w-4 mr-1" />
+                Snap Elements
+              </Button>
+            </div>
 
-          {/* Right side - Zoom controls */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleResetZoom}
-            >
-              Reset
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleFitToScreen}
-            >
-              Fit
-            </Button>
-            <div className="flex items-center gap-2 border-l pl-2">
+            {/* Right side - Zoom controls */}
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleZoomOut}
-                disabled={zoom <= 0.25}
+                onClick={handleResetZoom}
               >
-                -
+                Reset
               </Button>
-              <span className="text-sm font-medium min-w-[60px] text-center">
-                {Math.round(zoom * 100)}%
-              </span>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleZoomIn}
-                disabled={zoom >= 5.0}
+                onClick={handleFitToScreen}
               >
-                +
+                Fit
               </Button>
+              <div className="flex items-center gap-2 border-l pl-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleZoomOut}
+                  disabled={zoom <= 0.25}
+                >
+                  -
+                </Button>
+                <span className="text-sm font-medium min-w-[60px] text-center">
+                  {Math.round(zoom * 100)}%
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleZoomIn}
+                  disabled={zoom >= 5.0}
+                >
+                  +
+                </Button>
+              </div>
             </div>
           </div>
         </div>

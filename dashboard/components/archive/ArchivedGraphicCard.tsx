@@ -28,7 +28,7 @@ export function ArchivedGraphicCard({
   const canDelete = isAdmin; // Only admins can permanently delete
 
   return (
-    <Card className="border-orange-200 bg-orange-50/50 hover:shadow-md transition-shadow">
+    <Card className="border-orange-200 bg-orange-50/50 transition-shadow">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">

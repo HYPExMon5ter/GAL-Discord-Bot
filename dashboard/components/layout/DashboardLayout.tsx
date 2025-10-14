@@ -63,7 +63,7 @@ export function DashboardLayout({
                 variant="destructive"
                 size="sm"
                 onClick={logout}
-                className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-md hover:shadow-lg transition-all duration-200"
+                className="flex items-center gap-2 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all duration-200"
               >
                 <LogOut className="h-4 w-4" />
                 Sign Out
@@ -76,7 +76,7 @@ export function DashboardLayout({
       {/* Main Content */}
       <main className="flex-grow container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full h-full">
-          <TabsList className="grid w-full grid-cols-2 bg-card p-1 rounded-xl shadow-lg gal-card">
+          <TabsList className="grid w-full grid-cols-2 bg-card p-1 rounded-xl gal-card">
             <TabsTrigger 
               value="graphics" 
               className="flex items-center gap-2 data-[state=active]:gal-button-primary data-[state=active]:text-white text-muted-foreground hover:text-foreground transition-all duration-200 rounded-lg"

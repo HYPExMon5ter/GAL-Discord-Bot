@@ -46,7 +46,7 @@ export function ArchiveTab() {
       if (success) {
         // Show success message
         const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
         successMessage.textContent = `Graphic "${graphic.title}" restored successfully!`;
         document.body.appendChild(successMessage);
         setTimeout(() => {
@@ -57,7 +57,7 @@ export function ArchiveTab() {
       console.error('Failed to restore graphic:', error);
       // Show error message
       const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
       errorMessage.textContent = `Failed to restore graphic "${graphic.title}". Please try again.`;
       document.body.appendChild(errorMessage);
       setTimeout(() => {
@@ -79,7 +79,7 @@ export function ArchiveTab() {
       if (success) {
         // Show success message
         const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
         successMessage.textContent = `Archived graphic "${graphicToDelete.title}" permanently deleted!`;
         document.body.appendChild(successMessage);
         setTimeout(() => {
@@ -107,7 +107,7 @@ export function ArchiveTab() {
       if (result) {
         // Show success message
         const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
         successMessage.textContent = `Archived graphic "${graphicToCopy.title}" copied successfully!`;
         document.body.appendChild(successMessage);
         setTimeout(() => {
@@ -119,7 +119,7 @@ export function ArchiveTab() {
       console.error('Failed to copy archived graphic:', error);
       // Show error message
       const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50';
+      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
       errorMessage.textContent = `Failed to copy archived graphic "${graphicToCopy.title}". Please try again.`;
       document.body.appendChild(errorMessage);
       setTimeout(() => {
@@ -158,7 +158,7 @@ export function ArchiveTab() {
         
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <Badge variant="secondary" className="flex items-center gap-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0 shadow-md">
+            <Badge variant="secondary" className="flex items-center gap-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
               <Shield className="h-3 w-3" />
               <span className="flex items-center gap-1">
                 Admin <span className="text-yellow-200">👑</span>

@@ -1,7 +1,7 @@
 ---
 id: system.frontend_components
-version: 3.0
-last_updated: 2025-01-13
+version: 3.1
+last_updated: 2025-01-14
 tags: [system, frontend, components, react, dashboard, property-elements, text-system, ui-components]
 ---
 
@@ -181,8 +181,13 @@ interface GraphicFilter {
 - Table-based graphics display with sorting
 - Real-time search and filtering
 - Batch operations support
-- Integration with CopyGraphicDialog
+- Integration with CopyGraphicDialog and DeleteConfirmDialog
 - Responsive design for mobile/desktop
+- Different deletion workflows for active vs archived graphics
+
+**Deletion Workflows**:
+- **Active Graphics**: DeleteConfirmDialog confirmation required
+- **Archive Graphics**: Direct permanent deletion without confirmation
 
 **Usage Example**:
 ```jsx
@@ -193,6 +198,21 @@ interface GraphicFilter {
     event_name: "Tournament Name"
   }}
 />
+```
+
+**Deletion Implementation**:
+```typescript
+// Active Graphics - Confirmation Required
+const handleDeleteActiveGraphic = (graphic: Graphic) => {
+  setGraphicToDelete(graphic);
+  setDeleteDialogOpen(true);
+};
+
+// Archive Graphics - Direct Deletion
+const handleDeleteArchive = (archive: Archive) => {
+  // Direct deletion without confirmation
+  archiveApi.permanentDeleteArchive(archive.id);
+};
 ```
 
 ### CreateGraphicDialog Component
@@ -250,6 +270,73 @@ interface CopyGraphicDialogProps {
   onCopy={handleCopyGraphic}
   sourceGraphic={selectedGraphic}
 />
+```
+
+### DeleteConfirmDialog Component
+**Purpose**: Confirm permanent deletion of active graphics with clear warnings
+
+```typescript
+interface DeleteConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => Promise<void>;
+  title: string;
+  description: string;
+  isPermanent?: boolean;
+  loading?: boolean;
+}
+```
+
+**Features**:
+- Clear warning about permanent nature of deletion
+- Customizable title and description
+- Loading state during deletion process
+- Confirmation button with destructive styling
+- Cancellation option available
+- Proper ARIA labels for accessibility
+- Keyboard navigation support
+
+**Usage Example**:
+```jsx
+<DeleteConfirmDialog
+  open={deleteDialogOpen}
+  onOpenChange={setDeleteDialogOpen}
+  onConfirm={handleConfirmDelete}
+  title="Permanently Delete Graphic"
+  description={`Are you sure you want to permanently delete "${graphicToDelete?.title}"? This action cannot be undone and the graphic will be immediately removed from the system.`}
+  isPermanent={true}
+  loading={isDeleting}
+/>
+```
+
+**Implementation Pattern**:
+```typescript
+// GraphicsTab.tsx - Usage Example
+const [graphicToDelete, setGraphicToDelete] = useState<Graphic | null>(null);
+const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+const [isDeleting, setIsDeleting] = useState(false);
+
+const handleDeleteGraphic = (graphic: Graphic) => {
+  setGraphicToDelete(graphic);
+  setDeleteDialogOpen(true);
+};
+
+const handleConfirmDelete = async () => {
+  if (!graphicToDelete) return;
+  
+  setIsDeleting(true);
+  try {
+    await graphicsApi.permanentDeleteGraphic(graphicToDelete.id);
+    await loadGraphics(); // Refresh list
+    showNotification('Graphic permanently deleted', 'success');
+    setDeleteDialogOpen(false);
+  } catch (error) {
+    showNotification('Failed to delete graphic', 'error');
+  } finally {
+    setIsDeleting(false);
+    setGraphicToDelete(null);
+  }
+};
 ```
 
 ## Archive Components (`components/archive/`)

@@ -286,35 +286,6 @@ async def get_lock_status(
         )
 
 
-@router.post("/lock/{graphic_id}/refresh", response_model=CanvasLockResponse)
-async def refresh_lock(
-    graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Refresh an existing canvas lock
-    """
-    try:
-        service = GraphicsService(db)
-        result = service.refresh_lock(graphic_id, current_user.username)
-        
-        if not result.get("success", False):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("message", "Failed to refresh lock")
-            )
-        
-        return CanvasLockResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to refresh lock: {str(e)}"
-        )
-
-
 @router.get("/lock/status")
 async def get_all_lock_status(
     current_user: TokenData = Depends(get_current_user),

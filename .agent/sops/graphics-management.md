@@ -220,7 +220,64 @@ This Standard Operating Procedure (SOP) details the comprehensive workflow for c
    - Verify responsive behavior
    - Check for configuration errors
 
-#### 4.2 Instance Deployment
+#### 4.2 Graphic Deletion Management
+
+##### Active Graphics Deletion
+Active graphics require confirmation before permanent deletion:
+
+1. **Delete Confirmation Workflow**
+   - Click "Delete" button on target graphic
+   - DeleteConfirmDialog appears with warning message
+   - Review deletion details and impact
+   - Confirm permanent deletion action
+
+2. **Confirmation Dialog Features**
+   - Clear warning about permanent nature
+   - Graphic name and metadata display
+   - Confirmation button with loading state
+   - Cancellation option available
+
+3. **Post-Deletion Actions**
+   - Graphic immediately removed from database
+   - Real-time UI updates via WebSocket
+   - Success notification displayed
+   - Archive not created (data permanently lost)
+
+##### Archive Graphics Deletion
+Archive graphics use direct deletion without confirmation:
+
+1. **Direct Deletion Process**
+   - Navigate to Archived tab
+   - Click "Delete" button on target archive
+   - Archive immediately removed from system
+   - Success notification displayed
+
+2. **Deletion Characteristics**
+   - No confirmation required
+   - Immediate permanent deletion
+   - No recovery options available
+   - Audit log entry created
+
+##### Deletion Security and Permissions
+1. **Permission Requirements**
+   - Active Graphics: `graphics:delete` permission required
+   - Archive Graphics: `archive:delete` permission required
+   - Self-Deletion: Users can delete graphics they created
+   - Admin Override: Administrators can delete any graphic
+
+2. **Lock State Considerations**
+   - Graphics with active locks cannot be deleted
+   - Lock status displayed in delete confirmation
+   - User must unlock graphic before deletion
+   - Automatic lock release after deletion
+
+3. **Audit and Compliance**
+   - All deletions logged with user attribution
+   - Deletion timestamp and reason recorded
+   - Graphic metadata preserved in audit log
+   - Compliance reports generated automatically
+
+#### 4.3 Instance Deployment
 1. **Tournament Assignment**
    - Select target tournament
    - Choose specific matches or events
@@ -295,6 +352,47 @@ assets/
 - [ ] Performance within acceptable limits
 - [ ] User testing completed
 - [ ] Stakeholder approval obtained
+
+#### 6.3 Deletion Workflow Validation Checklist
+
+##### Active Graphics Deletion Validation
+- [ ] Delete button displays correctly in graphics table
+- [ ] DeleteConfirmDialog appears when delete is clicked
+- [ ] Confirmation dialog shows correct graphic information
+- [ ] Warning message about permanent deletion is clear
+- [ ] Confirmation button requires user action
+- [ ] Loading state displays during deletion process
+- [ ] Success notification appears after deletion
+- [ ] Graphic is immediately removed from table
+- [ ] WebSocket event updates other connected clients
+- [ ] Archive is not created (permanent deletion)
+
+##### Archive Graphics Deletion Validation
+- [ ] Delete button displays correctly in archive table
+- [ ] No confirmation dialog appears for archive deletion
+- [ ] Deletion occurs immediately upon button click
+- [ ] Success notification appears after deletion
+- [ ] Archive entry removed from archive table
+- [ ] No recovery options available post-deletion
+- [ ] Audit log entry created for compliance
+
+##### Error Handling Validation
+- [ ] Locked graphics cannot be deleted
+- [ ] Permission denied errors handled gracefully
+- [ ] Network errors during deletion handled appropriately
+- [ ] Invalid graphic ID errors handled with user feedback
+- [ ] Server errors during deletion show retry options
+- [ ] Concurrent deletion conflicts resolved appropriately
+
+##### User Experience Validation
+- [ ] Clear visual distinction between delete actions
+- [ ] Consistent button styling and placement
+- [ ] Appropriate use of color for destructive actions
+- [ ] Keyboard navigation support for delete actions
+- [ ] Screen reader compatibility for delete workflows
+- [ ] Mobile-responsive delete interface
+- [ ] Loading states provide clear feedback
+- [ ] Error messages are informative and actionable
 
 ### 7. Template Version Control
 

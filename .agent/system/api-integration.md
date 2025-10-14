@@ -291,10 +291,17 @@ interface GraphicsEndpoints {
     response: Graphic;
   };
 
-  // Delete Graphic
+  // Delete Graphic (Soft Delete - Archive)
   'DELETE /graphics/{id}': {
     response: {
       message: 'Graphic deleted successfully';
+    };
+  };
+
+  // Permanent Delete Graphic (Active Graphics Only)
+  'DELETE /graphics/{id}/permanent': {
+    response: {
+      message: 'Graphic permanently deleted';
     };
   };
 
@@ -335,6 +342,10 @@ export class GraphicsService {
     await this.api.delete<GraphicsEndpoints['DELETE /graphics/{id}']['response']>(`/graphics/${id}`);
   }
 
+  async permanentDeleteGraphic(id: string): Promise<void> {
+    await this.api.delete<GraphicsEndpoints['DELETE /graphics/{id}/permanent']['response']>(`/graphics/${id}/permanent`);
+  }
+
   async duplicateGraphic(id: string, name: string): Promise<Graphic> {
     return this.api.post<GraphicsEndpoints['POST /graphics/{id}/duplicate']['response']>(
       `/graphics/${id}/duplicate`,
@@ -370,6 +381,175 @@ interface CanvasEndpoints {
     };
   };
 }
+
+## Deletion System
+
+### Active Graphics vs Archive Graphics
+
+The system differentiates between deletion operations based on the graphic's state:
+
+#### Active Graphics Deletion
+- **Standard Delete**: Soft deletes to archive (preserves data)
+- **Permanent Delete**: Immediately removes from database (irreversible)
+- **Confirmation Required**: User must confirm via DeleteConfirmDialog
+- **API Endpoint**: `DELETE /api/v1/graphics/{graphic_id}/permanent`
+
+#### Archive Graphics Deletion
+- **Delete Operation**: Always permanent delete (no soft delete available)
+- **API Endpoint**: `DELETE /api/v1/archive/{graphic_id}/permanent`
+- **No Confirmation**: Direct deletion from archive interface
+
+### Frontend Delete Confirmation System
+
+#### DeleteConfirmDialog Component
+```typescript
+interface DeleteConfirmDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => Promise<void>;
+  title: string;
+  description: string;
+  isPermanent?: boolean;
+}
+
+// Usage Example
+const handleDelete = async (graphic: Graphic) => {
+  if (graphic.archived) {
+    // Archive graphics - direct deletion
+    await graphicsApi.permanentDeleteGraphic(graphic.id);
+  } else {
+    // Active graphics - show confirmation dialog
+    setDeleteDialogOpen(true);
+  }
+};
+```
+
+#### Implementation Pattern
+```typescript
+// GraphicsTab.tsx - Active Graphics
+const handleDeleteGraphic = async (graphic: Graphic) => {
+  setGraphicToDelete(graphic);
+  setDeleteDialogOpen(true);
+};
+
+const handleConfirmDelete = async () => {
+  if (!graphicToDelete) return;
+  
+  try {
+    await graphicsApi.permanentDeleteGraphic(graphicToDelete.id);
+    // Refresh graphics list
+    await loadGraphics();
+    showNotification('Graphic permanently deleted', 'success');
+  } catch (error) {
+    showNotification('Failed to delete graphic', 'error');
+  } finally {
+    setDeleteDialogOpen(false);
+    setGraphicToDelete(null);
+  }
+};
+
+// ArchiveTab.tsx - Archive Graphics
+const handleDeleteArchive = async (archive: Archive) => {
+  try {
+    await archiveApi.permanentDeleteArchive(archive.id);
+    // Refresh archive list
+    await loadArchives();
+    showNotification('Archive permanently deleted', 'success');
+  } catch (error) {
+    showNotification('Failed to delete archive', 'error');
+  }
+};
+```
+
+### API Client Methods
+
+#### Enhanced Graphics API Service
+```typescript
+export class GraphicsService {
+  // ... existing methods
+
+  async permanentDeleteGraphic(id: string): Promise<void> {
+    await this.api.delete(`/graphics/${id}/permanent`);
+  }
+
+  async softDeleteGraphic(id: string): Promise<void> {
+    await this.api.delete(`/graphics/${id}`);
+  }
+}
+```
+
+#### Archive API Service
+```typescript
+export class ArchiveService {
+  async permanentDeleteArchive(id: string): Promise<void> {
+    await this.api.delete(`/archive/${id}/permanent`);
+  }
+
+  async restoreArchive(id: string): Promise<void> {
+    await this.api.post(`/archive/${id}/restore`);
+  }
+}
+```
+
+### Error Handling and Recovery
+
+#### Delete Operation Errors
+```typescript
+const handleDeleteError = (error: any, graphicId: string) => {
+  if (error.status === 404) {
+    showNotification('Graphic not found', 'error');
+  } else if (error.status === 403) {
+    showNotification('Permission denied', 'error');
+  } else if (error.status === 409) {
+    showNotification('Graphic is currently locked', 'error');
+  } else {
+    showNotification('Failed to delete graphic', 'error');
+  }
+};
+```
+
+#### WebSocket Events for Deletion
+```typescript
+// Real-time deletion updates
+wsClient.on('graphic_permanently_deleted', (data) => {
+  // Remove from local state
+  useGraphicsStore.getState().removeGraphic(data.graphic_id);
+  showNotification(`Graphic "${data.graphic_title}" permanently deleted`, 'warning');
+});
+
+wsClient.on('archive_deleted', (data) => {
+  // Remove from archive state
+  useArchiveStore.getState().removeArchive(data.archive_id);
+  showNotification(`Archive "${data.archive_title}" deleted`, 'warning');
+});
+```
+
+### Security Considerations
+
+#### Permission Validation
+- **Active Graphics**: Requires `graphics:delete` permission
+- **Archive Graphics**: Requires `archive:delete` permission
+- **Self-Deletion**: Users can only delete graphics they created (unless admin)
+
+#### Audit Logging
+- All deletion operations are logged with:
+  - User who performed the deletion
+  - Timestamp of deletion
+  - Reason for deletion (if provided)
+  - Graphic metadata before deletion
+
+### Performance Implications
+
+#### Database Operations
+- **Permanent Delete**: Immediate `DELETE FROM graphics WHERE id = ?`
+- **Soft Delete**: `UPDATE graphics SET archived = true WHERE id = ?`
+- **Index Impact**: Permanent delete removes all indexed data
+- **Cascade Operations**: Related data cleanup handled by database constraints
+
+#### Frontend Performance
+- **Confirmation Dialog**: Minimal performance impact
+- **State Updates**: Optimistic updates improve perceived performance
+- **WebSocket Integration**: Real-time updates prevent unnecessary refetches
 
 // Canvas Service
 export class CanvasService {

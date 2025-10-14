@@ -15,13 +15,38 @@ This Standard Operating Procedure (SOP) outlines the processes for managing arch
 - Maintain data integrity during archive operations
 - Provide clear procedures for archive restoration
 - Establish proper archive lifecycle management
+- Clarify deletion differences between active and archived graphics
+
+## Deletion System Changes (Updated 2025-10-14)
+
+### Active Graphics vs Archived Graphics Deletion
+The system now differentiates deletion operations based on graphic state:
+
+#### Active Graphics Deletion
+- **Standard Archive**: Soft delete moves graphic to archive (preserves data)
+- **Permanent Delete**: New confirmation-based permanent deletion
+- **Confirmation Required**: DeleteConfirmDialog requires explicit user confirmation
+- **API Endpoint**: `DELETE /api/v1/graphics/{graphic_id}/permanent`
+
+#### Archived Graphics Deletion
+- **Direct Permanent Delete**: Archive deletion is always permanent
+- **No Confirmation Required**: Direct deletion from archive interface
+- **API Endpoint**: `DELETE /api/v1/archive/{graphic_id}/permanent`
+- **Immediate Removal**: No recovery options available
+
+### Workflow Implications
+- **Active Graphics**: Users now have choice between archiving or permanent deletion
+- **Archive Graphics**: Only permanent deletion available (no soft delete option)
+- **User Experience**: Clear distinction between delete actions across interfaces
+- **Data Safety**: Confirmation dialogs prevent accidental permanent deletion of active graphics
 
 ## Scope
-- Graphics archiving from active state
-- Archive restoration procedures
-- Archive maintenance and cleanup
+- Graphics archiving from active state (soft delete)
+- Archive restoration procedures (back to active state)
+- Archive maintenance and cleanup (permanent deletion)
 - Archive data integrity verification
 - User access and permissions for archive operations
+- Differentiation between active graphics deletion workflows and archive deletion
 
 ## Prerequisites
 
@@ -71,6 +96,42 @@ This Standard Operating Procedure (SOP) outlines the processes for managing arch
 3. **Batch Archive Verification**
    - Verify all graphics moved to archive
    - Check archive log for any failed operations
+   - Verify count matches selection
+
+### Archive Deletion (Permanent)
+
+**Important**: Archive deletion is always permanent and irreversible. No confirmation dialog is shown.
+
+#### Single Archive Deletion
+1. **Access Archived Graphics**
+   - Navigate to Dashboard → Archived tab
+   - Locate target archive in archive table
+   - Review archive metadata (final review before deletion)
+
+2. **Initiate Deletion**
+   - Click "Delete" button on target archive
+   - Archive is immediately and permanently deleted
+   - No recovery options available
+
+3. **Deletion Verification**
+   - Verify archive removed from archive table
+   - Confirm audit log entry created
+   - Verify related notifications sent
+
+#### Batch Archive Deletion
+1. **Select Multiple Archives**
+   - Navigate to Archived tab
+   - Use checkboxes to select multiple archives
+   - Click "Batch Delete" button
+
+2. **Batch Deletion Execution**
+   - Review list of archives to be permanently deleted
+   - Confirm batch deletion action
+   - Monitor deletion progress
+
+3. **Batch Deletion Verification**
+   - Verify all archives removed from table
+   - Check deletion log for any failed operations
    - Verify count matches selection
 
 ### Archive Restoration
@@ -200,6 +261,37 @@ This Standard Operating Procedure (SOP) outlines the processes for managing arch
 4. Review database constraints
 5. Retry restoration operation
 6. Use alternative name if conflict exists
+
+#### Archive Deletion Issues
+**Symptoms**: Archive deletion fails or unexpected behavior
+**Possible Causes**:
+- Archive is currently locked (rare but possible)
+- Insufficient user permissions
+- Database constraint violations
+- Network connectivity issues
+
+**Resolution Steps**:
+1. Verify user has archive:delete permissions
+2. Check for any system locks on archive
+3. Validate archive data integrity
+4. Review database constraints
+5. Test network connectivity
+6. Retry deletion operation
+7. Contact administrator if issue persists
+
+#### Active Graphics Deletion Confusion
+**Symptoms**: User confusion about deletion behavior differences
+**Possible Causes**:
+- Expecting archive deletion to be soft delete
+- Confusion between active and archive deletion workflows
+- Missing understanding of confirmation requirements
+
+**Resolution Steps**:
+1. Explain difference between active and archive deletion
+2. Clarify that archive deletion is always permanent
+3. Guide user to proper deletion workflow for their needs
+4. Provide training on DeleteConfirmDialog usage
+5. Update user documentation as needed
 
 #### Archive Performance Issues
 **Symptoms**: Archive operations are slow or time out

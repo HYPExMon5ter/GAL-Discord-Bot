@@ -33,7 +33,13 @@ This document captures the recent enhancements to the Graphics API system, inclu
    - Archive listing with filtering
    - Archive restoration capabilities
 
-3. **Canvas Lock Management**
+3. **Permanent Delete Operations**
+   - New permanent delete endpoint for active graphics
+   - Differentiated deletion behavior (soft vs permanent)
+   - Confirmation-based deletion workflow
+   - Enhanced error handling for deletion operations
+
+4. **Canvas Lock Management**
    - Lock status queries
    - Lock refresh functionality
    - Automatic lock expiration handling
@@ -63,6 +69,11 @@ This document captures the recent enhancements to the Graphics API system, inclu
    - `unarchive_graphics()` - Archive restoration
    - `get_archived_graphics()` - Archive listing with filters
 
+4. **Permanent Delete Operations**
+   - `permanent_delete_graphic()` - Permanent deletion of active graphics
+   - `validate_deletion_permissions()` - Permission validation before deletion
+   - `log_deletion_action()` - Audit logging for deletion operations
+
 ## Data Flow Enhancements
 
 ### Request Processing Flow
@@ -78,6 +89,100 @@ Client Request → Router Validation → Service Layer → Database → Response
 - **Authorization Errors**: 403 Forbidden
 - **Not Found Errors**: 404 Not Found
 - **Server Errors**: 500 Internal Server Error with logging
+- **Deletion Conflicts**: 409 Conflict for locked graphics during deletion
+
+## Deletion API Endpoints (New)
+
+### Permanent Delete Active Graphics
+**Endpoint**: `DELETE /api/v1/graphics/{graphic_id}/permanent`
+
+**Request Headers**:
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Response**:
+```json
+{
+  "message": "Graphic permanently deleted",
+  "graphic_id": 123,
+  "deleted_at": "2025-10-14T10:30:00Z",
+  "deleted_by": "username"
+}
+```
+
+**Error Responses**:
+- `403 Forbidden`: User lacks deletion permissions
+- `404 Not Found`: Graphic does not exist
+- `409 Conflict`: Graphic is currently locked
+
+### Archive Delete (Permanent)
+**Endpoint**: `DELETE /api/v1/archive/{archive_id}/permanent`
+
+**Request Headers**:
+```
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+**Response**:
+```json
+{
+  "message": "Archive permanently deleted",
+  "archive_id": 456,
+  "deleted_at": "2025-10-14T10:30:00Z",
+  "deleted_by": "username"
+}
+```
+
+### Deletion Permission Validation
+The service layer includes comprehensive permission validation:
+
+```python
+def validate_deletion_permissions(user_id: str, graphic_id: int) -> bool:
+    """Validate user permissions for graphic deletion"""
+    graphic = get_graphic_by_id(graphic_id)
+    
+    if not graphic:
+        return False
+    
+    # Check if user created the graphic or is admin
+    if graphic.created_by == user_id or user_has_role(user_id, 'admin'):
+        return True
+    
+    # Check for deletion permissions
+    if user_has_permission(user_id, 'graphics:delete'):
+        return True
+    
+    return False
+```
+
+### Audit Logging for Deletions
+All deletion operations are logged for compliance:
+
+```python
+def log_deletion_action(
+    user_id: str,
+    graphic_id: int,
+    deletion_type: str,
+    ip_address: str
+) -> None:
+    """Log deletion action for audit purposes"""
+    audit_log = {
+        "action": "delete",
+        "resource_type": "graphic",
+        "resource_id": graphic_id,
+        "user_id": user_id,
+        "deletion_type": deletion_type,  # "permanent" or "archive"
+        "ip_address": ip_address,
+        "timestamp": datetime.utcnow(),
+        "user_agent": request.headers.get("User-Agent")
+    }
+    
+    # Store in audit log table
+    store_audit_log(audit_log)
+```
 
 ## Integration Points
 

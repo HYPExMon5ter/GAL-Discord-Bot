@@ -58,6 +58,7 @@ export function SelectTrigger({ children, className = '' }: SelectTriggerProps) 
   return (
     <button
       type="button"
+      data-select-trigger
       className={`flex h-10 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm ring-offset-background shadow-sm hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
       onClick={() => setIsOpen(!isOpen)}
       disabled={disabled}
@@ -82,8 +83,14 @@ export function SelectContent({ children, className = '' }: SelectContentProps) 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (contentRef.current && !contentRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+      // Don't close if clicking inside the select content or trigger
+      const target = event.target as Node;
+      if (contentRef.current && !contentRef.current.contains(target)) {
+        // Check if the clicked element is a select trigger
+        const selectTrigger = target.closest('[data-select-trigger]');
+        if (!selectTrigger) {
+          setIsOpen(false);
+        }
       }
     };
 

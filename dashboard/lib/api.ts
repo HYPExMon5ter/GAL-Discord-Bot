@@ -88,6 +88,10 @@ export const graphicsApi = {
     await api.delete(`/graphics/${id}`);
   },
 
+  permanentDelete: async (id: number): Promise<void> => {
+    await api.delete(`/graphics/${id}/permanent`);
+  },
+
   archive: async (id: number): Promise<void> => {
     await api.post(`/archive/${id}`, {});
   },

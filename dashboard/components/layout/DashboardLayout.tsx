@@ -36,16 +36,19 @@ export function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background gal-scrollbar flex flex-col">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <header className="border-b border-border/20 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 gal-card flex-shrink-0">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
-                <div className="text-4xl">🎬</div>
+                <div className="w-12 h-12 gal-gradient-primary rounded-xl flex items-center justify-center text-white font-bold text-xl gal-glow-primary">
+                  GAL
+                </div>
                 <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Live Graphics Dashboard</h1>
+                  <h1 className="text-3xl font-bold gal-gradient-text">Live Graphics Dashboard</h1>
+                  <p className="text-sm text-muted-foreground">Guardian Angel League</p>
                 </div>
               </div>
             </div>
@@ -71,18 +74,18 @@ export function DashboardLayout({
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6">
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-2 bg-slate-800 p-1 rounded-xl shadow-lg">
+      <main className="flex-grow container mx-auto px-4 py-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full h-full">
+          <TabsList className="grid w-full grid-cols-2 bg-card p-1 rounded-xl shadow-lg gal-card">
             <TabsTrigger 
               value="graphics" 
-              className="flex items-center gap-2 bg-slate-700 text-slate-300 data-[state=active]:bg-blue-600 data-[state=active]:text-white hover:bg-slate-600 transition-all duration-200"
+              className="flex items-center gap-2 data-[state=active]:gal-button-primary data-[state=active]:text-white text-muted-foreground hover:text-foreground transition-all duration-200 rounded-lg"
             >
               <span className="text-yellow-300">🎨</span> Active Graphics
             </TabsTrigger>
             <TabsTrigger 
               value="archive" 
-              className="flex items-center gap-2 bg-slate-700 text-slate-300 data-[state=active]:bg-blue-600 data-[state=active]:text-white hover:bg-slate-600 transition-all duration-200"
+              className="flex items-center gap-2 data-[state=active]:gal-button-primary data-[state=active]:text-white text-muted-foreground hover:text-foreground transition-all duration-200 rounded-lg"
             >
               <span className="text-orange-300">📦</span> Archived Graphics
             </TabsTrigger>
@@ -97,6 +100,19 @@ export function DashboardLayout({
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Footer */}
+      <footer className="flex-shrink-0 border-t border-border/20 bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/60 mt-auto">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
+            <p className="text-center sm:text-left">© Guardian Angel League — Live Graphics Dashboard</p>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span className="text-center sm:text-right">System Online</span>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

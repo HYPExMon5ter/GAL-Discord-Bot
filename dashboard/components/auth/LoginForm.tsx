@@ -45,26 +45,27 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
-      <Card className="w-full max-w-md border-slate-700 bg-card shadow-xl">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gal-deep-bg via-gal-card to-gal-deep-bg p-4">
+      <div className="absolute inset-0 bg-gradient-to-br from-gal-purple/10 via-transparent to-gal-cyan/10"></div>
+      <Card className="w-full max-w-md border-border/20 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 gal-card shadow-2xl relative z-10">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <div className="p-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg">
-              <Shield className="h-8 w-8 text-white" />
+            <div className="w-20 h-20 gal-gradient-primary rounded-2xl flex items-center justify-center text-white font-bold text-2xl gal-glow-primary shadow-lg">
+              GAL
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent flex items-center justify-center gap-2">
-            <span className="text-yellow-400">✨</span> GAL Live Graphics Dashboard
+          <CardTitle className="text-3xl font-bold gal-gradient-text flex items-center justify-center gap-2">
+            <span className="text-yellow-300">✨</span> Live Graphics Dashboard
           </CardTitle>
-          <CardDescription className="text-lg flex items-center justify-center gap-2">
-            <span className="text-blue-500">🔐</span> Enter the master password to access the dashboard
+          <CardDescription className="text-lg flex items-center justify-center gap-2 text-muted-foreground">
+            <span className="text-gal-cyan">🔐</span> Enter the master password to access the dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="masterPassword" className="flex items-center gap-2 text-blue-600 font-semibold">
-                <span className="text-purple-500">🔑</span> Master Password
+              <Label htmlFor="masterPassword" className="flex items-center gap-2 text-gal-purple font-semibold">
+                <span className="text-gal-cyan">🔑</span> Master Password
               </Label>
               <Input
                 id="masterPassword"
@@ -74,22 +75,22 @@ export function LoginForm() {
                 onChange={(e) => setMasterPassword(e.target.value)}
                 required
                 disabled={loading}
-                className="border-blue-200 focus:border-blue-400 focus:ring-blue-200"
+                className="border-border/30 focus:border-primary focus:ring-primary/20 bg-background"
               />
             </div>
             
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-md bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 text-red-700">
-                <AlertCircle className="h-5 w-5 text-red-600" />
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/30 text-red-300">
+                <AlertCircle className="h-5 w-5 text-red-400" />
                 <span className="text-sm flex items-center gap-1">
-                  <span className="text-red-500">⚠️</span> {error}
+                  <span className="text-red-400">⚠️</span> {error}
                 </span>
               </div>
             )}
             
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all duration-200 text-white font-semibold"
+              className="w-full gal-button-primary text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-300"
               disabled={loading}
             >
               <span className="flex items-center gap-2">
@@ -108,7 +109,7 @@ export function LoginForm() {
           </form>
           
           <div className="mt-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
-            <span className="text-blue-500">🛡️</span> Guardian Angel League - Live Graphics Dashboard v2.0
+            <span className="text-gal-cyan">🛡️</span> Guardian Angel League - Live Graphics Dashboard v2.0
           </div>
         </CardContent>
       </Card>

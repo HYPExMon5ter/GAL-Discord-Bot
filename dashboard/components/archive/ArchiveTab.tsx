@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GraphicsTable } from '../graphics/GraphicsTable';
 import { CopyGraphicDialog } from '../graphics/CopyGraphicDialog';
+import { DeleteConfirmDialog } from '../graphics/DeleteConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { Search, RefreshCw, AlertCircle, Archive, Shield, Copy, Sparkles, Package, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,9 @@ import { Input } from '@/components/ui/input';
 export function ArchiveTab() {
   const [searchTerm, setSearchTerm] = useState('');
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [graphicToCopy, setGraphicToCopy] = useState<Graphic | ArchivedGraphic | null>(null);
+  const [graphicToDelete, setGraphicToDelete] = useState<Graphic | ArchivedGraphic | null>(null);
   
   const { username } = useAuth();
   const { 
@@ -63,13 +66,32 @@ export function ArchiveTab() {
     }
   }, [restoreGraphic]);
 
-  const handlePermanentDeleteGraphic = useCallback(async (graphic: Graphic | ArchivedGraphic) => {
+  const handlePermanentDeleteGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
+    setGraphicToDelete(graphic);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async (): Promise<boolean> => {
+    if (!graphicToDelete) return false;
+    
     try {
-      await permanentDeleteGraphic(graphic.id);
+      const success = await permanentDeleteGraphic(graphicToDelete.id);
+      if (success) {
+        // Show success message
+        const successMessage = document.createElement('div');
+        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg z-50';
+        successMessage.textContent = `Archived graphic "${graphicToDelete.title}" permanently deleted!`;
+        document.body.appendChild(successMessage);
+        setTimeout(() => {
+          document.body.removeChild(successMessage);
+        }, 3000);
+      }
+      return success;
     } catch (error) {
-      console.error('Failed to permanently delete graphic:', error);
+      console.error('Failed to permanently delete archived graphic:', error);
+      return false;
     }
-  }, [permanentDeleteGraphic]);
+  }, [graphicToDelete, permanentDeleteGraphic]);
 
   const handleDuplicateGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
     setGraphicToCopy(graphic);
@@ -244,6 +266,15 @@ export function ArchiveTab() {
         onOpenChange={setCopyDialogOpen}
         onCopy={handleCopyGraphic}
         sourceGraphic={graphicToCopy}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        graphic={graphicToDelete}
+        onConfirm={handleConfirmDelete}
+        isArchived={true}
       />
     </div>
   );

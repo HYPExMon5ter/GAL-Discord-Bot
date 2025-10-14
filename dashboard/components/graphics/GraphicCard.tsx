@@ -49,21 +49,21 @@ export function GraphicCard({
   }, [lock]);
 
   return (
-    <Card className={`${isLocked ? 'opacity-75 border-orange-200' : ''} hover:shadow-md transition-shadow`}>
+    <Card className={`${isLocked ? 'opacity-75 border-primary/50' : ''} transition-all duration-300 hover:shadow-lg hover:shadow-primary/10`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <CardTitle className="text-lg flex items-center gap-2">
+            <CardTitle className="text-lg font-semibold flex items-center gap-2">
               {graphic.title}
               {isLocked && (
-                <Badge variant="secondary" className="flex items-center gap-1">
+                <Badge variant="secondary" className="flex items-center gap-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white border-0">
                   <Lock className="h-3 w-3" />
                   In Use
                 </Badge>
               )}
             </CardTitle>
-            <CardDescription className="mt-1">
-              Created by {graphic.created_by} • Updated {formatDate(graphic.updated_at)}
+            <CardDescription className="mt-1 text-muted-foreground">
+              Created by <span className="text-primary font-medium">{graphic.created_by}</span> • Updated {formatDate(graphic.updated_at)}
             </CardDescription>
           </div>
         </div>
@@ -72,10 +72,10 @@ export function GraphicCard({
       <CardContent className="space-y-4">
         {/* Lock Status */}
         {lock?.locked && (
-          <div className={`p-3 rounded-lg ${
+          <div className={`p-3 rounded-xl border transition-all duration-200 ${
             isLockedByMe 
-              ? 'bg-green-50 border border-green-200 text-green-800' 
-              : 'bg-orange-50 border border-orange-200 text-orange-800'
+              ? 'bg-gradient-to-r from-green-500/10 to-emerald-600/10 border-green-500/30 text-green-300' 
+              : 'bg-gradient-to-r from-orange-500/10 to-red-500/10 border-orange-500/30 text-orange-300'
           }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -88,13 +88,13 @@ export function GraphicCard({
                 </span>
               </div>
               {timeRemaining && (
-                <div className="flex items-center gap-1 text-xs">
+                <div className="flex items-center gap-1 text-xs opacity-80">
                   <Clock className="h-3 w-3" />
                   {timeRemaining}
                 </div>
               )}
             </div>
-            <div className="text-xs mt-1 opacity-75">
+            <div className="text-xs mt-1 opacity-70">
               Session started at {formatDate(lock.locked_at)}
             </div>
           </div>
@@ -104,7 +104,7 @@ export function GraphicCard({
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            variant="outline"
+            variant="galOutline"
             onClick={() => onEdit(graphic)}
             disabled={!canEdit}
             className="flex items-center gap-1"
@@ -118,7 +118,7 @@ export function GraphicCard({
             variant="outline"
             onClick={() => onDuplicate(graphic)}
             disabled={isLocked}
-            className="flex items-center gap-1"
+            className="flex items-center gap-1 hover:border-primary/50 hover:bg-primary/5"
           >
             <Copy className="h-3 w-3" />
             Duplicate
@@ -129,10 +129,10 @@ export function GraphicCard({
             variant="outline"
             onClick={() => onArchive(graphic)}
             disabled={!canEdit}
-            className="flex items-center gap-1"
+            className="flex items-center gap-1 hover:border-primary/50 hover:bg-primary/5"
           >
             <Archive className="h-3 w-3" />
-            Move to Archive
+            Archive
           </Button>
 
           {canDelete && (
@@ -147,16 +147,16 @@ export function GraphicCard({
                   Delete
                 </Button>
               </AlertDialogTrigger>
-              <AlertDialogContent>
+              <AlertDialogContent className="gal-card">
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Graphic</AlertDialogTitle>
-                  <AlertDialogDescription>
+                  <AlertDialogTitle className="text-foreground">Delete Graphic</AlertDialogTitle>
+                  <AlertDialogDescription className="text-muted-foreground">
                     Are you sure you want to delete &quot;{graphic.title}&quot;? This action cannot be undone and will remove the graphic permanently.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => onDelete(graphic)}>
+                  <AlertDialogCancel className="hover:bg-muted">Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onDelete(graphic)} className="gal-button-primary">
                     Delete Forever
                   </AlertDialogAction>
                 </AlertDialogFooter>

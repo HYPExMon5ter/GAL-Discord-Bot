@@ -321,7 +321,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       fontSize: 24,
       fontFamily: 'Arial',
       color: '#000000',
-      backgroundColor: 'rgba(0, 0, 0, 0)',
+      backgroundColor: '#3B82F6',
       dataBinding: {
         source: 'api' as const,
         field: `${propertyType}_name` as const,
@@ -1145,7 +1145,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   <label className="text-xs text-muted-foreground">Background</label>
                                   <Input
                                     type="color"
-                                    value={selectedElement.backgroundColor ?? '#3B82F6'}
+                                    value={selectedElement.backgroundColor === 'rgba(0, 0, 0, 0)' || !selectedElement.backgroundColor ? '#3B82F6' : selectedElement.backgroundColor}
                                     onChange={(e) =>
                                       updateElement(selectedElement.id, { backgroundColor: e.target.value })
                                     }
@@ -1439,7 +1439,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       color: element.color || '#000000',
                       fontFamily: element.fontFamily || 'Arial',
                       whiteSpace: 'nowrap',
-                      backgroundColor: element.backgroundColor || 'rgba(0, 0, 0, 0)',
+                      backgroundColor: element.backgroundColor || '#3B82F6',
                       padding: '4px 8px',
                       borderRadius: '4px'
                     }}

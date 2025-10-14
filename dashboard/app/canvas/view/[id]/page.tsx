@@ -187,7 +187,7 @@ export default function ObsViewPage() {
                     fontSize: `${element.fontSize || 24}px`,
                     fontFamily: element.fontFamily || 'Arial, sans-serif',
                     whiteSpace: 'nowrap',
-                    backgroundColor: element.backgroundColor || 'rgba(0, 0, 0, 0)',
+                    backgroundColor: element.backgroundColor || '#3B82F6',
                     padding: '4px 8px',
                     borderRadius: '4px'
                   }}

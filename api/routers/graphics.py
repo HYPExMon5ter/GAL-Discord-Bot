@@ -202,6 +202,44 @@ async def delete_graphic(
         )
 
 
+@router.delete("/graphics/{graphic_id}/permanent")
+async def permanent_delete_graphic(
+    graphic_id: int,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Permanently delete an active graphic (admin only)
+    """
+    try:
+        # TODO: Implement admin permission check
+        is_admin = True  # Placeholder - should check user permissions
+        
+        if not is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin access required"
+            )
+        
+        service = GraphicsService(db)
+        success = service.permanent_delete_graphic(graphic_id, current_user.username)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Active graphic not found or could not be deleted"
+            )
+        
+        return {"message": "Graphic permanently deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to permanently delete graphic: {str(e)}"
+        )
+
+
 # Canvas Lock Management
 @router.post("/lock/{graphic_id}", response_model=CanvasLockResponse)
 async def acquire_lock(
@@ -283,6 +321,35 @@ async def get_lock_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get lock status: {str(e)}"
+        )
+
+
+@router.post("/lock/{graphic_id}/refresh", response_model=CanvasLockResponse)
+async def refresh_lock(
+    graphic_id: int,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Refresh an existing canvas lock to extend its expiration time
+    """
+    try:
+        service = GraphicsService(db)
+        result = service.refresh_lock(graphic_id, current_user.username)
+        
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No active lock found for this graphic or lock expired"
+            )
+        
+        return CanvasLockResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to refresh lock: {str(e)}"
         )
 
 

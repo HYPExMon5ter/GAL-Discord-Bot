@@ -76,6 +76,18 @@ export function useGraphics() {
     }
   }, []);
 
+  const permanentDeleteGraphic = useCallback(async (id: number): Promise<boolean> => {
+    try {
+      await graphicsApi.permanentDelete(id);
+      setGraphics(prev => prev.filter(g => g.id !== id));
+      return true;
+    } catch (err) {
+      setError('Failed to permanently delete graphic');
+      console.error('Error permanently deleting graphic:', err);
+      return false;
+    }
+  }, []);
+
   const archiveGraphic = useCallback(async (id: number): Promise<boolean> => {
     try {
       await graphicsApi.archive(id);
@@ -128,6 +140,7 @@ export function useGraphics() {
     updateGraphic,
     duplicateGraphic,
     deleteGraphic,
+    permanentDeleteGraphic,
     archiveGraphic,
     getGraphic,
   };

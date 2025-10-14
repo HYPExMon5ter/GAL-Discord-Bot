@@ -52,11 +52,25 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        // GAL Brand Colors
+        'gal-purple': '#7A3FF2',
+        'gal-cyan': '#00E0FF',
+        'gal-deep-bg': '#0A0A0F',
+        'gal-card': '#161626',
+        'gal-text-primary': '#FFFFFF',
+        'gal-text-secondary': '#C5C5D1',
+        'gal-error': '#FF5F5F',
+        'gal-success': '#4EFFB0',
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        'gal': '12px',
       },
       keyframes: {
         "accordion-down": {

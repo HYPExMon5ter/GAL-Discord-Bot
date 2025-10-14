@@ -1,9 +1,13 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { Poppins } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/hooks/use-auth'
 
-const inter = Inter({ subsets: ['latin'] })
+const poppins = Poppins({ 
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  style: ['normal']
+})
 
 export const metadata: Metadata = {
   title: 'GAL Live Graphics Dashboard',
@@ -20,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className={inter.className}>
+      <body className={poppins.className}>
         <AuthProvider>
           {children}
         </AuthProvider>

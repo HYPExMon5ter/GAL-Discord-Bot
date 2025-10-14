@@ -301,10 +301,10 @@ export function GraphicsTable({
           </tr>
         </thead>
         <tbody>
-          {sortedGraphics.map((graphic) => (
+          {sortedGraphics.map((graphic, index) => (
             <tr 
               key={graphic.id} 
-              className="border-b border-gray-100"
+              className={`border-b ${index === sortedGraphics.length - 1 ? 'border-transparent' : 'border-gray-100'}`}
             >
               <td className="text-center py-4 px-4">
                 <div className="font-semibold text-gray-100">{graphic.title}</div>

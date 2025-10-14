@@ -1515,7 +1515,7 @@ export const apiSecurity = ApiSecurity.getInstance();
 ## References
 - [REST API Documentation](../system/api-backend-system.md)
 - [WebSocket Documentation](../system/websocket-integration.md)
-- [Authentication Documentation](../system/authentication.md)
+- [Authentication Documentation](../system/access-control.md#authentication-methods)
 - [React Query Documentation](https://tanstack.com/query/latest)
 - [Next.js API Routes](https://nextjs.org/docs/api-routes/introduction)
 

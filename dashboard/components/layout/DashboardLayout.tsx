@@ -21,16 +21,16 @@ export function DashboardLayout({
   onTabChange 
 }: DashboardLayoutProps) {
   const { username, logout } = useAuth();
-  const { createInterval, clearInterval } = usePerformanceMonitor('DashboardLayout');
+  // const { createInterval, clearInterval } = usePerformanceMonitor('DashboardLayout');
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    const timer = createInterval(() => {
+    const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [createInterval, clearInterval]);
+  }, []);
 
   const handleTabChange = (value: string) => {
     if (onTabChange) {
@@ -114,8 +114,8 @@ export function DashboardLayout({
       </footer>
     </div>
 
-      {/* Performance Monitor - Only in development */}
-      {process.env.NODE_ENV === 'development' && <PerformanceMonitor />}
+      {/* Performance Monitor - Temporarily disabled due to memory leak */}
+      {/* {process.env.NODE_ENV === 'development' && <PerformanceMonitor />} */}
     </>
   );
 }

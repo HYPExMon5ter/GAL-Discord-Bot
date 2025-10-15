@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { usePerformanceMonitor } from './use-performance-monitor';
+// import { usePerformanceMonitor } from './use-performance-monitor';
 import { CanvasLock } from '@/types';
 import { lockApi } from '@/lib/api';
 
 export function useLocks() {
-  const { createInterval, clearInterval } = usePerformanceMonitor('useLocks');
+  // const { createInterval, clearInterval } = usePerformanceMonitor('useLocks');
   const [locks, setLocks] = useState<CanvasLock[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,31 +85,31 @@ export function useLocks() {
     return lock?.locked === true && lock?.user_name !== username;
   }, [getLockForGraphic]);
 
-  // Auto-refresh locks every 30 seconds
+  // Auto-refresh locks every 2 minutes (temporarily disabled for debugging)
   useEffect(() => {
     fetchLocks();
-    const interval = createInterval(() => {
-      setLoading(true);
-      setError(null);
-      try {
-        lockApi.getStatus().then(locksData => {
-          setLocks(Array.isArray(locksData) ? locksData : []);
-        }).catch(err => {
-          setError('Failed to fetch locks');
-          console.error('Failed to fetch locks:', err);
-          setLocks([]);
-        }).finally(() => {
-          setLoading(false);
-        });
-      } catch (err) {
-        setError('Failed to fetch locks');
-        console.error('Failed to fetch locks:', err);
-        setLocks([]);
-        setLoading(false);
-      }
-    }, 120000); // 2 minutes instead of 30 seconds
-    return () => clearInterval(interval);
-  }, [createInterval, clearInterval]);
+    // const interval = createInterval(() => {
+    //   setLoading(true);
+    //   setError(null);
+    //   try {
+    //     lockApi.getStatus().then(locksData => {
+    //       setLocks(Array.isArray(locksData) ? locksData : []);
+    //     }).catch(err => {
+    //       setError('Failed to fetch locks');
+    //       console.error('Failed to fetch locks:', err);
+    //       setLocks([]);
+    //     }).finally(() => {
+    //       setLoading(false);
+    //     });
+    //   } catch (err) {
+    //     setError('Failed to fetch locks');
+    //     console.error('Failed to fetch locks:', err);
+    //     setLocks([]);
+    //     setLoading(false);
+    //   }
+    // }, 120000); // 2 minutes instead of 30 seconds
+    // return () => clearInterval(interval);
+  }, []);
 
   return {
     locks,

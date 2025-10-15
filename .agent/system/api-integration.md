@@ -1,7 +1,7 @@
 ---
 id: system.api_integration
-version: 2.0
-last_updated: 2025-10-13
+version: 2.1
+last_updated: 2025-01-14
 tags: [system, api, integration, frontend, backend, websocket]
 ---
 
@@ -225,9 +225,7 @@ interface AuthEndpoints {
 
   // Logout
   'POST /auth/logout': {
-    request: {
-      refresh_token: string;
-    };
+    request: {};
     response: {
       message: 'Successfully logged out';
     };

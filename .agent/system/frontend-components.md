@@ -1,6 +1,6 @@
 ---
 id: system.frontend_components
-version: 3.1
+version: 3.2
 last_updated: 2025-01-14
 tags: [system, frontend, components, react, dashboard, property-elements, text-system, ui-components]
 ---
@@ -215,6 +215,82 @@ const handleDeleteArchive = (archive: Archive) => {
 };
 ```
 
+### GraphicsTable Component
+**Purpose**: Table-based display of graphics with enhanced action buttons and responsive design
+
+```typescript
+interface GraphicsTableProps {
+  graphics: Graphic[] | ArchivedGraphic[];
+  onEdit?: (graphic: Graphic) => void;
+  onDuplicate?: (graphic: Graphic | ArchivedGraphic) => void;
+  onDelete?: (graphic: Graphic | ArchivedGraphic) => void;
+  onView?: (graphic: Graphic | ArchivedGraphic) => void;
+  onArchive?: (graphic: Graphic) => void;
+  onUnarchive?: (graphic: ArchivedGraphic) => void;
+  onRestore?: (graphic: ArchivedGraphic) => void;
+  isArchived?: boolean;
+  loading?: boolean;
+}
+```
+
+**Features**:
+- **Enhanced Action Buttons**: All buttons now use size="sm" for consistency
+- **Improved Button Layout**: flex-wrap for responsive layout on smaller screens
+- **Enhanced Visual Feedback**: Better hover states with color-specific backgrounds
+- **Button Labels**: Added text labels alongside icons for better accessibility
+- **Tooltip Support**: Hover tooltips for all action buttons
+- **Responsive Design**: Adapts to different screen sizes with proper wrapping
+
+**Button Improvements**:
+- **Consistent Sizing**: All action buttons use `size="sm"`
+- **Color-Coded Actions**: Each action type has distinct hover colors
+  - Edit: Blue theme (`hover:bg-blue-50`)
+  - Copy: Purple theme (`hover:bg-purple-50`)
+  - Archive/Restore: Green theme (`hover:bg-green-50`)
+  - Delete: Red theme (`hover:bg-red-50`)
+  - View: Blue theme (`hover:bg-blue-50`)
+- **Icon + Text Labels**: Better UX with descriptive text
+- **Flexible Layout**: `flex-wrap` prevents overflow on narrow screens
+
+**Action Button Configuration**:
+```typescript
+// Active Graphics Actions
+const activeActions = [
+  { icon: Edit, label: "Edit", action: "edit", color: "blue" },
+  { icon: Copy, label: "Copy", action: "duplicate", color: "purple" },
+  { icon: Archive, label: "Archive", action: "archive", color: "green" },
+  { icon: Trash2, label: "Delete", action: "delete", color: "red" },
+  { icon: Eye, label: "View", action: "view", color: "blue" }
+];
+
+// Archived Graphics Actions  
+const archivedActions = [
+  { icon: Copy, label: "Copy", action: "duplicate", color: "purple" },
+  { icon: RotateCcw, label: "Unarchive", action: "unarchive", color: "green" },
+  { icon: Trash2, label: "Delete", action: "delete", color: "red" },
+  { icon: Eye, label: "View", action: "view", color: "blue" }
+];
+```
+
+**Responsive Design Implementation**:
+```jsx
+<div className="flex items-center justify-center gap-1 flex-wrap">
+  {actions.map((action, index) => (
+    <Button
+      key={index}
+      variant="ghost"
+      size="sm"
+      onClick={action.handler}
+      className={`h-8 px-2 text-${action.color}-600 hover:text-${action.color}-700 hover:bg-${action.color}-50`}
+      title={action.tooltip}
+    >
+      <action.icon className="h-3 w-3 mr-1" />
+      <span className="text-xs">{action.label}</span>
+    </Button>
+  ))}
+</div>
+```
+
 ### CreateGraphicDialog Component
 **Purpose**: Graphic creation with required event name field
 
@@ -241,6 +317,8 @@ interface CreateGraphicData {
 - Form validation with error handling
 - Loading states during creation
 - Success/error feedback
+- Consistent button styling with size="sm" for compact layout
+- Responsive button layout with proper spacing
 
 ### CopyGraphicDialog Component
 **Purpose**: Duplicate existing graphics with custom naming and event name
@@ -261,6 +339,8 @@ interface CopyGraphicDialogProps {
 - Loading states during duplication
 - Success/error feedback
 - Automatic form reset on close
+- Consistent button styling with size="sm" for uniform appearance
+- Proper button spacing and alignment
 
 **Usage Example**:
 ```jsx
@@ -295,6 +375,8 @@ interface DeleteConfirmDialogProps {
 - Cancellation option available
 - Proper ARIA labels for accessibility
 - Keyboard navigation support
+- Consistent button styling with size="sm" for compact layout
+- Improved hover states and visual feedback
 
 **Usage Example**:
 ```jsx

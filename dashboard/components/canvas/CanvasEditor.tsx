@@ -962,8 +962,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 </TabsList>
               </div>
 
-              <div className="flex-1 overflow-auto" style={{ paddingBottom: '20px', minHeight: '0' }}>
-                <TabsContent value="design" className="m-0">
+              <div className="flex-1 overflow-hidden" style={{ minHeight: '0' }}>
+                <TabsContent value="design" className="m-0 h-full overflow-auto" style={{ paddingBottom: '20px' }}>
                   <div className="p-4 space-y-4">
                     <Card>
                       <CardHeader className="pb-2">
@@ -1242,7 +1242,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="elements" className="m-0">
+                <TabsContent value="elements" className="m-0 h-full overflow-auto" style={{ paddingBottom: '20px' }}>
                   <div className="p-4">
                     <Card>
                       <CardHeader>
@@ -1287,7 +1287,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="data" className="m-0">
+                <TabsContent value="data" className="m-0 h-full overflow-auto" style={{ paddingBottom: '20px' }}>
                   <div className="p-4">
                     <Card>
                       <CardHeader>
@@ -1424,7 +1424,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
               <div
                 key={element.id}
                 data-element-id={element.id}
-                className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''}`}
+                className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''}`}`}, {"old_str":
                 style={{
                   left: `${element.x * zoom}px`,
                   top: `${element.y * zoom}px`,

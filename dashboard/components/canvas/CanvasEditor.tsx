@@ -808,7 +808,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-background z-40 flex flex-col">
+    <div className="fixed inset-x-0 inset-y-0 bg-background z-40 flex flex-col" style={{ height: 'calc(100vh - 80px)', top: '0' }}>
       <div className="border-b bg-card p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -953,8 +953,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           </div>
 
           {!sidebarCollapsed && (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col">
-              <div className="border-b bg-card px-2">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col overflow-hidden">
+              <div className="border-b bg-card px-2 flex-shrink-0">
                 <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Design</TabsTrigger>
                   <TabsTrigger value="elements" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Elements</TabsTrigger>
@@ -962,7 +962,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 </TabsList>
               </div>
 
-              <div className="flex-1 overflow-auto" style={{ paddingBottom: '80px' }}>
+              <div className="flex-1 overflow-auto" style={{ paddingBottom: '20px' }}>
                 <TabsContent value="design" className="m-0">
                   <div className="p-4 space-y-4">
                     <Card>

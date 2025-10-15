@@ -962,7 +962,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 </TabsList>
               </div>
 
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 overflow-auto" style={{ paddingBottom: '80px' }}>
                 <TabsContent value="design" className="m-0">
                   <div className="p-4 space-y-4">
                     <Card>
@@ -1058,7 +1058,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                         updateElement(selectedElement.id, { fontFamily: value })
                                       }
                                     >
-                                      <SelectTrigger className="h-9">
+                                      <SelectTrigger className="h-10">
                                         <SelectValue placeholder="Select font..." />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1119,7 +1119,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                       })
                                     }
                                   >
-                                    <SelectTrigger>
+                                    <SelectTrigger className="h-10">
                                       <SelectValue placeholder="Select field..." />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -1298,7 +1298,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           <div>
                             <label>Bind To</label>
                             <Select disabled={!lock || lock.user_name !== username}>
-                              <SelectTrigger>
+                              <SelectTrigger className="h-10">
                                 <SelectValue placeholder="Select data source..." />
                               </SelectTrigger>
                               <SelectContent>
@@ -1324,7 +1324,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   })
                                 }
                               >
-                                <SelectTrigger>
+                                <SelectTrigger className="h-10">
                                   <SelectValue placeholder="Bind to field..." />
                                 </SelectTrigger>
                                 <SelectContent>

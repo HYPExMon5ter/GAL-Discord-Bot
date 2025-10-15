@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePerformanceMonitor } from './use-performance-monitor';
 import { CanvasLock } from '@/types';
 import { lockApi } from '@/lib/api';
 
 export function useLocks() {
+  const { createInterval, clearInterval } = usePerformanceMonitor('useLocks');
   const [locks, setLocks] = useState<CanvasLock[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,9 +88,9 @@ export function useLocks() {
   // Auto-refresh locks every 30 seconds
   useEffect(() => {
     fetchLocks();
-    const interval = setInterval(fetchLocks, 30000);
+    const interval = createInterval(fetchLocks, 30000);
     return () => clearInterval(interval);
-  }, [fetchLocks]);
+  }, [fetchLocks, createInterval, clearInterval]);
 
   return {
     locks,

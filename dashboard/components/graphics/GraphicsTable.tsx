@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { Graphic, ArchivedGraphic } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,7 +32,7 @@ interface GraphicsTableProps {
 type SortField = 'title' | 'event_name' | 'updated_at' | 'archived_at';
 type SortDirection = 'asc' | 'desc';
 
-export function GraphicsTable({ 
+const GraphicsTableComponent = function GraphicsTable({ 
   graphics, 
   loading, 
   onEdit, 
@@ -349,3 +349,5 @@ export function GraphicsTable({
     </div>
   );
 }
+
+export const GraphicsTable = memo(GraphicsTableComponent);

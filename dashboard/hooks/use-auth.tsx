@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { usePerformanceMonitor } from './use-performance-monitor';
 import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
 
@@ -15,6 +16,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { createInterval, clearInterval } = usePerformanceMonitor('AuthProvider');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -80,10 +82,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const interval = setInterval(checkExpiration, 60000); // Check every minute
+    const interval = createInterval(checkExpiration, 60000); // Check every minute
 
     return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, createInterval, clearInterval]);
 
   const value: AuthContextType = {
     isAuthenticated,

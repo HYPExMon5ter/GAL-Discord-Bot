@@ -2,10 +2,12 @@
 
 import { useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '@/hooks/use-auth';
+import { usePerformanceMonitor } from '@/hooks/use-performance-monitor';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LogOut, Settings, Users, Lock, Palette, Sparkles, Archive, Package } from 'lucide-react';
+import { PerformanceMonitor } from '@/components/debug/PerformanceMonitor';
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -19,15 +21,16 @@ export function DashboardLayout({
   onTabChange 
 }: DashboardLayoutProps) {
   const { username, logout } = useAuth();
+  const { createInterval, clearInterval } = usePerformanceMonitor('DashboardLayout');
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    const timer = createInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [createInterval, clearInterval]);
 
   const handleTabChange = (value: string) => {
     if (onTabChange) {
@@ -109,5 +112,8 @@ export function DashboardLayout({
         </div>
       </footer>
     </div>
+    
+    {/* Performance Monitor - Only in development */}
+    {process.env.NODE_ENV === 'development' && <PerformanceMonitor />}
   );
 }

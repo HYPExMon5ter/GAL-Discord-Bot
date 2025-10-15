@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Graphic, CanvasLock } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useLocks } from '@/hooks/use-locks';
@@ -30,6 +30,7 @@ import {
   Settings
 } from 'lucide-react';
 import { HistoryManager } from '@/lib/history-manager';
+import { usePerformanceMonitor } from '@/hooks/use-performance-monitor';
 
 interface CanvasEditorProps {
   graphic: Graphic;
@@ -40,6 +41,7 @@ interface CanvasEditorProps {
 export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const { username } = useAuth();
   const { acquireLock, releaseLock, refreshLock } = useLocks();
+  const { createInterval, clearInterval } = usePerformanceMonitor('CanvasEditor');
   
   const [lock, setLock] = useState<CanvasLock | null>(null);
   const [loading, setLoading] = useState(false);
@@ -151,6 +153,20 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     return Math.round(value / gridSize) * gridSize;
   }, [gridSnapEnabled]);
 
+  // Memoize elements array to prevent unnecessary re-renders
+  const memoizedElements = useMemo(() => elements, [elements]);
+
+  // Debounced snap calculation to improve performance
+  const debouncedSnapCalculation = useMemo(() => {
+    let timeoutId: NodeJS.Timeout;
+    return (element: any, newX: number, newY: number, callback: (result: { x: number, y: number }) => void) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        callback(snapToElementsFunc(element, newX, newY));
+      }, 16); // ~60fps
+    };
+  }, [snapToElementsFunc]);
+
   // Element snapping function
   const snapToElementsFunc = useCallback((element: any, newX: number, newY: number) => {
     if (!snapToElements) return { x: newX, y: newY };
@@ -160,7 +176,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     let snappedY = newY;
     const newSnapLines: {x?: number, y?: number}[] = [];
     
-    elements.forEach(otherElement => {
+    memoizedElements.forEach(otherElement => {
       if (otherElement.id === element.id) return;
       
       // Snap to edges
@@ -232,7 +248,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     
     setSnapLines(newSnapLines);
     return { x: snappedX, y: snappedY };
-  }, [snapToElements, gridSize, elements]);
+  }, [snapToElements, gridSize, memoizedElements]);
 
   // Background image upload handler
   const handleBackgroundUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
@@ -371,10 +387,10 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       currentElement, 
       updatedElement
     ));
-  }, [elements, snapToGrid, addToHistory]);
+  }, [memoizedElements, snapToGrid, addToHistory]);
 
   const deleteElement = useCallback((elementId: string) => {
-    const elementToDelete = elements.find(el => el.id === elementId);
+    const elementToDelete = memoizedElements.find(el => el.id === elementId);
     if (!elementToDelete) return;
     
     setElements((prev: any[]) => prev.filter((el: any) => el.id !== elementId));
@@ -385,7 +401,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     setSelectedElement(null);
     
     addToHistory(HistoryManager.createActionTypes.deleteElement(elementToDelete));
-  }, [elements, addToHistory]);
+  }, [memoizedElements, addToHistory]);
 
   // Canvas controls
   const handleZoomIn = useCallback(() => {
@@ -635,7 +651,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         y: e.clientY - dragStart.y
       });
     }
-  }, [isDragging, dragStart, zoom, elements, draggedElement, snapToGrid, updateElement, canvasData, snapToElements, snapToElementsFunc]);
+  }, [isDragging, dragStart, zoom, memoizedElements, draggedElement, snapToGrid, updateElement, canvasData, snapToElements, snapToElementsFunc]);
 
   const handleMouseUp = useCallback(() => {
     setDraggedElement(null);
@@ -686,7 +702,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   useEffect(() => {
     if (!lock) return;
 
-    const interval = setInterval(async () => {
+    const interval = createInterval(async () => {
       try {
         const refreshedLock = await refreshLock(graphic.id);
         if (refreshedLock) {

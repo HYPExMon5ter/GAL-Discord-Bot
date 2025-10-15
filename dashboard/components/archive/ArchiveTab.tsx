@@ -206,6 +206,7 @@ export function ArchiveTab() {
         
         <Button
           variant="outline"
+          size="sm"
           onClick={refetch}
           disabled={loading}
           className="flex items-center gap-2"

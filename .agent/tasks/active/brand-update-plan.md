@@ -1,14 +1,24 @@
-# GAL Live Graphics Dashboard — Branding Update Plan  
+# GAL Live Graphics Dashboard — UI Enhancement & Canvas Improvement Plan  
 **Author:** HYPExMon5ter  
-**Target Model:** z.ai (GLM-4.6)  
-**Objective:** Restyle the entire Live Graphics Dashboard frontend to fully align with the **Guardian Angel League (GAL) Brand Identity**, using the detailed color palette, typography, and design tone described below.
+**Target Model:** Refactor Coordinator  
+**Objective:** Remove subtle shadows, fix canvas zoom behavior, and implement drag functionality while maintaining GAL branding consistency.
 
 ---
 
 ## 🧭 Context
 This dashboard powers **live graphics overlays** for the *Guardian Angel League (GAL)* — a Teamfight Tactics community and tournament system.  
 It generates OBS-ready graphics, scoreboard visuals, and dynamic canvas scenes.  
-**Only** update styling and presentation; all functional logic, database integrations, and APIs must stay untouched.
+
+### 🔧 Current Issues to Address:
+1. **Subtle Shadows**: Unwanted subtle shadows around tabs, buttons, and graphic table elements
+2. **Canvas Zoom Behavior**: When zooming out, canvas becomes smaller instead of maintaining full screen coverage
+3. **Canvas Interaction**: Missing drag functionality for empty canvas areas and inability to distinguish between element dragging and canvas panning
+
+### 🎯 Key Objectives:
+- Remove all subtle shadows while preserving hover glow effects
+- Implement true infinite canvas zoom behavior (canvas always fills screen)
+- Add canvas drag/pan functionality for empty areas
+- Maintain existing GAL branding and color scheme
 
 ---
 
@@ -76,40 +86,85 @@ It generates OBS-ready graphics, scoreboard visuals, and dynamic canvas scenes.
 ---
 
 ## 🧩 Required Deliverables
-1. **Updated global theme**
-   - Update `tailwind.config.js`, `theme.css`, or equivalent with above palette & fonts.  
-2. **Component restyling**
-   - Modernize buttons, modals, sliders, sidebars using the GAL style system.  
-3. **Brand assets**
-   - Place GAL logo (light & dark variants) in `/public/assets/`.  
-4. **Accessibility**
-   - Ensure text contrast ratios meet WCAG AA.  
-5. **Preview build**
-   - Produce screenshots or build output verifying applied branding.
+
+### Phase 1: Shadow Removal & UI Cleanup
+1. **Remove subtle shadows from UI components**
+   - Target: tabs, buttons, graphic tables
+   - Preserve hover glow effects and interactivity
+   - Update CSS/Tailwind classes to remove shadow utilities
+
+### Phase 2: Canvas Zoom Enhancement
+2. **Implement infinite canvas zoom behavior**
+   - Canvas always fills available screen space
+   - Zoom controls scale content, not canvas container
+   - Maintain viewport coverage at all zoom levels
+
+### Phase 3: Canvas Interaction
+3. **Add canvas drag/pan functionality**
+   - Empty area clicks should enable canvas panning
+   - Element clicks should drag individual elements
+   - Implement proper event delegation and hit detection
+
+### Phase 4: Testing & Polish
+4. **Functionality verification**
+   - Test zoom behavior across all levels
+   - Verify drag interactions work correctly
+   - Ensure no regression in existing features
 
 ---
 
-## 🧠 z.ai Action Plan
-1. Scan the Live Graphics Dashboard repo.  
-2. Locate all style-defining files and component libraries.  
-3. Replace old theme values with the GAL palette and typography above.  
-4. Apply consistent styling across global and per-component files.  
-5. Output updated code plus a summary list of modified files.
+## 🧠 Technical Implementation Plan
+
+### File Analysis Required:
+- `dashboard/components/ui/button.tsx` - Remove shadow utilities, preserve hover effects
+- `dashboard/components/ui/tabs.tsx` - Clean up tab styling 
+- `dashboard/components/ui/select.tsx` - Remove subtle shadows
+- `dashboard/app/globals.css` - Remove global shadow classes
+- Canvas component files (locate these) - Implement zoom and drag functionality
+
+### Implementation Steps:
+1. **Shadow Removal Phase**
+   - Audit all UI components for shadow classes (`shadow`, `shadow-sm`, `shadow-md`, etc.)
+   - Remove unnecessary shadow utilities while preserving hover states
+   - Update global CSS to remove default shadows
+
+2. **Canvas Enhancement Phase**
+   - Locate canvas rendering component
+   - Implement viewport-based zoom (content scales, container fills screen)
+   - Add pan/drag event handlers with hit detection
+   - Ensure proper event delegation between canvas and element interactions
+
+3. **Testing Phase**
+   - Verify zoom maintains full screen coverage
+   - Test drag interactions (canvas vs elements)
+   - Confirm shadow removal doesn't break hover effects
 
 ---
 
 ## ✅ Acceptance Criteria
-- UI matches GAL brand tone (dark-neon, purple/cyan glow, clean typography).  
-- All components remain fully functional.  
-- No unstyled legacy colors or mismatched fonts remain.  
-- Readability and accessibility are preserved.
+- **Shadow Removal**: All subtle shadows removed from tabs, buttons, and tables
+- **Hover Effects**: Glow effects preserved and working on interactive elements
+- **Canvas Zoom**: Canvas always fills screen at all zoom levels (infinite zoom behavior)
+- **Canvas Drag**: Empty areas enable canvas panning, element areas drag individual elements
+- **Functionality**: All existing features work without regression
+- **Visual Polish**: Clean, professional appearance without unwanted shadows
 
 ---
 
-### ⚡ Prompt for z.ai
-> You are updating the **GAL Live Graphics Dashboard** to match the **Guardian Angel League Brand Identity** described in this document.  
-> Use the specified palette, typography, and component styling.  
-> Preserve all logic and functionality while restyling every visible UI element, layout, and control to align with the GAL dark-neon aesthetic.  
-> Deliver updated files and a concise changelog summarizing what was updated.
+### ⚡ Prompt for Refactor Coordinator
+> You are implementing UI enhancements for the **GAL Live Graphics Dashboard** as described in this plan.  
+> 
+> **Primary Tasks:**
+> 1. Remove subtle shadows from tabs, buttons, and tables while preserving hover glow effects
+> 2. Fix canvas zoom behavior so canvas always fills screen at all zoom levels
+> 3. Implement canvas drag/pan functionality for empty areas while maintaining element drag capability
+> 
+> **Technical Approach:**
+> - Audit and remove shadow classes from UI components (`button.tsx`, `tabs.tsx`, `select.tsx`, `globals.css`)
+> - Locate canvas component and implement viewport-based zoom (scale content, not container)
+> - Add event handlers for canvas panning with proper hit detection
+> - Maintain all existing GAL branding and functionality
+> 
+> **Deliverable:** Updated code files with a summary of changes made to address the shadow removal, canvas zoom, and drag functionality requirements.
 
 ---

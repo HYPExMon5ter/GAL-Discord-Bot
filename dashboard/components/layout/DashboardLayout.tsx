@@ -54,11 +54,6 @@ export function DashboardLayout({
             </div>
 
             <div className="flex items-center space-x-4">
-              <Badge variant="secondary" className="flex items-center gap-1 bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0">
-                <Lock className="h-3 w-3" />
-                Online
-              </Badge>
-              
               <Button
                 variant="destructive"
                 size="sm"
@@ -102,7 +97,7 @@ export function DashboardLayout({
       </main>
 
       {/* Footer */}
-      <footer className="flex-shrink-0 border-t border-border/20 bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/60 mt-auto">
+      <footer className="flex-shrink-0 border-t border-border/20 bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/60 mt-auto relative z-50">
         <div className="container mx-auto px-4 py-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-muted-foreground">
             <p className="text-center sm:text-left">© Guardian Angel League — Live Graphics Dashboard</p>

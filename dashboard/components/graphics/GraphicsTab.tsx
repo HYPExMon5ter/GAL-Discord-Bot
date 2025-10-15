@@ -197,6 +197,7 @@ export function GraphicsTab() {
         </div>
         
         <Button 
+          size="sm"
           onClick={() => setCreateDialogOpen(true)} 
           className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-white font-semibold"
         >
@@ -218,6 +219,7 @@ export function GraphicsTab() {
         
         <Button
           variant="outline"
+          size="sm"
           onClick={refetch}
           disabled={loading}
           className="flex items-center gap-2"
@@ -257,6 +259,7 @@ export function GraphicsTab() {
             </CardDescription>
             {!searchTerm && (
               <Button 
+                size="sm"
                 onClick={() => setCreateDialogOpen(true)} 
                 className="mt-4"
               >

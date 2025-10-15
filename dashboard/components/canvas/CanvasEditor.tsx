@@ -808,7 +808,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-background z-50 flex flex-col">
+    <div className="fixed inset-0 bg-background z-40 flex flex-col">
       <div className="border-b bg-card p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button

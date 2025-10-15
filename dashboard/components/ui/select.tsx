@@ -84,7 +84,7 @@ export function SelectContent({ children, className = '' }: SelectContentProps) 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       // Don't close if clicking inside the select content or trigger
-      const target = event.target as Node;
+      const target = event.target as Element;
       if (contentRef.current && !contentRef.current.contains(target)) {
         // Check if the clicked element is a select trigger
         const selectTrigger = target.closest('[data-select-trigger]');

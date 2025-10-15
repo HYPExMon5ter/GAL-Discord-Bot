@@ -1424,7 +1424,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
               <div
                 key={element.id}
                 data-element-id={element.id}
-                className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''}`}`}, {"old_str":
+                className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''}`}
                 style={{
                   left: `${element.x * zoom}px`,
                   top: `${element.y * zoom}px`,

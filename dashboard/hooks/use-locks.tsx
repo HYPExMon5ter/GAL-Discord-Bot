@@ -88,9 +88,28 @@ export function useLocks() {
   // Auto-refresh locks every 30 seconds
   useEffect(() => {
     fetchLocks();
-    const interval = createInterval(fetchLocks, 30000);
+    const interval = createInterval(() => {
+      setLoading(true);
+      setError(null);
+      try {
+        lockApi.getStatus().then(locksData => {
+          setLocks(Array.isArray(locksData) ? locksData : []);
+        }).catch(err => {
+          setError('Failed to fetch locks');
+          console.error('Failed to fetch locks:', err);
+          setLocks([]);
+        }).finally(() => {
+          setLoading(false);
+        });
+      } catch (err) {
+        setError('Failed to fetch locks');
+        console.error('Failed to fetch locks:', err);
+        setLocks([]);
+        setLoading(false);
+      }
+    }, 120000); // 2 minutes instead of 30 seconds
     return () => clearInterval(interval);
-  }, [fetchLocks, createInterval, clearInterval]);
+  }, [createInterval, clearInterval]);
 
   return {
     locks,

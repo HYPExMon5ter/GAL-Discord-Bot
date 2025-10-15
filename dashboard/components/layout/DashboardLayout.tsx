@@ -39,7 +39,8 @@ export function DashboardLayout({
   };
 
   return (
-    <div className="min-h-screen bg-background gal-scrollbar flex flex-col">
+    <>
+      <div className="min-h-screen bg-background gal-scrollbar flex flex-col">
       {/* Header */}
       <header className="border-b border-border/20 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 gal-card flex-shrink-0">
         <div className="container mx-auto px-4 py-4">
@@ -112,8 +113,9 @@ export function DashboardLayout({
         </div>
       </footer>
     </div>
-    
-    {/* Performance Monitor - Only in development */}
-    {process.env.NODE_ENV === 'development' && <PerformanceMonitor />}
+
+      {/* Performance Monitor - Only in development */}
+      {process.env.NODE_ENV === 'development' && <PerformanceMonitor />}
+    </>
   );
 }

@@ -70,7 +70,7 @@ export function PerformanceMonitor() {
 
   if (!isVisible) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className="fixed bottom-4 right-4 z-[9999]">
         <Button
           variant="outline"
           size="sm"
@@ -85,7 +85,7 @@ export function PerformanceMonitor() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80">
+    <div className="fixed bottom-4 right-4 z-[9999] w-80">
       <Card className="bg-black/90 border-white/20 text-white">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">

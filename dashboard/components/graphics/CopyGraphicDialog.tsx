@@ -115,6 +115,7 @@ export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }:
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={handleClose}
               disabled={loading}
             >
@@ -122,6 +123,7 @@ export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }:
             </Button>
             <Button
               type="submit"
+              size="sm"
               disabled={!title.trim() || !eventName.trim() || loading}
             >
               {loading ? 'Copying...' : 'Copy Graphic'}

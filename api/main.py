@@ -116,6 +116,13 @@ async def refresh_token(current_user: TokenData = Depends(verify_token)):
         "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
     }
 
+@app.post("/auth/logout")
+async def logout():
+    """
+    Logout endpoint (JWT tokens are stateless, client handles token removal)
+    """
+    return {"message": "Successfully logged out"}
+
 @app.get("/auth/verify")
 async def verify_auth(current_user: TokenData = Depends(verify_token)):
     """

@@ -808,7 +808,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-background z-40 flex flex-col">
+    <div className="fixed inset-0 bg-background z-30 flex flex-col">
       <div className="border-b bg-card p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -922,12 +922,14 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           </Button>
           <Button
             variant="outline"
+            size="sm"
             onClick={handleClose}
             disabled={saving}
           >
             Cancel
           </Button>
           <Button
+            size="sm"
             onClick={handleSave}
             disabled={saving || !title.trim() || !eventName.trim()}
             className="flex items-center gap-1"
@@ -938,7 +940,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex flex-1 overflow-hidden">
           <div className={`${sidebarCollapsed ? 'w-12' : 'w-80'} border-r bg-muted flex flex-col transition-all duration-200 h-full`}>
           <div className="p-2 border-b bg-card">
@@ -962,8 +964,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 </TabsList>
               </div>
 
-              <div className="flex-1 overflow-hidden" style={{ minHeight: '0' }}>
-                <TabsContent value="design" className="m-0 h-full overflow-auto" style={{ paddingBottom: '20px' }}>
+              <div className="flex-1 overflow-hidden">
+                <TabsContent value="design" className="m-0 h-full overflow-auto p-2">
                   <div className="p-4 space-y-4">
                     <Card>
                       <CardHeader className="pb-2">
@@ -1242,7 +1244,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="elements" className="m-0 h-full overflow-auto" style={{ paddingBottom: '20px' }}>
+                <TabsContent value="elements" className="m-0 h-full overflow-auto p-2">
                   <div className="p-4">
                     <Card>
                       <CardHeader>
@@ -1287,7 +1289,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="data" className="m-0 h-full overflow-auto" style={{ paddingBottom: '20px' }}>
+                <TabsContent value="data" className="m-0 h-full overflow-auto p-2">
                   <div className="p-4">
                     <Card>
                       <CardHeader>
@@ -1350,7 +1352,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         <div className="flex-1 bg-muted overflow-hidden relative">
           <div
             ref={canvasRef}
-            className="absolute inset-0 bg-card overflow-hidden"
+            className="absolute inset-0 bg-card overflow-hidden z-10"
             style={{
               backgroundColor: canvasData?.settings?.backgroundColor || '#2a2a2a'
             }}
@@ -1459,7 +1461,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       </div>
     </div>
 
-      <div className="border-t bg-card p-4">
+      <div className="border-t bg-card p-4 relative z-20">
           <div className="flex items-center justify-between">
             {/* Left side - Grid and Snap controls */}
             <div className="flex items-center gap-2">

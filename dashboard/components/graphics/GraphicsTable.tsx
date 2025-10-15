@@ -121,24 +121,27 @@ export function GraphicsTable({
   const ActionButtons = ({ graphic }: { graphic: Graphic | ArchivedGraphic }) => {
     if (isArchived) {
       return (
-        <div className="flex items-center justify-center gap-1">
+        <div className="flex items-center justify-center gap-1 flex-wrap">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onDuplicate(graphic)}
-            className="h-8 px-2"
+            className="h-8 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+            title="Duplicate graphic"
           >
-            <Copy className="h-3 w-3" />
+            <Copy className="h-3 w-3 mr-1" />
+            <span className="text-xs">Copy</span>
           </Button>
           {onUnarchive && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => onUnarchive(graphic)}
-              className="h-8 px-2 text-green-600 hover:text-green-700"
+              className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
               title="Restore to active"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="h-3 w-3 mr-1" />
+              <span className="text-xs">Unarchive</span>
             </Button>
           )}
           {onRestore && (
@@ -146,10 +149,11 @@ export function GraphicsTable({
               variant="ghost"
               size="sm"
               onClick={() => onRestore(graphic)}
-              className="h-8 px-2 text-green-600 hover:text-green-700"
+              className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
               title="Restore to active"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="h-3 w-3 mr-1" />
+              <span className="text-xs">Restore</span>
             </Button>
           )}
           {onArchive && (
@@ -157,34 +161,39 @@ export function GraphicsTable({
               variant="ghost"
               size="sm"
               onClick={() => onArchive(graphic)}
-              className="h-8 px-2 text-green-600 hover:text-green-700"
+              className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
               title="Restore to active"
             >
-              <RotateCcw className="h-3 w-3" />
+              <RotateCcw className="h-3 w-3 mr-1" />
+              <span className="text-xs">Restore</span>
             </Button>
           )}
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onDelete(graphic)}
-            className="h-8 px-2 text-red-600 hover:text-red-700"
+            className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+            title="Delete graphic"
           >
-            <Trash2 className="h-3 w-3" />
+            <Trash2 className="h-3 w-3 mr-1" />
+            <span className="text-xs">Delete</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onView(graphic)}
-            className="h-8 px-2"
+            className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            title="View in OBS"
           >
-            <Eye className="h-3 w-3" />
+            <Eye className="h-3 w-3 mr-1" />
+            <span className="text-xs">View</span>
           </Button>
         </div>
       );
     }
 
     return (
-      <div className="flex items-center justify-center gap-1">
+      <div className="flex items-center justify-center gap-1 flex-wrap">
         {/* Edit button - only show for active graphics */}
         {!isArchived && (
           <Button
@@ -194,7 +203,8 @@ export function GraphicsTable({
             className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
             title="Edit graphic"
           >
-            <Edit className="h-3 w-3" />
+            <Edit className="h-3 w-3 mr-1" />
+            <span className="text-xs">Edit</span>
           </Button>
         )}
         <Button
@@ -204,7 +214,8 @@ export function GraphicsTable({
           className="h-8 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
           title="Duplicate graphic"
         >
-          <Copy className="h-3 w-3" />
+          <Copy className="h-3 w-3 mr-1" />
+          <span className="text-xs">Copy</span>
         </Button>
         <Button
           variant="ghost"
@@ -214,9 +225,15 @@ export function GraphicsTable({
           title={isArchived ? "Restore to active" : "Archive graphic"}
         >
           {isArchived ? (
-            <RotateCcw className="h-3 w-3" />
+            <>
+              <RotateCcw className="h-3 w-3 mr-1" />
+              <span className="text-xs">Restore</span>
+            </>
           ) : (
-            <Archive className="h-3 w-3" />
+            <>
+              <Archive className="h-3 w-3 mr-1" />
+              <span className="text-xs">Archive</span>
+            </>
           )}
         </Button>
         <Button
@@ -226,7 +243,8 @@ export function GraphicsTable({
           className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
           title="Delete graphic"
         >
-          <Trash2 className="h-3 w-3" />
+          <Trash2 className="h-3 w-3 mr-1" />
+          <span className="text-xs">Delete</span>
         </Button>
         <Button
           variant="ghost"
@@ -235,7 +253,8 @@ export function GraphicsTable({
           className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
           title="View in OBS"
         >
-          <Eye className="h-3 w-3" />
+          <Eye className="h-3 w-3 mr-1" />
+          <span className="text-xs">View</span>
         </Button>
       </div>
     );

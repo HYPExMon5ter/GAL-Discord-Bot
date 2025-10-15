@@ -101,6 +101,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
             <Button
               type="button"
               variant="outline"
+              size="sm"
               onClick={handleClose}
               disabled={loading}
             >
@@ -108,6 +109,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
             </Button>
             <Button
               type="submit"
+              size="sm"
               disabled={!title.trim() || !eventName.trim() || loading}
             >
               {loading ? 'Creating...' : 'Create & Start Editing'}

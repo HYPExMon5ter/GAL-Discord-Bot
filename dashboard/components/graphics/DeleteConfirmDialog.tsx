@@ -86,6 +86,7 @@ export function DeleteConfirmDialog({
         <DialogFooter>
           <Button
             variant="outline"
+            size="sm"
             onClick={() => onOpenChange(false)}
             disabled={isDeleting}
           >
@@ -93,6 +94,7 @@ export function DeleteConfirmDialog({
           </Button>
           <Button
             variant="destructive"
+            size="sm"
             onClick={handleConfirm}
             disabled={isDeleting}
           >

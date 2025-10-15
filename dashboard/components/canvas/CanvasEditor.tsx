@@ -808,7 +808,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }
 
   return (
-    <div className="fixed inset-x-0 inset-y-0 bg-background z-40 flex flex-col" style={{ height: 'calc(100vh - 80px)', top: '0' }}>
+    <div className="fixed inset-0 bg-background z-40 flex flex-col">
       <div className="border-b bg-card p-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
@@ -940,7 +940,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
       <div className="flex-1 flex flex-col">
         <div className="flex flex-1 overflow-hidden">
-          <div className={`${sidebarCollapsed ? 'w-12' : 'w-80'} border-r bg-muted flex flex-col transition-all duration-200`}>
+          <div className={`${sidebarCollapsed ? 'w-12' : 'w-80'} border-r bg-muted flex flex-col transition-all duration-200 h-full`}>
           <div className="p-2 border-b bg-card">
             <Button
               variant="ghost"
@@ -962,7 +962,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 </TabsList>
               </div>
 
-              <div className="flex-1 overflow-auto" style={{ paddingBottom: '20px' }}>
+              <div className="flex-1 overflow-auto" style={{ paddingBottom: '20px', minHeight: '0' }}>
                 <TabsContent value="design" className="m-0">
                   <div className="p-4 space-y-4">
                     <Card>

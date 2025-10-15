@@ -121,7 +121,7 @@ export function GraphicsTable({
   const ActionButtons = ({ graphic }: { graphic: Graphic | ArchivedGraphic }) => {
     if (isArchived) {
       return (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center justify-center gap-1">
           <Button
             variant="ghost"
             size="sm"

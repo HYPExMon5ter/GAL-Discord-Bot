@@ -1,7 +1,7 @@
 ---
 id: system.cross_references
-version: 1.1
-last_updated: 2025-01-13
+version: 1.2
+last_updated: 2025-01-14
 tags: [cross-references, integration, system-links, documentation-map]
 ---
 
@@ -100,6 +100,39 @@ Select (Container)
 - **Form Components**: All form-based inputs requiring selection
 
 ### Recent System Enhancements
+
+#### Button Consistency and UI Improvements (2025-01-14)
+**Documentation**: `[Frontend Components](./frontend-components.md)` - Updated GraphicsTable, CreateGraphicDialog, CopyGraphicDialog, DeleteConfirmDialog sections
+**Files Modified**: 
+- `dashboard/components/graphics/GraphicsTable.tsx` - Enhanced action buttons with consistency improvements
+- `dashboard/components/graphics/CreateGraphicDialog.tsx` - Button styling consistency
+- `dashboard/components/graphics/CopyGraphicDialog.tsx` - Button layout improvements  
+- `dashboard/components/graphics/DeleteConfirmDialog.tsx` - Enhanced button design
+
+**Key Improvements**:
+- **Consistent Button Sizing**: All action buttons now use `size="sm"` for uniform appearance
+- **Enhanced Visual Feedback**: Color-coded hover states (blue, purple, green, red themes)
+- **Responsive Button Layout**: `flex-wrap` implementation for mobile compatibility
+- **Icon + Text Labels**: Better accessibility with descriptive text alongside icons
+- **Improved Hover Effects**: Color-specific background colors for different action types
+
+**Button Color Scheme Applied**:
+- **Edit Actions**: Blue theme (`hover:bg-blue-50`)
+- **Copy Actions**: Purple theme (`hover:bg-purple-50`) 
+- **Archive/Restore Actions**: Green theme (`hover:bg-green-50`)
+- **Delete Actions**: Red theme (`hover:bg-red-50`)
+- **View Actions**: Blue theme (`hover:bg-blue-50`)
+
+#### API Authentication Enhancements (2025-01-14)
+**Documentation**: `[API Integration](./api-integration.md)` - Updated authentication endpoints section
+**Files Modified**: 
+- `api/main.py` - Added new logout endpoint
+
+**Key Improvements**:
+- **New Logout Endpoint**: `POST /auth/logout` for proper session management
+- **Simplified API Contract**: Removed refresh token requirement from logout request
+- **Stateless Token Handling**: Client-side token removal with server acknowledgment
+- **Enhanced Security**: Clear logout response for proper frontend handling
 
 #### Graphics API System Updates
 **Documentation**: `[Graphics API Enhancements](./graphics-api-enhancements.md)`

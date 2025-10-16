@@ -2,11 +2,10 @@
 
 import asyncio
 import json
-import logging
 import os
 import random
 import time
-from typing import Tuple
+from typing import Dict, Tuple
 
 import discord
 import gspread
@@ -14,10 +13,14 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 from config import get_sheet_settings, col_to_index, get_registered_role, get_checked_in_role
 from core.persistence import get_event_mode_for_guild
+from integrations.sheet_cache_manager import SheetCacheManager
 from integrations.sheet_integration import SheetIntegrationHelper
 from integrations.sheet_optimizer import (
-    fetch_required_columns_batch, update_cells_batch, detect_columns_optimized
+    fetch_required_columns_batch,
+    update_cells_batch,
+    detect_columns_optimized,
 )
+from utils.logging_utils import SecureLogger
 
 # Scope for Google Sheets API
 SCOPE = [
@@ -36,12 +39,20 @@ class AuthenticationError(SheetsError):
     pass
 
 
+logger = SecureLogger(__name__)
+cache_manager = SheetCacheManager(
+    ttl_seconds=int(os.getenv("SHEET_CACHE_TTL", "600"))
+)
+sheet_cache = cache_manager.data
+cache_lock = cache_manager.lock
+
+
 def initialize_credentials():
     """Initialize Google Sheets credentials with proper error handling."""
     try:
         if os.path.exists("./google-creds.json"):
             creds = ServiceAccountCredentials.from_json_keyfile_name("./google-creds.json", SCOPE)
-            logging.info("Loaded Google credentials from file")
+            logger.info("Loaded Google credentials from file")
         else:
             creds_json = os.environ.get("GOOGLE_CREDS_JSON")
             if not creds_json:
@@ -52,7 +63,7 @@ def initialize_credentials():
             try:
                 creds_dict = json.loads(creds_json)
                 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
-                logging.info("Loaded Google credentials from environment variable")
+                logger.info("Loaded Google credentials from environment variable")
             except json.JSONDecodeError as e:
                 raise AuthenticationError(f"Invalid JSON in GOOGLE_CREDS_JSON: {e}")
 
@@ -67,9 +78,9 @@ def initialize_credentials():
 try:
     creds = initialize_credentials()
     client = gspread.authorize(creds)
-    logging.info("Google Sheets client initialized successfully")
+    logger.info("Google Sheets client initialized successfully")
 except Exception as e:
-    logging.error(f"Failed to initialize Google Sheets client: {e}")
+    logger.error(f"Failed to initialize Google Sheets client: {e}")
     client = None
 
 
@@ -116,15 +127,15 @@ async def get_sheet_for_guild(guild_id: str, worksheet: str | None = None):
                 raise
 
     except gspread.SpreadsheetNotFound:
-        logging.error(f"Spreadsheet not found or access denied for guild {guild_id}")
+        logger.error(f"Spreadsheet not found or access denied for guild {guild_id}")
         raise SheetsError(f"Spreadsheet not found or access denied for guild {guild_id}")
     except gspread.WorksheetNotFound:
-        logging.error(f"Worksheet '{worksheet_name}' not found for guild {guild_id}")
+        logger.error(f"Worksheet '{worksheet_name}' not found for guild {guild_id}")
         raise SheetsError(f"Worksheet '{worksheet_name}' not found")
     except Exception as e:
         if isinstance(e, SheetsError):
             raise
-        logging.error(f"Failed to open sheet for guild {guild_id}: {e}", exc_info=True)
+        logger.error(f"Failed to open sheet for guild {guild_id}: {e}", exc_info=True)
         raise SheetsError(f"Failed to open sheet for guild {guild_id}: {e}")
 
 
@@ -163,12 +174,12 @@ async def retry_until_successful(fn, *args, **kwargs):
             if "429" in str(e) or any(keyword in err_str for keyword in ["quota", "rate", "limit"]):
                 if delay >= 30 or attempts > 3:
                     wait_time = FULL_BACKOFF + random.uniform(0, 5)
-                    logging.warning(f"Quota exceeded, waiting {wait_time:.1f}s (attempt {attempts})")
+                    logger.warning(f"Quota exceeded, waiting {wait_time:.1f}s (attempt {attempts})")
                     await asyncio.sleep(wait_time)
                     delay = FULL_BACKOFF
                 else:
                     wait_time = delay + random.uniform(0, 0.5)
-                    logging.warning(f"Rate limited, waiting {wait_time:.1f}s (attempt {attempts})")
+                    logger.warning(f"Rate limited, waiting {wait_time:.1f}s (attempt {attempts})")
                     await asyncio.sleep(wait_time)
                     delay = min(delay * 2, MAX_DELAY)
 
@@ -180,14 +191,14 @@ async def retry_until_successful(fn, *args, **kwargs):
             elif any(code in str(e) for code in ["400", "403", "404", "500", "502", "503"]):
                 if attempts >= MAX_RETRIES - 1:
                     raise SheetsError(f"HTTP error after {attempts} attempts: {e}")
-                logging.warning(f"HTTP error, retrying (attempt {attempts}): {e}")
+                logger.warning(f"HTTP error, retrying (attempt {attempts}): {e}")
                 await asyncio.sleep(delay)
 
             # For other errors, fail immediately on critical ones
             elif "connection" in err_str or "timeout" in err_str:
                 if attempts >= MAX_RETRIES - 1:
                     raise SheetsError(f"Connection error after {attempts} attempts: {e}")
-                logging.warning(f"Connection error, retrying (attempt {attempts}): {e}")
+                logger.warning(f"Connection error, retrying (attempt {attempts}): {e}")
                 await asyncio.sleep(delay)
             else:
                 # Unknown error, don't retry
@@ -196,10 +207,6 @@ async def retry_until_successful(fn, *args, **kwargs):
     # All retries exhausted
     raise SheetsError(f"All {MAX_RETRIES} retries exhausted. Last error: {last_error}")
 
-
-# Cache management - now integrated with DAL
-sheet_cache = {"users": {}, "last_refresh": 0}
-cache_lock = asyncio.Lock()
 
 # Integration with new DAL (Phase 2 migration)
 _legacy_adapter = None
@@ -216,7 +223,7 @@ async def get_legacy_adapter():
     return _legacy_adapter
 
 
-async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
+async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, int]:
     """
     Refresh the sheet cache with comprehensive error handling.
     Synchronizes Discord roles with sheet data after refresh.
@@ -225,17 +232,20 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
     Phase 2 Integration: Now integrates with the new DAL for event broadcasting
     and unified cache management while maintaining backward compatibility.
     """
-    # Only print at start if this is not a recursive call
+    # Only log at start if this is not a recursive call
     if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-        print("[CACHE] Starting refresh_sheet_cache")
+        logger.debug("[CACHE] Starting refresh_sheet_cache")
+        if not force and not cache_manager.is_stale():
+            logger.debug("[CACHE] Cache is fresh; skipping refresh")
+            return 0, len(sheet_cache.get("users", {}))
     
     # Phase 2: Initialize DAL integration
     try:
         adapter = await get_legacy_adapter()
         if hasattr(sheet_cache, "_skip_waitlist_processing"):
-            print("[CACHE] Using DAL integration for cache refresh")
+            logger.debug("[CACHE] Using DAL integration for cache refresh")
     except Exception as e:
-        print(f"[CACHE] DAL integration not available: {e}")
+        logger.debug(f"[CACHE] DAL integration not available: {e}")
         adapter = None
 
     # Store guild reference for later use
@@ -247,7 +257,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
         try:
             # Get guild information - properly resolve from bot
             if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print("[CACHE] Getting guild information...")
+                logger.debug("[CACHE] Getting guild information...")
 
             # Properly get guild from bot
             if bot and hasattr(bot, "guilds") and bot.guilds:
@@ -264,10 +274,10 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                 else:
                     # Fallback but log warning
                     gid = "unknown"
-                    logging.warning("[CACHE] No guild available for cache refresh - using 'unknown'")
+                    logger.warning("[CACHE] No guild available for cache refresh - using 'unknown'")
 
             if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print(f"[CACHE] Guild ID: {gid}")
+                logger.debug(f"[CACHE] Guild ID: {gid}")
 
             mode = get_event_mode_for_guild(gid)
             cfg, col_indexes = await SheetIntegrationHelper.get_sheet_and_column_config(gid)
@@ -276,9 +286,9 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             column_config = await SheetIntegrationHelper.get_column_config(gid)
             is_valid, missing_columns = SheetIntegrationHelper.validate_required_columns(column_config, mode)
             if not is_valid:
-                logging.error(f"[CACHE] Missing required columns: {missing_columns}")
-                logging.error(f"[CACHE] Column config: {column_config}")
-                logging.error(f"[CACHE] This can be fixed by running /gal config and using the Detect button")
+                logger.error(f"[CACHE] Missing required columns: {missing_columns}")
+                logger.error(f"[CACHE] Column config: {column_config}")
+                logger.error(f"[CACHE] This can be fixed by running /gal config and using the Detect button")
                 raise SheetsError(f"Missing required columns: {missing_columns}")
 
             maxp = cfg.get("max_players", 9999)
@@ -306,7 +316,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
 
             # Fetch all required columns in a single batch operation
             if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print("[CACHE] Fetching sheet columns (optimized batch)...")
+                logger.debug("[CACHE] Fetching sheet columns (optimized batch)...")
             try:
                 # Prepare column indexes for batch fetching
                 column_indexes = {
@@ -334,7 +344,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                 team_col = batch_data.get("team_idx", [])
 
                 if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                    print(f"[CACHE] Successfully fetched {len(batch_data)} columns in batch")
+                    logger.debug(f"[CACHE] Successfully fetched {len(batch_data)} columns in batch")
 
             except Exception as e:
                 raise SheetsError(f"Failed to fetch sheet data in batch: {e}")
@@ -384,29 +394,26 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
 
             # Update cache
             sheet_cache["users"] = new_map
-            sheet_cache["last_refresh"] = time.time()
+            cache_manager.mark_refresh()
 
             total_changes = len(added) + len(removed) + len(changed)
             total_users = len(new_map)
 
-            logging.info(f"Cache refreshed: {total_changes} changes, {total_users} total users")
-            if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print(f"[CACHE] Cache refreshed: {total_changes} changes, {total_users} total users")
+            logger.info(f"[CACHE] Cache refreshed: {total_changes} changes, {total_users} total users")
 
-            # Log if any unregistrations were detected
             if unregistered_users and not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print(f"[CACHE] Detected {len(unregistered_users)} unregistrations: {unregistered_users}")
+                logger.info(f"[CACHE] Detected {len(unregistered_users)} unregistrations: {unregistered_users}")
 
         except Exception as e:
             if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-                print(f"[CACHE] ERROR in refresh_sheet_cache: {e}")
+                logger.error(f"[CACHE] ERROR in refresh_sheet_cache: {e}")
             if isinstance(e, SheetsError):
                 raise
             raise SheetsError(f"Failed to refresh cache: {e}")
 
     # ROLE SYNCHRONIZATION - After cache is updated, sync all Discord roles
     if guild and not hasattr(sheet_cache, "_skip_waitlist_processing"):
-        print("[CACHE] Synchronizing Discord roles with sheet data...")
+        logger.debug("[CACHE] Synchronizing Discord roles with sheet data...")
         try:
             from helpers import RoleManager
             from utils.utils import resolve_member
@@ -435,7 +442,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                     roles_synced += 1
 
                 except Exception as e:
-                    logging.warning(f"Failed to sync roles for {discord_tag}: {e}")
+                    logger.warning(f"Failed to sync roles for {discord_tag}: {e}")
                     continue
 
             # Also check for users in server who have roles but are not in cache
@@ -444,7 +451,7 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             checked_in_role = get_checked_in_role()
 
             if registered_role or checked_in_role:
-                print("[CACHE] Checking for users with stale roles...")
+                logger.debug("[CACHE] Checking for users with stale roles...")
                 cache_discord_tags = set(cache_snapshot.keys())
 
                 # Get all members with registration roles
@@ -470,28 +477,27 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
                         try:
                             await RoleManager.sync_user_roles(member, False, False)
                             stale_roles_removed += 1
-                            print(f"[CACHE] Removed stale roles from {discord_tag}")
+                            logger.debug(f"[CACHE] Removed stale roles from {discord_tag}")
                         except Exception as e:
-                            logging.warning(f"Failed to remove stale roles from {discord_tag}: {e}")
+                            logger.warning(f"Failed to remove stale roles from {discord_tag}: {e}")
 
                 if stale_roles_removed > 0:
-                    print(f"[CACHE] Removed stale roles from {stale_roles_removed} users")
+                    logger.debug(f"[CACHE] Removed stale roles from {stale_roles_removed} users")
                     roles_synced += stale_roles_removed
 
             if roles_synced > 0:
-                print(f"[CACHE] Synchronized roles for {roles_synced} users total")
-                logging.info(f"Synchronized Discord roles for {roles_synced} users after cache refresh")
+                logger.debug(f"[CACHE] Synchronized roles for {roles_synced} users total")
+                logger.info(f"Synchronized Discord roles for {roles_synced} users after cache refresh")
 
         except Exception as e:
-            print(f"[CACHE] Role synchronization failed: {e}")
-            logging.error(f"Failed to synchronize roles after cache refresh: {e}")
+            logger.error(f"[CACHE] Failed to synchronize roles after cache refresh: {e}")
 
     # Process waitlist AFTER releasing the cache lock and syncing roles
     # This is important - we process waitlist if:
     # 1. Users were removed/unregistered (spots opened up)
     # 2. Always check after cache refresh to ensure consistency
     if guild and not hasattr(sheet_cache, "_skip_waitlist_processing"):
-        print("[CACHE] Processing waitlist (after releasing lock)...")
+        logger.debug("[CACHE] Processing waitlist (after releasing lock)...")
         try:
             from helpers.waitlist_helpers import WaitlistManager
 
@@ -499,41 +505,41 @@ async def refresh_sheet_cache(bot=None) -> Tuple[int, int]:
             registered_from_waitlist = await WaitlistManager.process_waitlist(guild)
 
             if registered_from_waitlist:
-                print(f"[CACHE] Registered {len(registered_from_waitlist)} users from waitlist")
+                logger.info(f"[CACHE] Registered {len(registered_from_waitlist)} users from waitlist")
 
                 # Refresh cache again after waitlist processing to ensure consistency
-                print("[CACHE] Refreshing cache again after waitlist processing...")
+                logger.info("[CACHE] Refreshing cache again after waitlist processing...")
                 # Set flag to skip waitlist processing and reduce logging
                 sheet_cache["_skip_waitlist_processing"] = True
                 try:
-                    await refresh_sheet_cache(bot=bot)
+                    await refresh_sheet_cache(bot=bot, force=True)
                 finally:
                     # Remove the flag
                     del sheet_cache["_skip_waitlist_processing"]
             else:
-                print("[CACHE] No users registered from waitlist")
+                logger.debug("[CACHE] No users registered from waitlist")
 
         except ImportError as e:
-            print(f"[CACHE] WaitlistManager import failed: {e}")
-            logging.debug("WaitlistManager not available, skipping waitlist processing")
+            logger.debug(f"[CACHE] WaitlistManager import failed: {e}")
+            logger.debug("WaitlistManager not available, skipping waitlist processing")
         except Exception as e:
-            print(f"[CACHE] Waitlist processing failed: {e}")
-            logging.warning(f"Failed to process waitlist: {e}")
+            logger.debug(f"[CACHE] Waitlist processing failed: {e}")
+            logger.warning(f"Failed to process waitlist: {e}")
 
     # Update unified channel only after the final cache refresh
     if guild and not hasattr(sheet_cache, "_skip_waitlist_processing"):
-        print("[CACHE] Updating unified channel...")
+        logger.debug("[CACHE] Updating unified channel...")
         try:
             from core.components_traditional import update_unified_channel
             await update_unified_channel(guild)
-            print("[CACHE] Updated unified channel")
+            logger.debug("[CACHE] Updated unified channel")
         except Exception as e:
-            print(f"[CACHE] Failed to update unified channel: {e}")
-            logging.warning(f"Failed to update unified channel after cache refresh: {e}")
+            logger.debug(f"[CACHE] Failed to update unified channel: {e}")
+            logger.warning(f"Failed to update unified channel after cache refresh: {e}")
 
     # Only print completion message if not a recursive call
     if not hasattr(sheet_cache, "_skip_waitlist_processing"):
-        print(f"[CACHE] refresh_sheet_cache complete! (Synced {roles_synced} roles)")
+        logger.debug(f"[CACHE] refresh_sheet_cache complete! (Synced {roles_synced} roles)")
 
     return total_changes, total_users
 
@@ -554,16 +560,16 @@ async def cache_refresh_loop(bot):
         try:
             # Process each guild separately to update unified channels
             for guild in bot.guilds:
-                await refresh_sheet_cache(bot=bot)
-            logging.debug("Periodic cache refresh completed")
+                await refresh_sheet_cache(bot=bot, force=True)
+            logger.debug("Periodic cache refresh completed")
             consecutive_errors = 0  # Reset on success
         except Exception as e:
             consecutive_errors += 1
-            logging.error(f"Periodic cache refresh failed ({consecutive_errors}/{max_consecutive_errors}): {e}")
+            logger.error(f"Periodic cache refresh failed ({consecutive_errors}/{max_consecutive_errors}): {e}")
 
             # If too many consecutive errors, wait longer before retrying
             if consecutive_errors >= max_consecutive_errors:
-                logging.error(f"Too many cache refresh failures, waiting 5 minutes before retry")
+                logger.error(f"Too many cache refresh failures, waiting 5 minutes before retry")
                 await asyncio.sleep(300)  # 5 minutes
                 consecutive_errors = 0  # Reset counter
                 continue
@@ -651,7 +657,7 @@ async def find_or_register_user(
             )
 
             if updates_needed:
-                logging.info(f"Updated existing user {discord_tag}: {', '.join(updates_needed)}")
+                logger.info(f"Updated existing user {discord_tag}: {', '.join(updates_needed)}")
 
             return row
 
@@ -744,7 +750,7 @@ async def find_or_register_user(
             row, ign, True, False, team_name or "", alt_igns or "", pronouns or ""
         )
 
-        logging.info(f"Registered new user {discord_tag} as {ign} in row {row}")
+        logger.info(f"Registered new user {discord_tag} as {ign} in row {row}")
         return row
 
     except Exception as e:
@@ -768,7 +774,7 @@ async def unregister_user(
             user_data = sheet_cache["users"].get(discord_tag)
 
         if not user_data:
-            logging.info(f"User {discord_tag} not found in cache for unregistration")
+            logger.info(f"User {discord_tag} not found in cache for unregistration")
             return False
 
         row, _ign, _reg, _ci, _team, _alt, _pronouns = user_data
@@ -782,7 +788,7 @@ async def unregister_user(
         try:
             cell = await retry_until_successful(sheet.acell, f"{cfg['discord_col']}{row}")
             if cell.value.strip() != discord_tag:
-                logging.warning(f"User {discord_tag} not found at expected row {row}")
+                logger.warning(f"User {discord_tag} not found at expected row {row}")
                 return False
         except Exception as e:
             raise SheetsError(f"Failed to verify user location: {e}")
@@ -809,14 +815,14 @@ async def unregister_user(
                     value
                 )
             except Exception as e:
-                logging.error(f"Failed to clear {col} for user {discord_tag}: {e}")
+                logger.error(f"Failed to clear {col} for user {discord_tag}: {e}")
                 # Continue with other operations
 
         # Remove from cache
         async with cache_lock:
             sheet_cache["users"].pop(discord_tag, None)
 
-        logging.info(f"Successfully unregistered user {discord_tag}")
+        logger.info(f"Successfully unregistered user {discord_tag}")
         return True
 
     except Exception as e:
@@ -861,20 +867,20 @@ async def _update_checkin_status(
             user_data = sheet_cache["users"].get(discord_tag)
 
         if not user_data:
-            logging.info(f"User {discord_tag} not found for check-in update")
+            logger.info(f"User {discord_tag} not found for check-in update")
             return False
 
         row, ign, reg, current_ci, team, alt, pronouns = user_data
 
         # Must be registered to check in
         if not reg:
-            logging.info(f"User {discord_tag} not registered, cannot update check-in status")
+            logger.info(f"User {discord_tag} not registered, cannot update check-in status")
             return False
 
         # Check if already in desired state
         is_currently_checked_in = str(current_ci).upper() == "TRUE"
         if is_currently_checked_in == checked_in:
-            logging.debug(f"User {discord_tag} already in desired check-in state: {checked_in}")
+            logger.debug(f"User {discord_tag} already in desired check-in state: {checked_in}")
             return True
 
         gid = str(guild_id) if guild_id else "unknown"
@@ -895,7 +901,7 @@ async def _update_checkin_status(
         )
 
         action = "checked in" if checked_in else "checked out"
-        logging.info(f"User {discord_tag} successfully {action}")
+        logger.info(f"User {discord_tag} successfully {action}")
         return True
 
     except Exception as e:
@@ -955,7 +961,7 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
                     cell.value = clear_value
 
                 await retry_until_successful(sheet.update_cells, cell_list)
-                logging.info(f"Cleared column {col_letter} from row {start_row} to {end_row}")
+                logger.info(f"Cleared column {col_letter} from row {start_row} to {end_row}")
 
         # Clear waitlist for this guild
         from helpers.waitlist_helpers import WaitlistManager
@@ -981,7 +987,7 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
                     await member.remove_roles(*roles_to_remove, reason="Registration reset")
                     roles_removed += 1
                 except Exception as e:
-                    logging.warning(f"Failed to remove roles from {member}: {e}")
+                    logger.warning(f"Failed to remove roles from {member}: {e}")
 
         # Also check for any orphaned checked-in roles (shouldn't happen but be safe)
         if checked_in_role:
@@ -991,14 +997,14 @@ async def reset_registered_roles_and_sheet(guild, channel) -> int:
                         await member.remove_roles(checked_in_role, reason="Registration reset - orphaned role")
                         roles_removed += 1
                     except Exception as e:
-                        logging.warning(f"Failed to remove orphaned checked-in role from {member}: {e}")
+                        logger.warning(f"Failed to remove orphaned checked-in role from {member}: {e}")
 
         # Refresh cache (this will also sync any remaining role discrepancies)
-        await refresh_sheet_cache()
+        await refresh_sheet_cache(force=True)
 
         # Return the number of rows that were cleared
         cleared_rows = max_players
-        logging.info(f"Reset registration for {cleared_rows} rows and removed roles from {roles_removed} members")
+        logger.info(f"Reset registration for {cleared_rows} rows and removed roles from {roles_removed} members")
 
         return cleared_rows
 
@@ -1051,13 +1057,13 @@ async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
                     await member.remove_roles(checked_in_role, reason="Check-in reset")
                     roles_removed += 1
                 except Exception as e:
-                    logging.warning(f"Failed to remove checked-in role from {member}: {e}")
+                    logger.warning(f"Failed to remove checked-in role from {member}: {e}")
 
         # Refresh cache (this will also sync any remaining role discrepancies)
-        await refresh_sheet_cache()
+        await refresh_sheet_cache(force=True)
 
         cleared_count = max_players
-        logging.info(f"Reset check-in for {cleared_count} rows and removed role from {roles_removed} members")
+        logger.info(f"Reset check-in for {cleared_count} rows and removed role from {roles_removed} members")
 
         return cleared_count
 

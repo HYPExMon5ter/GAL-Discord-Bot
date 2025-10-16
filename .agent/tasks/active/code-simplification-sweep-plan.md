@@ -1,4 +1,6 @@
 # GAL Codebase Simplification & Performance Sweep Plan
+**Success looks like:** lean, modular modules; measurable performance gains; confident deployments; and documentation that reflects the simplified architecture, all while preserving GAL's polished user experience and critical tournament workflows.
+
 **Author:** Codex (GPT-5)  
 **Target Owner:** Refactor Coordinator  
 **Objective:** Execute a multi-stage refactor that simplifies the Guardian Angel League Discord Bot, API, integrations, and Live Graphics Dashboard while preserving all existing features, real-time behaviour, and visual design.
@@ -36,6 +38,7 @@
 3. **Schema harmonisation:** Map sheet column access to the canonical data models documented in `data-models.md`; generate typed adapters to eliminate fragile index-based access.
 4. **Error handling standardisation:** Replace bespoke exception handling with domain-specific error classes, centralise retry policies consistent with `event-system.md`, and ensure each path logs structured context for triage.
 5. **Riot and IGN integration sweep:** Extract rate-limiting and request serialisation into middleware; evaluate batching or memoisation on repeated lookups, removing redundant helper functions in the process.
+- **Status (2025-10-15):** Introduced `SheetCacheManager`, TTL-aware refresh gating, structured logging across sheets service, and hardened Riot/IGN integrations with shared retry handling.
 
 ## Phase 3 - API Backend Modernisation (`api/`)
 1. **Router pruning:** Refactor `routers/graphics.py`, `routers/configuration.py`, and others into thin controllers that delegate to service layer methods; ensure response schemas stay aligned with `api/schemas`.

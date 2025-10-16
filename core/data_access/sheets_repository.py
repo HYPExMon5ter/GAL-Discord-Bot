@@ -112,7 +112,7 @@ class SheetsRepository(BaseRepository):
                 old_cache = dict(self._legacy_cache["users"])
                 
                 # Perform legacy refresh
-                total_changes, total_users = await refresh_sheet_cache()
+                total_changes, total_users = await refresh_sheet_cache(force=True)
                 
                 # Get new cache state
                 new_cache = dict(self._legacy_cache["users"])

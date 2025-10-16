@@ -1,10 +1,15 @@
 # integrations/riot_api.py
 
-import logging
+import asyncio
 import os
 from typing import Dict, List, Any
 
 import aiohttp
+
+from utils.logging_utils import SecureLogger
+
+
+logger = SecureLogger(__name__)
 
 
 class RiotAPIError(Exception):
@@ -56,6 +61,12 @@ class RiotAPI:
             raise ValueError("RIOT_API_KEY environment variable is required")
 
         self.session = None
+        self._semaphore = asyncio.Semaphore(int(os.getenv("RIOT_API_MAX_CONCURRENCY", "4")))
+        self._rate_limit_wait = int(os.getenv("RIOT_API_RETRY_WAIT", "60"))
+        self._semaphore = asyncio.Semaphore(int(os.getenv("RIOT_API_MAX_CONCURRENCY", "4")))
+        self._rate_limit_wait = int(os.getenv("RIOT_API_RETRY_WAIT", "60"))
+
+    logger = SecureLogger(__name__)
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -84,29 +95,53 @@ class RiotAPI:
             raise RiotAPIError(f"Unsupported region: {region}. Supported regions: {list(self.REGIONAL_ENDPOINTS.keys())}")
         return self.REGIONAL_ENDPOINTS[region_lower]
 
-    async def _make_request(self, url: str) -> Dict[str, Any]:
-        """Make HTTP request with error handling."""
+    async def _make_request(self, url: str, *, retries: int = 3) -> Dict[str, Any]:
+        """Make HTTP request with retry and rate limit handling."""
         if not self.session:
             raise RiotAPIError("Session not initialized. Use async context manager.")
 
-        try:
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    return await response.json()
-                elif response.status == 429:
-                    # Rate limited
-                    retry_after = response.headers.get('Retry-After', '60')
-                    raise RateLimitError(f"Rate limited. Retry after {retry_after} seconds")
-                elif response.status == 404:
-                    raise RiotAPIError("Summoner not found")
-                elif response.status == 403:
-                    raise RiotAPIError("Forbidden - Invalid API key or expired token")
-                else:
-                    error_text = await response.text()
-                    raise RiotAPIError(f"API request failed with status {response.status}: {error_text}")
+        attempt = 0
+        while attempt < retries:
+            attempt += 1
+            try:
+                async with self._semaphore:
+                    async with self.session.get(url) as response:
+                        if response.status == 200:
+                            return await response.json()
 
-        except aiohttp.ClientError as e:
-            raise RiotAPIError(f"Network error: {str(e)}")
+                        if response.status == 429:
+                            retry_after = int(response.headers.get("Retry-After", self._rate_limit_wait))
+                            logger.warning(
+                                "Riot API rate limited request",
+                                extra={"retry_after": retry_after, "attempt": attempt, "url": url},
+                            )
+                            if attempt >= retries:
+                                raise RateLimitError(f"Rate limited. Retry after {retry_after} seconds")
+                            await asyncio.sleep(retry_after)
+                            continue
+
+                        if response.status == 404:
+                            raise RiotAPIError("Summoner not found")
+                        if response.status == 403:
+                            raise RiotAPIError("Forbidden - Invalid API key or expired token")
+
+                        error_text = await response.text()
+                        raise RiotAPIError(
+                            f"API request failed with status {response.status}: {error_text}"
+                        )
+
+            except aiohttp.ClientError as e:
+                if attempt >= retries:
+                    raise RiotAPIError(f"Network error: {str(e)}") from e
+                backoff = min(2 ** attempt, self._rate_limit_wait)
+                logger.warning(
+                    "Network error from Riot API, retrying",
+                    extra={"attempt": attempt, "retries": retries, "backoff": backoff, "url": url},
+                )
+                await asyncio.sleep(backoff)
+                continue
+
+        raise RiotAPIError(f"All retries exhausted for Riot API request: {url}")
 
     async def get_account_by_riot_id(self, region: str, game_name: str, tag_line: str) -> Dict[str, Any]:
         """Get account information by Riot ID (game name + tag line)."""
@@ -220,7 +255,7 @@ class RiotAPI:
                 "region": region.upper()
             }
         except Exception as e:
-            logging.error(f"Unexpected error in get_latest_placement: {e}")
+            logger.error(f"Unexpected error in get_latest_placement: {e}")
             return {
                 "success": False,
                 "error": "An unexpected error occurred",

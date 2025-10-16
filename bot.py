@@ -390,7 +390,7 @@ class GALBot(commands.Bot):
         # Initialize guild-specific data if needed
         try:
             from integrations.sheets import refresh_sheet_cache
-            await refresh_sheet_cache(bot=self)
+            await refresh_sheet_cache(bot=self, force=True)
         except Exception as e:
             logging.error(f"Failed to initialize data for new guild {guild.id}: {e}")
 

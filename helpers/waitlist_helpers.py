@@ -683,7 +683,7 @@ class WaitlistManager:
                         continue
 
                 # Refresh cache after each registration batch
-                await refresh_sheet_cache()
+                await refresh_sheet_cache(force=True)
 
             # After loop ends
             if registered_users:

@@ -256,7 +256,7 @@ def register(gal: app_commands.Group) -> None:
     
                     # Refresh sheet cache
                     from integrations.sheets import refresh_sheet_cache
-                    await refresh_sheet_cache(bot=interaction.client)
+                    await refresh_sheet_cache(bot=interaction.client, force=True)
     
                     if results["config_reload"]:
                         embed = discord.Embed(
@@ -385,7 +385,7 @@ class NewConfigMenuView(discord.ui.View):
 
             # Refresh sheet cache
             from integrations.sheets import refresh_sheet_cache
-            await refresh_sheet_cache(bot=interaction.client)
+            await refresh_sheet_cache(bot=interaction.client, force=True)
 
             if results["config_reload"]:
                 embed = discord.Embed(
@@ -1107,7 +1107,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             # Refresh cache if columns or sheets changed
             if update_type in ["columns", "sheets"]:
                 from integrations.sheets import refresh_sheet_cache
-                await refresh_sheet_cache(bot=interaction.client)
+                await refresh_sheet_cache(bot=interaction.client, force=True)
 
             # Success message
             embed = discord.Embed(

@@ -299,7 +299,7 @@ def setup_events(bot: commands.Bot):
                     # 2a. Refresh Google Sheets Cache
                     # ----------------------------------------
                     from integrations.sheets import refresh_sheet_cache
-                    await refresh_sheet_cache(bot=bot)
+                    await refresh_sheet_cache(bot=bot, force=True)
                     logging.info(f"Cache refreshed for guild {guild.name} ({guild.id})")
 
                     # ----------------------------------------
@@ -571,7 +571,7 @@ def setup_events(bot: commands.Bot):
         try:
             # Initialize for new guild
             from integrations.sheets import refresh_sheet_cache
-            await refresh_sheet_cache(bot=bot)
+            await refresh_sheet_cache(bot=bot, force=True)
 
             # Setup unified channel
             from core.components_traditional import setup_unified_channel

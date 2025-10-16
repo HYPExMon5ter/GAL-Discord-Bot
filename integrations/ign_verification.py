@@ -4,10 +4,13 @@ This module provides functions to integrate the live-graphics-dashboard verifica
 service into the existing registration process.
 """
 
-import logging
 import os
 import sys
-from typing import Tuple, Optional, Dict, Any
+from typing import Dict, Optional, Tuple, Any
+
+from utils.logging_utils import SecureLogger
+
+logger = SecureLogger(__name__)
 
 # Add the live-graphics-dashboard path to import the verification service
 dashboard_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'live-graphics-dashboard')
@@ -31,7 +34,7 @@ async def verify_ign_for_registration(ign: str, region: str = "na") -> Tuple[boo
 
         if verification_service is None:
             # Service not initialized - allow registration with warning
-            logging.warning("IGN verification service not available - allowing registration")
+            logger.warning("IGN verification service not available - allowing registration")
             return True, "⚠️ IGN verification temporarily unavailable - registration allowed", None
 
         # Use the verification service
@@ -47,11 +50,11 @@ async def verify_ign_for_registration(ign: str, region: str = "na") -> Tuple[boo
 
     except ImportError:
         # Dashboard service not available - graceful fallback
-        logging.info("Live graphics dashboard not available - IGN verification disabled")
+        logger.info("Live graphics dashboard not available - IGN verification disabled")
         return True, "IGN verification not available - registration allowed", None
     except Exception as e:
         # Any other error - allow registration but log the issue
-        logging.error(f"IGN verification error: {e}")
+        logger.error(f"IGN verification error: {e}")
         return True, f"⚠️ IGN verification error - registration allowed", None
 
 
@@ -63,7 +66,7 @@ async def is_verification_available() -> bool:
     except ImportError:
         return False
     except Exception as e:
-        logging.error(f"Error checking verification availability: {e}")
+        logger.error(f"Error checking verification availability: {e}")
         return False
 
 
@@ -116,5 +119,5 @@ async def get_verification_stats() -> Dict[str, int]:
     except ImportError:
         return {"total_cached": 0, "valid_cached": 0, "expired_cached": 0}
     except Exception as e:
-        logging.error(f"Error getting verification stats: {e}")
+        logger.error(f"Error getting verification stats: {e}")
         return {"total_cached": 0, "valid_cached": 0, "expired_cached": 0}

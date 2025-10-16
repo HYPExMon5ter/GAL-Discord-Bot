@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from discord.ext import commands
 
 from .common import logger
-from . import registration, legacy
+from . import configuration, legacy, onboarding, registration, utility
 from .legacy import CommandError
 
 gal = legacy.gal
@@ -27,6 +27,7 @@ async def setup(bot: commands.Bot) -> None:
             "registeredlist",
             "reminder",
             "cache",
+            "config",
         ):
             try:
                 gal.remove_command(command_name)
@@ -35,6 +36,9 @@ async def setup(bot: commands.Bot) -> None:
 
         # Legacy module already registered its commands via decorators.
         registration.register(gal)
+        configuration.register(gal)
+        onboarding.register(gal)
+        utility.register(gal)
 
         bot.tree.add_command(gal)
         logger.info("GAL command group registered successfully")

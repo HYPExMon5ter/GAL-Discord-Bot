@@ -20,6 +20,7 @@ from config import (
 )
 from core.config_ui import ColumnMappingView, SettingsView
 from core.persistence import get_event_mode_for_guild
+from helpers.environment_helpers import EnvironmentHelper
 
 from .common import command_tracer, ensure_staff, handle_command_exception, logger
 
@@ -63,8 +64,8 @@ def register(gal: app_commands.Group) -> None:
                 )
     
                 # Add current status info
-                is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
-                environment = "Production" if is_production else "Development"
+                is_production = EnvironmentHelper.is_production()
+                environment = EnvironmentHelper.get_environment_type()
     
                 # Get cache refresh from config
                 cache_refresh_seconds = _FULL_CFG.get("cache_refresh_seconds", 600)
@@ -444,8 +445,8 @@ class NewConfigMenuView(discord.ui.View):
         mode = get_event_mode_for_guild(guild_id)
         settings = get_sheet_settings(mode)
 
-        is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
-        environment = "Production" if is_production else "Development"
+        is_production = EnvironmentHelper.is_production()
+        environment = EnvironmentHelper.get_environment_type()
 
         presence_cfg = _FULL_CFG.get("rich_presence", {})
         bot_status = presence_cfg.get("message", "Not set")

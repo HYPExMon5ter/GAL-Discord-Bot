@@ -702,13 +702,12 @@ async def log_dal_integration_status():
 
 # Schedule status check (don't await here as this is module-level)
 try:
-    # Try to schedule the status check if event loop is running
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        asyncio.create_task(log_dal_integration_status())
+    loop = asyncio.get_running_loop()
 except RuntimeError:
-    # No event loop running yet - will be checked later
-    pass
+    loop = None
+
+if loop and loop.is_running():
+    loop.create_task(log_dal_integration_status())
 
 
 logging.info("Configuration loaded and validated successfully")

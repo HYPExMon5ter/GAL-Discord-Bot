@@ -3,6 +3,7 @@ from discord.ext import commands
 
 
 class TestComponents(discord.ui.LayoutView):
+    __test__ = False
     container1 = discord.ui.Container(
         discord.ui.Section(
             discord.ui.TextDisplay(content="# 🏆 Tournament Hub"),

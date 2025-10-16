@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { CanvasEditor } from '@/components/canvas/CanvasEditor';
 import { useGraphics } from '@/hooks/use-graphics';
-import { useAuth } from '@/hooks/use-auth';
 import { Graphic } from '@/types';
 import { AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,9 +11,8 @@ import { Card, CardContent } from '@/components/ui/card';
 export default function CanvasEditPage() {
   const params = useParams();
   const router = useRouter();
-  const { username } = useAuth();
-  const { getGraphic, updateGraphic } = useGraphics();
-  
+  const { getGraphic, updateGraphic, refetch } = useGraphics();
+
   const [graphic, setGraphic] = useState<Graphic | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +28,7 @@ export default function CanvasEditPage() {
       }
 
       try {
-        const data = await getGraphic(parseInt(graphicId));
+        const data = await getGraphic(parseInt(graphicId, 10));
         if (data) {
           setGraphic(data);
         } else {
@@ -54,7 +52,7 @@ export default function CanvasEditPage() {
       await updateGraphic(graphic.id, {
         title: data.title,
         event_name: data.event_name,
-        data_json: data.data_json
+        data_json: data.data_json,
       });
       return true;
     } catch (error) {
@@ -64,10 +62,7 @@ export default function CanvasEditPage() {
   };
 
   const handleClose = () => {
-    // Trigger a refresh of the graphics list when returning to dashboard
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('refreshGraphics'));
-    }
+    refetch().catch(err => console.error('Failed to refresh graphics after closing editor', err));
     router.push('/dashboard');
   };
 

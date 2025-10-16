@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Poppins } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/hooks/use-auth'
+import { DashboardDataProvider } from '@/hooks/use-dashboard-data'
 
 const poppins = Poppins({ 
   subsets: ['latin'],
@@ -26,7 +27,9 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={poppins.className}>
         <AuthProvider>
-          {children}
+          <DashboardDataProvider>
+            {children}
+          </DashboardDataProvider>
         </AuthProvider>
       </body>
     </html>

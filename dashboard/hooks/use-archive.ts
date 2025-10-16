@@ -1,65 +1,48 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { ArchivedGraphic } from '@/types';
-import { archiveApi } from '@/lib/api';
+import { useEffect } from 'react';
+
+import { useDashboardData } from './use-dashboard-data';
 
 export function useArchive() {
-  const [archivedGraphics, setArchivedGraphics] = useState<ArchivedGraphic[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchArchivedGraphics = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await archiveApi.getAll();
-      // Ensure data is an array, default to empty array if not
-      setArchivedGraphics(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError('Failed to fetch archived graphics');
-      console.error('Error fetching archived graphics:', err);
-      // Set archivedGraphics to empty array on error to prevent errors
-      setArchivedGraphics([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const restoreGraphic = useCallback(async (id: number): Promise<boolean> => {
-    try {
-      await archiveApi.restore(id);
-      setArchivedGraphics(prev => prev.filter(g => g.id !== id));
-      return true;
-    } catch (err) {
-      setError('Failed to restore graphic');
-      console.error('Error restoring graphic:', err);
-      return false;
-    }
-  }, []);
-
-  const permanentDeleteGraphic = useCallback(async (id: number): Promise<boolean> => {
-    try {
-      await archiveApi.permanentDelete(id);
-      setArchivedGraphics(prev => prev.filter(g => g.id !== id));
-      return true;
-    } catch (err) {
-      setError('Failed to permanently delete graphic');
-      console.error('Error permanently deleting graphic:', err);
-      return false;
-    }
-  }, []);
+  const {
+    archivedGraphics,
+    archiveState,
+    fetchArchive,
+    restoreArchivedGraphic,
+    permanentDeleteArchivedGraphic,
+  } = useDashboardData();
 
   useEffect(() => {
-    fetchArchivedGraphics();
-  }, [fetchArchivedGraphics]);
+    if (!archiveState.hasLoaded && !archiveState.loading) {
+      fetchArchive().catch(error => {
+        console.error('Initial archive fetch failed', error);
+      });
+    }
+  }, [archiveState.hasLoaded, archiveState.loading, fetchArchive]);
 
   return {
     archivedGraphics,
-    loading,
-    error,
-    refetch: fetchArchivedGraphics,
-    restoreGraphic,
-    permanentDeleteGraphic,
+    loading: archiveState.loading,
+    error: archiveState.error,
+    refetch: fetchArchive,
+    restoreGraphic: async (id: number): Promise<boolean> => {
+      try {
+        await restoreArchivedGraphic(id);
+        return true;
+      } catch (error) {
+        console.error('Failed to restore archived graphic', error);
+        return false;
+      }
+    },
+    permanentDeleteGraphic: async (id: number): Promise<boolean> => {
+      try {
+        await permanentDeleteArchivedGraphic(id);
+        return true;
+      } catch (error) {
+        console.error('Failed to permanently delete archived graphic', error);
+        return false;
+      }
+    },
   };
 }

@@ -12,17 +12,15 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from utils.metrics import export_metrics
-
 from .auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     SECRET_KEY,
     TokenData,
     create_access_token,
+    get_current_authenticated_user,
+    get_current_user,
     verify_token,
 )
-from .middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
-from .routers import configuration, graphics, tournaments, users, websocket
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -127,14 +125,6 @@ async def health_check():
         "version": "1.0.0"
     }
 
-
-@app.get("/metrics")
-async def metrics_snapshot():
-    """
-    Expose recorded service metrics for observability tooling.
-    """
-    return export_metrics()
-
 # Root endpoint
 @app.get("/")
 async def root():
@@ -149,6 +139,10 @@ async def root():
     }
 
 
+
+# Import and include routers
+from .routers import configuration, graphics, tournaments, users, websocket
+from .middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 
 # Add custom middleware
 app.add_middleware(RequestLoggingMiddleware)

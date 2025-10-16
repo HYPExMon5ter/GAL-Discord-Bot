@@ -78,9 +78,6 @@ python -m pytest --cov  # Run tests with coverage
 python -m alembic upgrade head  # Database migrations
 ```
 
-#### Unified Quality Checks
-Use `python scripts/run_quality_checks.py` from the repository root to execute the complete quality gate. The script sequentially runs Ruff, Black, pytest, and the dashboard lint/type-check commands to reproduce CI locally. Tooling configuration is centralised in `pyproject.toml`.
-
 ## Project Structure
 
 ### Frontend Structure
@@ -1059,12 +1056,6 @@ const GraphicEditor: React.FC<GraphicEditorProps> = ({
   // Component implementation
 };
 ```
-
-## Telemetry & Metrics
-- Python services record counters and timings through `utils.metrics`.
-- FastAPI middleware, Discord command tracers, and Sheets retry helpers emit metrics with thresholds for slow operations.
-- The API exposes `GET /metrics` for diagnostics and local dashboards.
-- Frontend hooks use `@/utils/logging` for consistent client-side telemetry output.
 
 ## References
 - [Next.js Documentation](https://nextjs.org/docs)

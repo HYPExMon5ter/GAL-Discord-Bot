@@ -3,14 +3,14 @@ Custom middleware for the API
 """
 
 import time
+import logging
+from typing import Callable
 
 from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import RequestResponseEndpoint
 
-from utils.logging_utils import SecureLogger
-from utils.metrics import increment_counter, record_duration
-
-logger = SecureLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
@@ -35,18 +35,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         
         # Calculate processing time
         process_time = time.time() - start_time
-        record_duration(
-            "api.request.duration",
-            process_time,
-            method=request.method,
-            path=request.url.path,
-            status=str(response.status_code),
-        )
-        increment_counter(
-            "api.request.count",
-            method=request.method,
-            status=str(response.status_code),
-        )
         
         # Log response
         logger.info(

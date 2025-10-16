@@ -5,46 +5,22 @@ This module sets up the FastAPI application with master password authentication,
 CORS middleware, and includes all API routers.
 """
 
-import os
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from jose import JWTError, jwt
-from pydantic import BaseModel
 import uvicorn
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-# Load environment variables from .env.local only
-from dotenv import load_dotenv
-import os
-
-# Clear any existing DASHBOARD_MASTER_PASSWORD from system environment
-if 'DASHBOARD_MASTER_PASSWORD' in os.environ:
-    del os.environ['DASHBOARD_MASTER_PASSWORD']
-
-# Get the project root directory and load .env.local
-project_root = os.path.dirname(os.path.abspath(__file__))
-env_path = os.path.join(project_root, '..', '.env.local')
-load_dotenv(env_path, override=True)
-
-# Read the master password directly from .env.local file
-def read_master_password():
-    try:
-        with open(env_path, 'r') as f:
-            for line in f:
-                if line.startswith('DASHBOARD_MASTER_PASSWORD='):
-                    return line.split('=', 1)[1].strip()
-    except Exception:
-        return None
-
-# Import authentication after loading environment
-from .auth import SECRET_KEY as auth_secret_key, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
-
-# Override SECRET_KEY with the value directly from .env.local
-SECRET_KEY = read_master_password() or auth_secret_key
+from .auth import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    SECRET_KEY,
+    TokenData,
+    create_access_token,
+    get_current_authenticated_user,
+    get_current_user,
+    verify_token,
+)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -73,9 +49,6 @@ class Token(BaseModel):
 class LoginRequest(BaseModel):
     master_password: str
 
-# Import auth functions
-from .auth import TokenData, verify_token, get_current_user, get_current_authenticated_user
-
 # Authentication endpoints
 @app.post("/auth/login", response_model=Token)
 async def login(login_request: LoginRequest):
@@ -90,9 +63,13 @@ async def login(login_request: LoginRequest):
         )
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": "dashboard_user"}, expires_delta=access_token_expires
-    )
+    token_payload = {
+        "sub": "dashboard_user",
+        "roles": ["Administrator"],
+        "scopes": ["dashboard:full"],
+        "read_only": False,
+    }
+    access_token = create_access_token(data=token_payload, expires_delta=access_token_expires)
     
     return {
         "access_token": access_token,
@@ -107,7 +84,13 @@ async def refresh_token(current_user: TokenData = Depends(verify_token)):
     """
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": current_user.username}, expires_delta=access_token_expires
+        data={
+            "sub": current_user.username,
+            "roles": current_user.roles,
+            "scopes": current_user.scopes,
+            "read_only": current_user.read_only,
+        },
+        expires_delta=access_token_expires,
     )
     
     return {
@@ -138,7 +121,7 @@ async def health_check():
     """
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "version": "1.0.0"
     }
 
@@ -158,7 +141,7 @@ async def root():
 
 
 # Import and include routers
-from .routers import tournaments, users, configuration, websocket, graphics
+from .routers import configuration, graphics, tournaments, users, websocket
 from .middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 
 # Add custom middleware

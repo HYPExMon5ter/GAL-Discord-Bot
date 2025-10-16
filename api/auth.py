@@ -1,55 +1,87 @@
 """
-Authentication module for API
+Authentication utilities for the API.
+
+Manages JWT issuance and verification while exposing typed token data to the
+rest of the application.
 """
 
-from datetime import datetime, timedelta
+from __future__ import annotations
+
+import os
+from datetime import UTC, datetime, timedelta
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
-from pydantic import BaseModel
-import os
-
-# Load environment variables from .env.local to ensure they're available
 from dotenv import load_dotenv
-import os
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import JWTError, jwt
+from pydantic import BaseModel, Field
 
-# Clear any existing DASHBOARD_MASTER_PASSWORD from system environment
-if 'DASHBOARD_MASTER_PASSWORD' in os.environ:
-    del os.environ['DASHBOARD_MASTER_PASSWORD']
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env.local"
 
-# Get the project root directory and load .env.local
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-env_path = os.path.join(project_root, '.env.local')
-load_dotenv(env_path, override=True)
-
-# Configuration - get the master password from environment
-SECRET_KEY = os.getenv("DASHBOARD_MASTER_PASSWORD", "default-secret-key-change-in-production")
-
+# Load environment variables without clobbering process overrides
+load_dotenv(ENV_PATH, override=False)
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
-
-# JWT Security
 security = HTTPBearer()
 
-# Pydantic models
-class TokenData(BaseModel):
-    username: Optional[str] = None
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+@lru_cache()
+def resolve_secret_key() -> str:
+    """
+    Resolve the master secret used for JWT signing.
+
+    Priority: explicit environment variable, then .env.local fallback, finally
+    a hard-coded development default (which should be overridden in prod).
+    """
+    secret = os.getenv("DASHBOARD_MASTER_PASSWORD")
+    if secret:
+        return secret
+    return "default-secret-key-change-in-production"
+
+
+SECRET_KEY = resolve_secret_key()
+
+
+class TokenData(BaseModel):
+    """
+    Auth context propagated through dependencies.
+    """
+
+    username: Optional[str] = None
+    roles: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
+    read_only: bool = False
+
+    @property
+    def is_admin(self) -> bool:
+        return any(role.lower() == "administrator" for role in self.roles)
+
+
+def create_access_token(
+    data: dict,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """
+    Issue a signed JWT embedding optional role/scope metadata.
+    """
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(UTC) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+        expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> TokenData:
+    """
+    Verify a bearer token and return the associated auth context.
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -57,23 +89,39 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     )
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    return token_data
+    except JWTError as exc:
+        raise credentials_exception from exc
 
-# Authentication dependencies
+    username: Optional[str] = payload.get("sub")
+    if username is None:
+        raise credentials_exception
+
+    roles = payload.get("roles") or []
+    scopes = payload.get("scopes") or []
+    read_only = bool(payload.get("read_only", False))
+
+    if not isinstance(roles, list):
+        roles = [str(roles)]
+    if not isinstance(scopes, list):
+        scopes = [str(scopes)]
+
+    return TokenData(
+        username=username,
+        roles=[str(role) for role in roles],
+        scopes=[str(scope) for scope in scopes],
+        read_only=read_only,
+    )
+
+
 def get_current_user(token_data: TokenData = Depends(verify_token)) -> TokenData:
     """
-    Dependency to ensure user is authenticated
+    Dependency to ensure the caller is authenticated.
     """
     return token_data
+
 
 def get_current_authenticated_user(token_data: TokenData = Depends(verify_token)) -> TokenData:
     """
-    Dependency to ensure user is authenticated (legacy name)
+    Legacy alias maintained for backwards compatibility.
     """
     return token_data

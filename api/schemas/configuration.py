@@ -3,16 +3,16 @@ Configuration schemas
 """
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+
+from pydantic import BaseModel, ConfigDict
 
 class Configuration(BaseModel):
     key: str
     value: Any
     description: Optional[str] = None
     category: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 class ConfigurationUpdate(BaseModel):
     value: Any

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.data_access.tournament_repository import TournamentRepository
 from ..schemas.tournament import TournamentCreate, TournamentUpdate, TournamentList
+from .errors import NotFoundError
 
 class TournamentService:
     """
@@ -45,7 +46,7 @@ class TournamentService:
         """
         tournament = await self.tournament_repo.get_by_id(tournament_id)
         if not tournament:
-            raise ValueError(f"Tournament with ID {tournament_id} not found")
+            raise NotFoundError(f"Tournament with ID {tournament_id} not found")
         return tournament
     
     async def create_tournament(self, tournament_data: TournamentCreate):
@@ -65,7 +66,7 @@ class TournamentService:
         # Check if tournament exists
         existing = await self.tournament_repo.get_by_id(tournament_id)
         if not existing:
-            raise ValueError(f"Tournament with ID {tournament_id} not found")
+            raise NotFoundError(f"Tournament with ID {tournament_id} not found")
         
         # Update tournament
         update_data = {k: v for k, v in tournament_data.dict().items() if v is not None}
@@ -78,7 +79,7 @@ class TournamentService:
         # Check if tournament exists
         existing = await self.tournament_repo.get_by_id(tournament_id)
         if not existing:
-            raise ValueError(f"Tournament with ID {tournament_id} not found")
+            raise NotFoundError(f"Tournament with ID {tournament_id} not found")
         
         return await self.tournament_repo.delete(tournament_id)
     

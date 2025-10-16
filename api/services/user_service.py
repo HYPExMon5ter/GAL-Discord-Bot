@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.data_access.user_repository import UserRepository
 from ..schemas.user import UserCreate, UserUpdate, UserList
+from .errors import ConflictError, NotFoundError
 
 class UserService:
     """
@@ -45,7 +46,7 @@ class UserService:
         """
         user = await self.user_repo.get_by_id(user_id)
         if not user:
-            raise ValueError(f"User with ID {user_id} not found")
+            raise NotFoundError(f"User with ID {user_id} not found")
         return user
     
     async def get_user_by_discord_id(self, discord_id: str):
@@ -54,7 +55,7 @@ class UserService:
         """
         user = await self.user_repo.get_by_discord_id(discord_id)
         if not user:
-            raise ValueError(f"User with Discord ID {discord_id} not found")
+            raise NotFoundError(f"User with Discord ID {discord_id} not found")
         return user
     
     async def create_user(self, user_data: UserCreate):
@@ -64,7 +65,7 @@ class UserService:
         # Check if user with Discord ID already exists
         existing = await self.user_repo.get_by_discord_id(user_data.discord_id)
         if existing:
-            raise ValueError(f"User with Discord ID {user_data.discord_id} already exists")
+            raise ConflictError(f"User with Discord ID {user_data.discord_id} already exists")
         
         return await self.user_repo.create(user_data.dict())
     
@@ -75,7 +76,7 @@ class UserService:
         # Check if user exists
         existing = await self.user_repo.get_by_id(user_id)
         if not existing:
-            raise ValueError(f"User with ID {user_id} not found")
+            raise NotFoundError(f"User with ID {user_id} not found")
         
         # Update user
         update_data = {k: v for k, v in user_data.dict().items() if v is not None}
@@ -88,7 +89,7 @@ class UserService:
         # Check if user exists
         existing = await self.user_repo.get_by_id(user_id)
         if not existing:
-            raise ValueError(f"User with ID {user_id} not found")
+            raise NotFoundError(f"User with ID {user_id} not found")
         
         return await self.user_repo.delete(user_id)
     

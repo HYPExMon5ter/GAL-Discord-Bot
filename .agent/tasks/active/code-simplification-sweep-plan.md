@@ -46,6 +46,7 @@
 3. **Dependency management:** Tighten `dependencies.py` to provide scoped sessions, typed auth contexts, and gating for upcoming read-only endpoints.
 4. **WebSocket resilience:** Review `routers/websocket.py` for backpressure handling, connection lifetimes, and lock broadcasting; align with the event bus once simplified and make sure disconnect and error cases emit consistent telemetry.
 5. **Security posture:** Confirm JWT issuance aligns with `access-control.md`, add automated tests for master password authentication, and maintain log sanitisation via middleware.
+- **Status (2025-10-16):** Routers now consume injected services via shared dependencies, service layer raises structured errors, WebSocket endpoint enforces backpressure with bounded queues, and new auth tests cover master password flows. Next step: remove deprecated datetime/pydantic/sqlalchemy usage surfaced during pytest run to keep CI warning-free.
 
 ## Phase 4 - Live Graphics Dashboard Simplification (`dashboard/`)
 1. **Routing cleanup:** Audit App Router segments for redundant layouts; ensure shared providers (auth, websocket) live at the appropriate boundary and eliminate unused wrappers.

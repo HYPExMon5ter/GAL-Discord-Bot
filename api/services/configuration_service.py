@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.data_access.configuration_repository import ConfigurationRepository
 from ..schemas.configuration import ConfigurationUpdate, ConfigurationList
+from .errors import ConflictError, NotFoundError
 
 class ConfigurationService:
     """
@@ -30,7 +31,7 @@ class ConfigurationService:
         """
         config = await self.config_repo.get_by_key(key)
         if not config:
-            raise ValueError(f"Configuration with key '{key}' not found")
+            raise NotFoundError(f"Configuration with key '{key}' not found")
         return config
     
     async def update_configuration(self, key: str, config_data: ConfigurationUpdate):
@@ -40,7 +41,7 @@ class ConfigurationService:
         # Check if configuration exists
         existing = await self.config_repo.get_by_key(key)
         if not existing:
-            raise ValueError(f"Configuration with key '{key}' not found")
+            raise NotFoundError(f"Configuration with key '{key}' not found")
         
         # Update configuration
         update_data = {
@@ -65,7 +66,7 @@ class ConfigurationService:
         # Check if configuration already exists
         existing = await self.config_repo.get_by_key(key)
         if existing:
-            raise ValueError(f"Configuration with key '{key}' already exists")
+            raise ConflictError(f"Configuration with key '{key}' already exists")
         
         config_data = {
             "key": key,
@@ -83,7 +84,7 @@ class ConfigurationService:
         # Check if configuration exists
         existing = await self.config_repo.get_by_key(key)
         if not existing:
-            raise ValueError(f"Configuration with key '{key}' not found")
+            raise NotFoundError(f"Configuration with key '{key}' not found")
         
         return await self.config_repo.delete(key)
     
@@ -107,7 +108,9 @@ class ConfigurationService:
                     ConfigurationUpdate(value=value)
                 )
                 results.append({"key": key, "success": True, "data": updated})
-            except ValueError as e:
+            except NotFoundError as e:
+                errors.append({"key": key, "success": False, "error": str(e)})
+            except ConflictError as e:
                 errors.append({"key": key, "success": False, "error": str(e)})
         
         return {

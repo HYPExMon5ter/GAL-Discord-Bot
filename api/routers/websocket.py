@@ -1,258 +1,327 @@
 """
-WebSocket endpoints for real-time updates
+WebSocket endpoints for real-time updates with backpressure handling.
 """
 
-import json
-import asyncio
-from typing import Dict, Set
-from datetime import datetime
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.orm import Session
+from __future__ import annotations
 
-from ..dependencies import get_database_session
-from ..auth import get_current_authenticated_user, TokenData
+import asyncio
+import json
+import logging
+import uuid
+from contextlib import suppress
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional, Set
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from jose import JWTError, jwt
+
+from api.auth import ALGORITHM, SECRET_KEY, TokenData
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+MAX_QUEUE_SIZE = 50
+CLIENT_TIMEOUT = timedelta(seconds=45)
+
+
+def utcnow() -> datetime:
+    """Timezone-aware wrapper used throughout the WebSocket manager."""
+    return datetime.now(UTC)
+
+
+@dataclass
+class ConnectionContext:
+    websocket: WebSocket
+    connection_id: str
+    user_id: str
+    queue: asyncio.Queue[str] = field(default_factory=lambda: asyncio.Queue(MAX_QUEUE_SIZE))
+    sender_task: Optional[asyncio.Task] = None
+    created_at: datetime = field(default_factory=utcnow)
+    last_seen: datetime = field(default_factory=utcnow)
+
 
 class ConnectionManager:
     """
-    WebSocket connection manager for real-time updates
+    Manages active WebSocket connections with bounded queues to avoid head-of-line
+    blocking and implements graceful teardown on errors or backpressure.
     """
-    
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-        self.user_connections: Dict[str, Set[str]] = {}  # user_id -> connection_ids
-    
-    async def connect(self, websocket: WebSocket, connection_id: str, user_id: str):
-        """
-        Accept and store WebSocket connection
-        """
+
+    def __init__(self) -> None:
+        self._connections: Dict[str, ConnectionContext] = {}
+        self._user_connections: Dict[str, Set[str]] = {}
+        self._lock = asyncio.Lock()
+
+    async def connect(self, websocket: WebSocket, user_id: str) -> ConnectionContext:
         await websocket.accept()
-        self.active_connections[connection_id] = websocket
-        
-        if user_id not in self.user_connections:
-            self.user_connections[user_id] = set()
-        self.user_connections[user_id].add(connection_id)
-        
-        print(f"WebSocket connected: {connection_id} for user {user_id}")
-    
-    def disconnect(self, connection_id: str, user_id: str):
-        """
-        Remove WebSocket connection
-        """
-        if connection_id in self.active_connections:
-            del self.active_connections[connection_id]
-        
-        if user_id in self.user_connections:
-            self.user_connections[user_id].discard(connection_id)
-            if not self.user_connections[user_id]:
-                del self.user_connections[user_id]
-        
-        print(f"WebSocket disconnected: {connection_id} for user {user_id}")
-    
-    async def send_personal_message(self, message: dict, user_id: str):
-        """
-        Send message to all connections for a specific user
-        """
-        if user_id in self.user_connections:
-            disconnected_connections = []
-            
-            for connection_id in self.user_connections[user_id]:
-                if connection_id in self.active_connections:
-                    websocket = self.active_connections[connection_id]
-                    try:
-                        await websocket.send_text(json.dumps(message))
-                    except Exception as e:
-                        print(f"Error sending message to {connection_id}: {e}")
-                        disconnected_connections.append(connection_id)
-                else:
-                    disconnected_connections.append(connection_id)
-            
-            # Clean up disconnected connections
-            for connection_id in disconnected_connections:
-                self.disconnect(connection_id, user_id)
-    
-    async def broadcast(self, message: dict):
-        """
-        Broadcast message to all connected clients
-        """
-        disconnected_connections = []
-        
-        for connection_id, websocket in self.active_connections.items():
-            try:
-                await websocket.send_text(json.dumps(message))
-            except Exception as e:
-                print(f"Error broadcasting to {connection_id}: {e}")
-                disconnected_connections.append(connection_id)
-        
-        # Clean up disconnected connections
-        for connection_id in disconnected_connections:
-            # Find user_id for this connection
-            for user_id, conn_ids in self.user_connections.items():
-                if connection_id in conn_ids:
-                    self.disconnect(connection_id, user_id)
-                    break
-    
-    def get_connection_count(self) -> int:
-        """
-        Get total number of active connections
-        """
-        return len(self.active_connections)
-    
-    def get_user_count(self) -> int:
-        """
-        Get number of unique connected users
-        """
-        return len(self.user_connections)
+        connection_id = f"{user_id}:{uuid.uuid4().hex}"
+        context = ConnectionContext(websocket=websocket, user_id=user_id, connection_id=connection_id)
 
-# Global connection manager
-manager = ConnectionManager()
+        async with self._lock:
+            self._connections[connection_id] = context
+            self._user_connections.setdefault(user_id, set()).add(connection_id)
 
-@router.websocket("/ws/{token}")
-async def websocket_endpoint(
-    websocket: WebSocket, 
-    token: str,
-    db: Session = Depends(get_database_session)
-):
-    """
-    WebSocket endpoint for real-time updates
-    """
-    try:
-        # Verify JWT token
-        from jose import JWTError, jwt
-        from ..main import SECRET_KEY, ALGORITHM
-        
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id: str = payload.get("sub")
-            if user_id is None:
-                await websocket.close(code=4001, reason="Invalid token")
+        context.sender_task = asyncio.create_task(self._sender_loop(context))
+        logger.info("WebSocket connected: %s for user %s", connection_id, user_id)
+        return context
+
+    async def close(self, context: ConnectionContext, reason: str) -> None:
+        async with self._lock:
+            if context.connection_id not in self._connections:
                 return
-        except JWTError:
-            await websocket.close(code=4001, reason="Invalid token")
-            return
-        
-        # Generate unique connection ID
-        connection_id = f"{user_id}_{datetime.utcnow().timestamp()}"
-        
-        # Connect to WebSocket
-        await manager.connect(websocket, connection_id, user_id)
-        
-        # Send welcome message
-        await websocket.send_text(json.dumps({
-            "type": "connection_established",
-            "data": {
-                "connection_id": connection_id,
-                "user_id": user_id,
-                "timestamp": datetime.utcnow().isoformat(),
-                "message": "Connected to GAL Dashboard WebSocket"
-            }
-        }))
-        
-        # Keep connection alive and handle incoming messages
+            self._connections.pop(context.connection_id, None)
+            user_set = self._user_connections.get(context.user_id)
+            if user_set:
+                user_set.discard(context.connection_id)
+                if not user_set:
+                    self._user_connections.pop(context.user_id, None)
+
+        if context.sender_task and context.sender_task is not asyncio.current_task():
+            context.sender_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await context.sender_task
+
+        with suppress(Exception):
+            await context.websocket.close(code=4000, reason=reason)
+
+        logger.info("WebSocket disconnected: %s reason=%s", context.connection_id, reason)
+
+    async def _sender_loop(self, context: ConnectionContext) -> None:
         try:
             while True:
-                # Wait for message from client
-                data = await websocket.receive_text()
-                message = json.loads(data)
-                
-                # Handle different message types
-                message_type = message.get("type", "unknown")
-                
-                if message_type == "ping":
-                    # Respond to ping with pong
-                    await websocket.send_text(json.dumps({
-                        "type": "pong",
-                        "timestamp": datetime.utcnow().isoformat()
-                    }))
-                
-                elif message_type == "subscribe":
-                    # Handle subscription to specific events
-                    event_type = message.get("event_type")
-                    await websocket.send_text(json.dumps({
+                payload = await context.queue.get()
+                await context.websocket.send_text(payload)
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning(
+                "Sender loop error for %s (%s): %s", context.connection_id, context.user_id, exc
+            )
+        finally:
+            await self.close(context, "sender loop terminated")
+
+    async def enqueue(self, context: ConnectionContext, message: Dict[str, Any]) -> None:
+        payload = json.dumps(message)
+        try:
+            context.queue.put_nowait(payload)
+        except asyncio.QueueFull:
+            logger.warning(
+                "Backpressure threshold exceeded for %s (%s); closing connection.",
+                context.connection_id,
+                context.user_id,
+            )
+            await self.close(context, "backpressure exceeded")
+
+    async def send_personal_message(self, message: Dict[str, Any], user_id: str) -> None:
+        contexts = await self._get_user_contexts(user_id)
+        for context in contexts:
+            await self.enqueue(context, message)
+
+    async def broadcast(self, message: Dict[str, Any]) -> None:
+        contexts = await self._get_all_contexts()
+        for context in contexts:
+            await self.enqueue(context, message)
+
+    async def _get_user_contexts(self, user_id: str) -> List[ConnectionContext]:
+        async with self._lock:
+            connection_ids = list(self._user_connections.get(user_id, set()))
+            return [
+                self._connections[cid]
+                for cid in connection_ids
+                if cid in self._connections
+            ]
+
+    async def _get_all_contexts(self) -> List[ConnectionContext]:
+        async with self._lock:
+            return list(self._connections.values())
+
+    def get_connection_count(self) -> int:
+        return len(self._connections)
+
+    def get_user_count(self) -> int:
+        return len(self._user_connections)
+
+
+manager = ConnectionManager()
+
+
+def _decode_token(token: str) -> Optional[TokenData]:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError as exc:
+        logger.warning("Failed to decode websocket token: %s", exc)
+        return None
+
+    username = payload.get("sub")
+    if not username:
+        return None
+
+    roles = payload.get("roles") or []
+    scopes = payload.get("scopes") or []
+    read_only = bool(payload.get("read_only", False))
+
+    if not isinstance(roles, list):
+        roles = [str(roles)]
+    if not isinstance(scopes, list):
+        scopes = [str(scopes)]
+
+    return TokenData(
+        username=str(username),
+        roles=[str(role) for role in roles],
+        scopes=[str(scope) for scope in scopes],
+        read_only=read_only,
+    )
+
+
+@router.websocket("/ws/{token}")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    """
+    WebSocket endpoint for real-time updates.
+    """
+    context: Optional[ConnectionContext] = None
+    token_data = _decode_token(token)
+    if not token_data or not token_data.username:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    try:
+        context = await manager.connect(websocket, token_data.username)
+        await manager.enqueue(
+            context,
+            {
+                "type": "connection_established",
+                "data": {
+                    "connection_id": context.connection_id,
+                    "user_id": token_data.username,
+                    "timestamp": utcnow().isoformat(),
+                },
+            },
+        )
+
+        while True:
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=CLIENT_TIMEOUT.total_seconds())
+            except asyncio.TimeoutError:
+                await manager.enqueue(
+                    context,
+                    {
+                        "type": "disconnecting",
+                        "reason": "idle_timeout",
+                        "timestamp": utcnow().isoformat(),
+                    },
+                )
+                break
+
+            context.last_seen = utcnow()
+
+            try:
+                message = json.loads(raw)
+            except json.JSONDecodeError:
+                await manager.enqueue(
+                    context,
+                    {
+                        "type": "error",
+                        "message": "Invalid JSON payload",
+                        "timestamp": utcnow().isoformat(),
+                    },
+                )
+                continue
+
+            message_type = message.get("type", "unknown")
+
+            if message_type == "ping":
+                await manager.enqueue(
+                    context,
+                    {"type": "pong", "timestamp": utcnow().isoformat()},
+                )
+
+            elif message_type == "subscribe":
+                event_type = message.get("event_type")
+                await manager.enqueue(
+                    context,
+                    {
                         "type": "subscription_confirmed",
                         "event_type": event_type,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }))
-                
-                else:
-                    # Echo unknown messages
-                    await websocket.send_text(json.dumps({
+                        "timestamp": utcnow().isoformat(),
+                    },
+                )
+
+            else:
+                await manager.enqueue(
+                    context,
+                    {
                         "type": "echo",
                         "original_message": message,
-                        "timestamp": datetime.utcnow().isoformat()
-                    }))
-        
-        except WebSocketDisconnect:
-            manager.disconnect(connection_id, user_id)
-            print(f"User {user_id} disconnected")
-        
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-        try:
-            await websocket.close(code=4000, reason="Server error")
-        except:
-            pass
+                        "timestamp": utcnow().isoformat(),
+                    },
+                )
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnect received for user %s", token_data.username)
+    except Exception as exc:
+        logger.exception("WebSocket error for user %s: %s", token_data.username, exc)
+    finally:
+        if context:
+            await manager.close(context, "client disconnect")
+
 
 @router.get("/ws/status")
-async def websocket_status(
-    current_user: TokenData = Depends(get_current_authenticated_user)
-):
+async def websocket_status():
     """
-    Get WebSocket connection status
+    Get WebSocket connection status.
     """
     return {
         "active_connections": manager.get_connection_count(),
         "connected_users": manager.get_user_count(),
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": utcnow().isoformat(),
     }
+
 
 # Functions to send real-time updates (can be called from other parts of the application)
 async def send_tournament_update(tournament_data: dict):
-    """
-    Send tournament update to all connected clients
-    """
-    await manager.broadcast({
-        "type": "tournament_update",
-        "data": tournament_data,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    await manager.broadcast(
+        {
+            "type": "tournament_update",
+            "data": tournament_data,
+            "timestamp": utcnow().isoformat(),
+        }
+    )
+
 
 async def send_user_update(user_data: dict):
-    """
-    Send user update to all connected clients
-    """
-    await manager.broadcast({
-        "type": "user_update",
-        "data": user_data,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    await manager.broadcast(
+        {
+            "type": "user_update",
+            "data": user_data,
+            "timestamp": utcnow().isoformat(),
+        }
+    )
+
 
 async def send_configuration_update(config_data: dict):
-    """
-    Send configuration update to all connected clients
-    """
-    await manager.broadcast({
-        "type": "configuration_update",
-        "data": config_data,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    await manager.broadcast(
+        {
+            "type": "configuration_update",
+            "data": config_data,
+            "timestamp": utcnow().isoformat(),
+        }
+    )
+
 
 async def send_system_notification(notification: dict):
-    """
-    Send system notification to all connected clients
-    """
-    await manager.broadcast({
-        "type": "system_notification",
-        "data": notification,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    await manager.broadcast(
+        {
+            "type": "system_notification",
+            "data": notification,
+            "timestamp": utcnow().isoformat(),
+        }
+    )
 
-# Export these functions for use by other modules
+
 __all__ = [
     "send_tournament_update",
-    "send_user_update", 
+    "send_user_update",
     "send_configuration_update",
     "send_system_notification",
-    "manager"
+    "manager",
 ]

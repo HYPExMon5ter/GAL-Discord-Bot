@@ -3,8 +3,9 @@ Pydantic schemas for graphics management
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GraphicBase(BaseModel):
@@ -36,9 +37,8 @@ class GraphicResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     archived: bool
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class GraphicListResponse(BaseModel):
@@ -64,9 +64,8 @@ class CanvasLockResponse(CanvasLockBase):
     locked: bool
     locked_at: datetime
     expires_at: datetime
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LockStatusResponse(BaseModel):

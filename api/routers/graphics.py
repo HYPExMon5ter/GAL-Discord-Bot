@@ -1,135 +1,88 @@
 """
-API router for graphics management
+Graphics API endpoints.
+
+Routers delegate to the graphics service and keep controller logic minimal.
 """
 
-from datetime import datetime
-from typing import List, Optional, Dict, Any
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
-from sqlalchemy.orm import Session
+from typing import Any, Dict, Optional
 
-from ..dependencies import get_db
-from ..auth import get_current_user, TokenData
-from ..schemas.graphics import (
-    GraphicCreate, GraphicUpdate, GraphicResponse, GraphicListResponse,
-    CanvasLockCreate, CanvasLockResponse, LockStatusResponse,
-    ArchiveActionRequest, ArchiveResponse, ArchiveListResponse
+from fastapi import APIRouter, Body, Depends, Query
+
+from api.auth import TokenData
+from api.dependencies import (
+    get_active_user,
+    get_graphics_service,
+    require_roles,
+    require_write_access,
 )
-from ..services.graphics_service import GraphicsService
-
+from api.services.graphics_service import GraphicsService
+from api.utils.service_runner import execute_service
+from ..schemas.graphics import (
+    ArchiveActionRequest,
+    ArchiveListResponse,
+    ArchiveResponse,
+    CanvasLockCreate,
+    CanvasLockResponse,
+    GraphicCreate,
+    GraphicListResponse,
+    GraphicResponse,
+    GraphicUpdate,
+    LockStatusResponse,
+)
 
 router = APIRouter()
 
 
+# --------------------------------------------------------------------------- #
+# Graphics CRUD
+# --------------------------------------------------------------------------- #
 @router.post("/graphics", response_model=GraphicResponse)
 async def create_graphic(
     graphic: GraphicCreate,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Create a new graphic
-    """
-    try:
-        service = GraphicsService(db)
-        result = service.create_graphic(graphic, current_user.username)
-        return GraphicResponse(**result)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create graphic: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> GraphicResponse:
+    payload = await execute_service(service.create_graphic, graphic, current_user.username)
+    return GraphicResponse(**payload)
 
 
 @router.get("/graphics", response_model=GraphicListResponse)
 async def get_graphics(
     include_archived: bool = Query(False, description="Include archived graphics"),
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get all graphics
-    """
-    try:
-        service = GraphicsService(db)
-        graphics = service.get_graphics(include_archived=include_archived)
-        return GraphicListResponse(
-            graphics=[GraphicResponse(**g) for g in graphics],
-            total=len(graphics)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve graphics: {str(e)}"
-        )
+    _user: TokenData = Depends(get_active_user),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> GraphicListResponse:
+    payload = await execute_service(service.get_graphics, include_archived=include_archived)
+    graphics = [GraphicResponse(**graphic) for graphic in payload]
+    return GraphicListResponse(graphics=graphics, total=len(graphics))
 
 
 @router.get("/graphics/{graphic_id}", response_model=GraphicResponse)
 async def get_graphic(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get a specific graphic by ID
-    """
-    try:
-        service = GraphicsService(db)
-        graphic = service.get_graphic_by_id(graphic_id)
-        
-        if not graphic:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Graphic not found"
-            )
-        
-        return GraphicResponse(**graphic)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve graphic: {str(e)}"
-        )
+    _user: TokenData = Depends(get_active_user),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> GraphicResponse:
+    payload = await execute_service(service.get_graphic_by_id, graphic_id)
+    return GraphicResponse(**payload)
 
 
 @router.put("/graphics/{graphic_id}", response_model=GraphicResponse)
 async def update_graphic(
     graphic_id: int,
     graphic_update: GraphicUpdate,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Update an existing graphic
-    """
-    try:
-        service = GraphicsService(db)
-        
-        # Skip lock check for now (temporary fix until lock system is properly implemented)
-        # lock_status = service.get_lock_status(graphic_id, current_user.username)
-        # if not lock_status.can_edit:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_403_FORBIDDEN,
-        #         detail="Graphic is locked by another user"
-        #     )
-        
-        result = service.update_graphic(graphic_id, graphic_update, current_user.username)
-        
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Graphic not found"
-            )
-        
-        return GraphicResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update graphic: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> GraphicResponse:
+    payload = await execute_service(
+        service.update_graphic,
+        graphic_id,
+        graphic_update,
+        current_user.username,
+    )
+    return GraphicResponse(**payload)
 
 
 @router.post("/graphics/{graphic_id}/duplicate", response_model=GraphicResponse)
@@ -138,438 +91,173 @@ async def duplicate_graphic(
     duplicate_request: Optional[Dict[str, Any]] = Body(None),
     new_title: Optional[str] = None,
     new_event_name: Optional[str] = None,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Duplicate a graphic
-    """
-    try:
-        service = GraphicsService(db)
-        
-        # Extract parameters from either request body or query params
-        title = new_title
-        event_name = new_event_name
-        
-        if duplicate_request:
-            title = duplicate_request.get('new_title') or title
-            event_name = duplicate_request.get('new_event_name') or event_name
-        
-        result = service.duplicate_graphic(graphic_id, current_user.username, title, event_name)
-        
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Graphic not found"
-            )
-        
-        return GraphicResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to duplicate graphic: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> GraphicResponse:
+    title = new_title
+    event_name = new_event_name
+    if duplicate_request:
+        title = duplicate_request.get("new_title", title)
+        event_name = duplicate_request.get("new_event_name", event_name)
+
+    payload = await execute_service(
+        service.duplicate_graphic,
+        graphic_id,
+        current_user.username,
+        title,
+        event_name,
+    )
+    return GraphicResponse(**payload)
 
 
 @router.delete("/graphics/{graphic_id}")
 async def delete_graphic(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Delete a graphic (soft delete by archiving)
-    """
-    try:
-        service = GraphicsService(db)
-        success = service.delete_graphic(graphic_id, current_user.username)
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Graphic not found or is locked"
-            )
-        
-        return {"message": "Graphic deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete graphic: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> dict:
+    await execute_service(
+        service.delete_graphic,
+        graphic_id,
+        current_user.username,
+        current_user.is_admin,
+    )
+    return {"message": "Graphic deleted successfully"}
 
 
 @router.delete("/graphics/{graphic_id}/permanent")
 async def permanent_delete_graphic(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Permanently delete an active graphic (admin only)
-    """
-    try:
-        # TODO: Implement admin permission check
-        is_admin = True  # Placeholder - should check user permissions
-        
-        if not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
-        
-        service = GraphicsService(db)
-        success = service.permanent_delete_graphic(graphic_id, current_user.username)
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Active graphic not found or could not be deleted"
-            )
-        
-        return {"message": "Graphic permanently deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to permanently delete graphic: {str(e)}"
-        )
+    _admin: TokenData = Depends(require_roles("Administrator")),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> dict:
+    await execute_service(service.permanent_delete_graphic, graphic_id, _admin.username)
+    return {"message": "Graphic permanently deleted successfully"}
 
 
-# Canvas Lock Management
+# --------------------------------------------------------------------------- #
+# Lock management
+# --------------------------------------------------------------------------- #
 @router.post("/lock/{graphic_id}", response_model=CanvasLockResponse)
 async def acquire_lock(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Acquire a canvas lock for editing
-    """
-    try:
-        service = GraphicsService(db)
-        lock_request = CanvasLockCreate(
-            graphic_id=graphic_id,
-            user_name=current_user.username
-        )
-        
-        result = service.acquire_lock(lock_request)
-        
-        if not result.get("can_edit", True):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Graphic is locked by {result.get('locked_by', 'another user')}"
-            )
-        
-        return CanvasLockResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to acquire lock: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> CanvasLockResponse:
+    request = CanvasLockCreate(graphic_id=graphic_id, user_name=current_user.username)
+    payload = await execute_service(service.acquire_lock, request)
+    return CanvasLockResponse(**payload)
 
 
 @router.delete("/lock/{graphic_id}")
 async def release_lock(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Release a canvas lock
-    """
-    try:
-        service = GraphicsService(db)
-        success = service.release_lock(graphic_id, current_user.username)
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active lock found for this graphic"
-            )
-        
-        return {"message": "Lock released successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to release lock: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> dict:
+    await execute_service(service.release_lock, graphic_id, current_user.username)
+    return {"message": "Lock released successfully"}
 
 
 @router.get("/lock/{graphic_id}/status", response_model=LockStatusResponse)
 async def get_lock_status(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get lock status for a graphic
-    """
-    try:
-        service = GraphicsService(db)
-        status = service.get_lock_status(graphic_id, current_user.username)
-        return status
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get lock status: {str(e)}"
-        )
+    current_user: TokenData = Depends(get_active_user),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> LockStatusResponse:
+    return await execute_service(service.get_lock_status, graphic_id, current_user.username)
 
 
 @router.post("/lock/{graphic_id}/refresh", response_model=CanvasLockResponse)
 async def refresh_lock(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Refresh an existing canvas lock to extend its expiration time
-    """
-    try:
-        service = GraphicsService(db)
-        result = service.refresh_lock(graphic_id, current_user.username)
-        
-        if not result.get("success", False):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No active lock found for this graphic or lock expired"
-            )
-        
-        return CanvasLockResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to refresh lock: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> CanvasLockResponse:
+    payload = await execute_service(service.refresh_lock, graphic_id, current_user.username)
+    return CanvasLockResponse(**payload["lock"])
 
 
 @router.get("/lock/status")
 async def get_all_lock_status(
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get status of all active locks
-    """
-    try:
-        service = GraphicsService(db)
-        # This would need to be implemented in the service
-        return {"message": "All lock status endpoint not yet implemented"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get lock status: {str(e)}"
-        )
+    _user: TokenData = Depends(get_active_user),
+) -> dict:
+    # Still pending implementation in the service layer.
+    return {"message": "All lock status endpoint not yet implemented"}
 
 
-# Archive Management
+# --------------------------------------------------------------------------- #
+# Archive operations
+# --------------------------------------------------------------------------- #
 @router.post("/archive/{graphic_id}", response_model=ArchiveResponse)
 async def archive_graphic(
     graphic_id: int,
     archive_request: Optional[ArchiveActionRequest] = Body(None),
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Archive a graphic
-    """
-    try:
-        service = GraphicsService(db)
-        reason = archive_request.reason if archive_request else None
-        
-        result = service.archive_graphic(graphic_id, current_user.username, reason)
-        
-        if not result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result["message"]
-            )
-        
-        return ArchiveResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to archive graphic: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> ArchiveResponse:
+    reason = archive_request.reason if archive_request else None
+    payload = await execute_service(
+        service.archive_graphic,
+        graphic_id,
+        current_user.username,
+        reason,
+    )
+    return ArchiveResponse(**payload)
 
 
 @router.post("/archive/{graphic_id}/restore", response_model=ArchiveResponse)
 async def restore_graphic(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Restore an archived graphic
-    """
-    try:
-        service = GraphicsService(db)
-        result = service.restore_graphic(graphic_id, current_user.username)
-        
-        if not result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result["message"]
-            )
-        
-        return ArchiveResponse(**result)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to restore graphic: {str(e)}"
-        )
+    current_user: TokenData = Depends(require_write_access),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> ArchiveResponse:
+    payload = await execute_service(service.restore_graphic, graphic_id, current_user.username)
+    return ArchiveResponse(**payload)
 
 
 @router.get("/archive", response_model=ArchiveListResponse)
 async def get_archived_graphics(
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get all archived graphics
-    """
-    try:
-        service = GraphicsService(db)
-        graphics = service.get_graphics(include_archived=True)
-        
-        # Filter only archived graphics
-        archived_graphics = [g for g in graphics if g["archived"]]
-        
-        # TODO: Implement admin check for delete permission
-        can_delete = True  # Placeholder - should check user permissions
-        
-        return ArchiveListResponse(
-            archives=[GraphicResponse(**g) for g in archived_graphics],
-            total=len(archived_graphics),
-            can_delete=can_delete
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve archived graphics: {str(e)}"
-        )
+    current_user: TokenData = Depends(get_active_user),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> ArchiveListResponse:
+    payload = await execute_service(service.get_graphics, include_archived=True)
+    archived = [GraphicResponse(**graphic) for graphic in payload if graphic["archived"]]
+    return ArchiveListResponse(
+        archives=archived,
+        total=len(archived),
+        can_delete=current_user.is_admin,
+    )
 
 
 @router.delete("/archive/{graphic_id}/permanent")
 async def permanent_delete_archive(
     graphic_id: int,
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Permanently delete an archived graphic (admin only)
-    """
-    try:
-        # TODO: Implement admin permission check
-        is_admin = True  # Placeholder - should check user permissions
-        
-        if not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
-        
-        service = GraphicsService(db)
-        success = service.permanent_delete_graphic(graphic_id, current_user.username)
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Archived graphic not found or could not be deleted"
-            )
-        
-        return {"message": "Graphic permanently deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to permanently delete graphic: {str(e)}"
-        )
+    _admin: TokenData = Depends(require_roles("Administrator")),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> dict:
+    await execute_service(service.permanent_delete_graphic, graphic_id, _admin.username)
+    return {"message": "Graphic permanently deleted successfully"}
 
 
-# Maintenance endpoint
 @router.post("/maintenance/cleanup-locks")
 async def cleanup_expired_locks(
-    current_user: TokenData = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Clean up expired locks (maintenance endpoint)
-    """
-    try:
-        # TODO: Implement admin permission check
-        is_admin = True  # Placeholder - should check user permissions
-        
-        if not is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
-        
-        service = GraphicsService(db)
-        cleaned_count = service.cleanup_expired_locks()
-        
-        return {
-            "message": f"Cleaned up {cleaned_count} expired locks",
-            "cleaned_count": cleaned_count
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to cleanup locks: {str(e)}"
-        )
+    _admin: TokenData = Depends(require_roles("Administrator")),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> dict:
+    cleaned_count = await execute_service(service.cleanup_expired_locks)
+    return {
+        "message": f"Cleaned up {cleaned_count} expired locks",
+        "cleaned_count": cleaned_count,
+    }
 
 
+# --------------------------------------------------------------------------- #
+# Public view
+# --------------------------------------------------------------------------- #
 @router.get("/graphics/{graphic_id}/view")
 async def view_graphic(
     graphic_id: int,
-    db: Session = Depends(get_db)
-):
-    """
-    Public view of a graphic for OBS browser source
-    """
-    try:
-        service = GraphicsService(db)
-        graphic = service.get_graphic_by_id(graphic_id)
-        
-        if not graphic:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Graphic not found"
-            )
-        
-        if graphic.get("archived", False):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Graphic not found"
-            )
-        
-        return {
-            "id": graphic["id"],
-            "title": graphic["title"],
-            "data_json": graphic["data_json"]
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get graphic: {str(e)}"
-        )
+    service: GraphicsService = Depends(get_graphics_service),
+) -> dict:
+    return await execute_service(service.public_view, graphic_id)

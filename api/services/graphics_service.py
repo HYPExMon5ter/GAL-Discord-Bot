@@ -1,455 +1,390 @@
 """
-Service layer for graphics management
+Service layer for graphics management.
+
+Acts as the orchestration layer between the FastAPI routers and the underlying
+SQLAlchemy models, exposing operations as simple Python methods while raising
+domain-specific `ServiceError`s when something goes wrong.
 """
 
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
-import json
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from __future__ import annotations
 
-from ..dependencies import get_db
+import json
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session
+
+from api.services.errors import ConflictError, NotFoundError
+
+from ..models import Archive, CanvasLock, Graphic
 from ..schemas.graphics import (
-    GraphicCreate, GraphicUpdate, CanvasLockCreate,
-    LockStatusResponse, ArchiveActionRequest
+    CanvasLockCreate,
+    GraphicCreate,
+    GraphicUpdate,
+    LockStatusResponse,
 )
 
 
 class GraphicsService:
-    """Service for managing graphics and canvas locks"""
-    
+    """Service for managing graphics and canvas locks."""
+
     def __init__(self, db: Session):
         self.db = db
-    
-    def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, Any]:
-        """Create a new graphic"""
-        # Import here to avoid circular imports
-        from ..models import Graphic
-        
-        db_graphic = Graphic(
-            title=graphic.title,
-            event_name=graphic.event_name,
-            data_json=json.dumps(graphic.data_json or {}),
-            created_by=created_by,
-            archived=False
-        )
-        
-        self.db.add(db_graphic)
-        self.db.commit()
-        self.db.refresh(db_graphic)
-        
-        return {
-            "id": db_graphic.id,
-            "title": db_graphic.title,
-            "event_name": db_graphic.event_name,
-            "data_json": db_graphic.data_json,  # Keep as string for frontend compatibility
-            "created_by": db_graphic.created_by,
-            "created_at": db_graphic.created_at,
-            "updated_at": db_graphic.updated_at,
-            "archived": db_graphic.archived
-        }
-    
-    def get_graphics(self, include_archived: bool = False) -> List[Dict[str, Any]]:
-        """Get all graphics, optionally including archived ones"""
-        from ..models import Graphic
-        
-        query = self.db.query(Graphic)
-        
-        if not include_archived:
-            query = query.filter(Graphic.archived == False)
-        
-        graphics = query.order_by(Graphic.updated_at.desc()).all()
-        
-        return [
-            {
-                "id": graphic.id,
-                "title": graphic.title,
-                "event_name": graphic.event_name,
-                "data_json": graphic.data_json,  # Keep as string for frontend compatibility
-                "created_by": graphic.created_by,
-                "created_at": graphic.created_at,
-                "updated_at": graphic.updated_at,
-                "archived": graphic.archived
-            }
-            for graphic in graphics
-        ]
-    
-    def get_graphic_by_id(self, graphic_id: int) -> Optional[Dict[str, Any]]:
-        """Get a specific graphic by ID"""
-        from ..models import Graphic
-        
-        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
-        
-        if not graphic:
-            return None
-        
+
+    @staticmethod
+    def _utcnow() -> datetime:
+        """Return a timezone-aware UTC datetime."""
+        return datetime.now(UTC)
+
+    # --------------------------------------------------------------------- #
+    # Utility helpers
+    # --------------------------------------------------------------------- #
+    def _serialize_graphic(self, graphic: Graphic) -> Dict[str, Any]:
         return {
             "id": graphic.id,
             "title": graphic.title,
             "event_name": graphic.event_name,
-            "data_json": graphic.data_json,  # Keep as string for frontend compatibility
+            "data_json": graphic.data_json,
             "created_by": graphic.created_by,
             "created_at": graphic.created_at,
             "updated_at": graphic.updated_at,
-            "archived": graphic.archived
+            "archived": graphic.archived,
         }
-    
-    def update_graphic(self, graphic_id: int, graphic_update: GraphicUpdate, user_name: str) -> Optional[Dict[str, Any]]:
-        """Update an existing graphic"""
-        from ..models import Graphic
-        
-        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
-        
-        if not graphic:
-            return None
-        
-        if graphic_update.title is not None:
-            graphic.title = graphic_update.title
-        
-        if graphic_update.event_name is not None:
-            graphic.event_name = graphic_update.event_name
-        
-        if graphic_update.data_json is not None:
-            graphic.data_json = graphic_update.data_json
-        
-        graphic.updated_at = datetime.utcnow()
-        
-        self.db.commit()
-        self.db.refresh(graphic)
-        
-        return {
-            "id": graphic.id,
-            "title": graphic.title,
-            "event_name": graphic.event_name,
-            "data_json": graphic.data_json,  # Keep as string for frontend compatibility
-            "created_by": graphic.created_by,
-            "created_at": graphic.created_at,
-            "updated_at": graphic.updated_at,
-            "archived": graphic.archived
-        }
-    
-    def duplicate_graphic(self, graphic_id: int, user_name: str, new_title: Optional[str] = None, new_event_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Duplicate a graphic"""
-        from ..models import Graphic
-        
-        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
-        
-        if not graphic:
-            return None
-        
-        # Create a new graphic with the same data
-        new_graphic = Graphic(
-            title=new_title or f"{graphic.title} (Copy)",
-            event_name=new_event_name if new_event_name is not None else graphic.event_name,
-            data_json=graphic.data_json,  # Copy the canvas data
-            created_by=user_name,
-            archived=False
-        )
-        
-        self.db.add(new_graphic)
-        self.db.commit()
-        self.db.refresh(new_graphic)
-        
-        return {
-            "id": new_graphic.id,
-            "title": new_graphic.title,
-            "event_name": new_graphic.event_name,
-            "data_json": new_graphic.data_json,  # Keep as string for frontend compatibility
-            "created_by": new_graphic.created_by,
-            "created_at": new_graphic.created_at,
-            "updated_at": new_graphic.updated_at,
-            "archived": new_graphic.archived
-        }
-    
-    def delete_graphic(self, graphic_id: int, user_name: str, is_admin: bool = False) -> bool:
-        """Delete a graphic (soft delete by archiving)"""
-        from ..models import Graphic
-        
-        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
-        
-        if not graphic:
-            return False
-        
-        # Check if graphic is locked
-        lock = self.get_active_lock(graphic_id)
-        if lock:
-            return False  # Cannot delete locked graphic
-        
-        graphic.archived = True
-        graphic.updated_at = datetime.utcnow()
-        
-        self.db.commit()
-        return True
-    
-    def acquire_lock(self, lock_request: CanvasLockCreate) -> Dict[str, Any]:
-        """Acquire a canvas lock for editing"""
-        from ..models import CanvasLock
-        
-        # Check if there's an existing active lock (get the actual model object)
-        existing_lock_model = self.db.query(CanvasLock).filter(
-            and_(
-                CanvasLock.graphic_id == lock_request.graphic_id,
-                CanvasLock.locked == True,
-                CanvasLock.expires_at > datetime.utcnow()
-            )
-        ).first()
-        
-        if existing_lock_model:
-            # If lock belongs to the same user and is still valid, extend it
-            if existing_lock_model.user_name == lock_request.user_name:
-                existing_lock_model.expires_at = datetime.utcnow() + timedelta(minutes=5)
-                self.db.commit()
-                self.db.refresh(existing_lock_model)
-                
-                return {
-                    "id": existing_lock_model.id,
-                    "graphic_id": existing_lock_model.graphic_id,
-                    "user_name": existing_lock_model.user_name,
-                    "locked": True,
-                    "locked_at": existing_lock_model.locked_at,
-                    "expires_at": existing_lock_model.expires_at,
-                    "can_edit": True
-                }
-            
-            # Lock is owned by someone else
-            return {
-                "locked": True,
-                "locked_by": existing_lock_model.user_name,
-                "expires_at": existing_lock_model.expires_at,
-                "can_edit": False
-            }
-        
-        # Create new lock
-        new_lock = CanvasLock(
-            graphic_id=lock_request.graphic_id,
-            user_name=lock_request.user_name,
-            locked=True,
-            locked_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=5)
-        )
-        
-        self.db.add(new_lock)
-        self.db.commit()
-        self.db.refresh(new_lock)
-        
-        return {
-            "id": new_lock.id,
-            "graphic_id": new_lock.graphic_id,
-            "user_name": new_lock.user_name,
-            "locked": True,
-            "locked_at": new_lock.locked_at,
-            "expires_at": new_lock.expires_at,
-            "can_edit": True
-        }
-    
-    def release_lock(self, graphic_id: int, user_name: str) -> bool:
-        """Release a canvas lock"""
-        from ..models import CanvasLock
-        
-        lock = self.db.query(CanvasLock).filter(
-            and_(
-                CanvasLock.graphic_id == graphic_id,
-                CanvasLock.user_name == user_name,
-                CanvasLock.locked == True
-            )
-        ).first()
-        
-        if lock:
-            lock.locked = False
-            self.db.commit()
-            return True
-        
-        return False
-    
-    def get_active_lock(self, graphic_id: int) -> Optional[Dict[str, Any]]:
-        """Get the active lock for a graphic"""
-        from ..models import CanvasLock
-        
-        lock = self.db.query(CanvasLock).filter(
-            and_(
-                CanvasLock.graphic_id == graphic_id,
-                CanvasLock.locked == True,
-                CanvasLock.expires_at > datetime.utcnow()
-            )
-        ).first()
-        
-        if not lock:
-            return None
-        
+
+    def _serialize_lock(self, lock: CanvasLock) -> Dict[str, Any]:
         return {
             "id": lock.id,
             "graphic_id": lock.graphic_id,
             "user_name": lock.user_name,
             "locked": lock.locked,
             "locked_at": lock.locked_at,
-            "expires_at": lock.expires_at
+            "expires_at": lock.expires_at,
         }
-    
-    def get_lock_status(self, graphic_id: int, user_name: str) -> LockStatusResponse:
-        """Get lock status for a graphic"""
-        lock = self.get_active_lock(graphic_id)
-        
-        if not lock:
-            return LockStatusResponse(
-                locked=False,
-                lock_info=None,
-                can_edit=True
+
+    def _get_graphic_or_error(self, graphic_id: int) -> Graphic:
+        graphic = (
+            self.db.query(Graphic)
+            .filter(Graphic.id == graphic_id)
+            .first()
+        )
+        if not graphic:
+            raise NotFoundError(f"Graphic {graphic_id} was not found.")
+        return graphic
+
+    def _get_active_lock_model(self, graphic_id: int) -> Optional[CanvasLock]:
+        return (
+            self.db.query(CanvasLock)
+            .filter(
+                and_(
+                    CanvasLock.graphic_id == graphic_id,
+                    CanvasLock.locked.is_(True),
+                    CanvasLock.expires_at > self._utcnow(),
+                )
             )
-        
-        can_edit = lock["user_name"] == user_name
-        
+            .first()
+        )
+
+    # --------------------------------------------------------------------- #
+    # CRUD operations
+    # --------------------------------------------------------------------- #
+    def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, Any]:
+        """Create a new graphic."""
+        db_graphic = Graphic(
+            title=graphic.title,
+            event_name=graphic.event_name,
+            data_json=json.dumps(graphic.data_json or {}),
+            created_by=created_by,
+            archived=False,
+        )
+
+        self.db.add(db_graphic)
+        self.db.commit()
+        self.db.refresh(db_graphic)
+        return self._serialize_graphic(db_graphic)
+
+    def get_graphics(self, include_archived: bool = False) -> List[Dict[str, Any]]:
+        """Return all graphics, optionally including archived ones."""
+        query = self.db.query(Graphic)
+        if not include_archived:
+            query = query.filter(Graphic.archived.is_(False))
+
+        graphics = query.order_by(Graphic.updated_at.desc()).all()
+        return [self._serialize_graphic(graphic) for graphic in graphics]
+
+    def get_graphic_by_id(self, graphic_id: int) -> Dict[str, Any]:
+        """Return a graphic by ID or raise ``NotFoundError``."""
+        graphic = self._get_graphic_or_error(graphic_id)
+        return self._serialize_graphic(graphic)
+
+    def update_graphic(
+        self,
+        graphic_id: int,
+        graphic_update: GraphicUpdate,
+        user_name: str,
+    ) -> Dict[str, Any]:
+        """Update an existing graphic."""
+        graphic = self._get_graphic_or_error(graphic_id)
+
+        if graphic_update.title is not None:
+            graphic.title = graphic_update.title
+        if graphic_update.event_name is not None:
+            graphic.event_name = graphic_update.event_name
+        if graphic_update.data_json is not None:
+            graphic.data_json = graphic_update.data_json
+
+        graphic.updated_at = self._utcnow()
+        self.db.commit()
+        self.db.refresh(graphic)
+
+        return self._serialize_graphic(graphic)
+
+    def duplicate_graphic(
+        self,
+        graphic_id: int,
+        user_name: str,
+        new_title: Optional[str] = None,
+        new_event_name: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a duplicate of an existing graphic."""
+        source = self._get_graphic_or_error(graphic_id)
+        duplicate = Graphic(
+            title=new_title or f"{source.title} (Copy)",
+            event_name=new_event_name if new_event_name is not None else source.event_name,
+            data_json=source.data_json,
+            created_by=user_name,
+            archived=False,
+        )
+
+        self.db.add(duplicate)
+        self.db.commit()
+        self.db.refresh(duplicate)
+
+        return self._serialize_graphic(duplicate)
+
+    def delete_graphic(self, graphic_id: int, user_name: str, is_admin: bool = False) -> None:
+        """
+        Soft-delete (archive) a graphic.
+
+        Raises:
+            NotFoundError: if the graphic does not exist.
+            ConflictError: if the graphic is currently locked.
+        """
+        graphic = self._get_graphic_or_error(graphic_id)
+        lock = self._get_active_lock_model(graphic_id)
+        if lock and lock.user_name != user_name and not is_admin:
+            raise ConflictError("Graphic is locked by another user.")
+
+        graphic.archived = True
+        graphic.updated_at = self._utcnow()
+        self.db.commit()
+
+    # --------------------------------------------------------------------- #
+    # Lock management
+    # --------------------------------------------------------------------- #
+    def acquire_lock(self, lock_request: CanvasLockCreate) -> Dict[str, Any]:
+        """Acquire or extend a lock for editing a graphic."""
+        existing_lock = self._get_active_lock_model(lock_request.graphic_id)
+
+        if existing_lock and existing_lock.user_name != lock_request.user_name:
+            raise ConflictError("Graphic is already locked by another user.")
+
+        if existing_lock:
+            existing_lock.expires_at = self._utcnow() + timedelta(minutes=5)
+            self.db.commit()
+            self.db.refresh(existing_lock)
+            return self._serialize_lock(existing_lock)
+
+        lock = CanvasLock(
+            graphic_id=lock_request.graphic_id,
+            user_name=lock_request.user_name,
+            locked=True,
+            locked_at=self._utcnow(),
+            expires_at=self._utcnow() + timedelta(minutes=5),
+        )
+        self.db.add(lock)
+        self.db.commit()
+        self.db.refresh(lock)
+        return self._serialize_lock(lock)
+
+    def release_lock(self, graphic_id: int, user_name: str) -> None:
+        """
+        Release a lock owned by the caller.
+
+        Raises:
+            NotFoundError: if no active lock exists for the user.
+        """
+        lock = (
+            self.db.query(CanvasLock)
+            .filter(
+                and_(
+                    CanvasLock.graphic_id == graphic_id,
+                    CanvasLock.user_name == user_name,
+                    CanvasLock.locked.is_(True),
+                )
+            )
+            .first()
+        )
+        if not lock:
+            raise NotFoundError("No active lock found for this user.")
+
+        lock.locked = False
+        self.db.commit()
+
+    def get_active_lock(self, graphic_id: int) -> Optional[Dict[str, Any]]:
+        """Return the active lock for a graphic, if any."""
+        lock = self._get_active_lock_model(graphic_id)
+        return self._serialize_lock(lock) if lock else None
+
+    def get_lock_status(self, graphic_id: int, user_name: str) -> LockStatusResponse:
+        """Return lock status information for the caller."""
+        lock = self.get_active_lock(graphic_id)
+        if not lock:
+            return LockStatusResponse(locked=False, lock_info=None, can_edit=True)
+
         return LockStatusResponse(
             locked=True,
             lock_info=lock,
-            can_edit=can_edit
+            can_edit=lock["user_name"] == user_name,
         )
-    
+
     def cleanup_expired_locks(self) -> int:
-        """Clean up expired locks (called by cron job)"""
-        from ..models import CanvasLock
-        
-        expired_locks = self.db.query(CanvasLock).filter(
-            or_(
-                CanvasLock.expires_at <= datetime.utcnow(),
-                CanvasLock.locked == False
+        """Unlock any expired locks."""
+        expired_locks = (
+            self.db.query(CanvasLock)
+            .filter(
+                or_(
+                    CanvasLock.expires_at <= self._utcnow(),
+                    CanvasLock.locked.is_(False),
+                )
             )
-        ).all()
-        
+            .all()
+        )
+
         count = len(expired_locks)
-        
         for lock in expired_locks:
             lock.locked = False
-        
+
         self.db.commit()
         return count
-    
-    def archive_graphic(self, graphic_id: int, user_name: str, reason: Optional[str] = None) -> Dict[str, Any]:
-        """Archive a graphic"""
-        from ..models import Graphic, Archive
-        
-        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
-        
-        if not graphic:
-            return {"success": False, "message": "Graphic not found"}
-        
-        # Check if graphic is locked
-        lock = self.get_active_lock(graphic_id)
-        if lock:
-            return {"success": False, "message": "Cannot archive locked graphic"}
-        
-        # Create archive record
-        archive = Archive(
-            graphic_id=graphic_id,
-            archived_by=user_name,
-            reason=reason
+
+    def refresh_lock(self, graphic_id: int, user_name: str) -> Dict[str, Any]:
+        """Extend an existing lock owned by the caller."""
+        lock = (
+            self.db.query(CanvasLock)
+            .filter(
+                and_(
+                    CanvasLock.graphic_id == graphic_id,
+                    CanvasLock.user_name == user_name,
+                    CanvasLock.locked.is_(True),
+                    CanvasLock.expires_at > self._utcnow(),
+                )
+            )
+            .first()
         )
-        
-        # Mark graphic as archived
+
+        if not lock:
+            raise NotFoundError("No active lock to refresh for this user.")
+
+        lock.expires_at = self._utcnow() + timedelta(minutes=5)
+        self.db.commit()
+        self.db.refresh(lock)
+        return {
+            "lock": self._serialize_lock(lock),
+            "success": True,
+            "message": "Lock refreshed successfully",
+        }
+
+    # --------------------------------------------------------------------- #
+    # Archive operations
+    # --------------------------------------------------------------------- #
+    def archive_graphic(self, graphic_id: int, user_name: str, reason: Optional[str] = None) -> Dict[str, Any]:
+        """Archive a graphic with an optional reason."""
+        graphic = self._get_graphic_or_error(graphic_id)
+        lock = self._get_active_lock_model(graphic_id)
+        if lock and lock.user_name != user_name:
+            raise ConflictError("Cannot archive while another user holds the lock.")
+
+        archive = Archive(graphic_id=graphic_id, archived_by=user_name, reason=reason)
         graphic.archived = True
-        graphic.updated_at = datetime.utcnow()
-        
+        graphic.updated_at = self._utcnow()
+
         self.db.add(archive)
         self.db.commit()
-        
+        self.db.refresh(archive)
+
         return {
             "success": True,
             "message": "Graphic archived successfully",
             "graphic_id": graphic_id,
-            "archived_at": archive.archived_at
+            "archived_at": archive.archived_at,
         }
-    
+
     def restore_graphic(self, graphic_id: int, user_name: str) -> Dict[str, Any]:
-        """Restore an archived graphic"""
-        from ..models import Graphic, Archive
-        
-        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
-        
-        if not graphic:
-            return {"success": False, "message": "Graphic not found"}
-        
+        """Restore a previously archived graphic."""
+        graphic = self._get_graphic_or_error(graphic_id)
         if not graphic.archived:
-            return {"success": False, "message": "Graphic is not archived"}
-        
-        # Mark graphic as active
+            raise ConflictError("Graphic is not archived.")
+
         graphic.archived = False
-        graphic.updated_at = datetime.utcnow()
-        
-        # Create restore record
-        restore_archive = Archive(
+        graphic.updated_at = self._utcnow()
+
+        restore_record = Archive(
             graphic_id=graphic_id,
             archived_by=user_name,
-            reason="Restored from archive"
+            reason="Restored from archive",
         )
-        
-        self.db.add(restore_archive)
+
+        self.db.add(restore_record)
         self.db.commit()
-        
+        self.db.refresh(restore_record)
+
         return {
             "success": True,
             "message": "Graphic restored successfully",
             "graphic_id": graphic_id,
-            "restored_at": restore_archive.archived_at
+            "restored_at": restore_record.archived_at,
         }
-    
-    def permanent_delete_graphic(self, graphic_id: int, user_name: str) -> bool:
-        """Permanently delete an archived graphic"""
-        from ..models import Graphic, Archive
-        
-        graphic = self.db.query(Graphic).filter(Graphic.id == graphic_id).first()
-        
-        if not graphic:
-            return False
-        
+
+    def permanent_delete_graphic(self, graphic_id: int, user_name: str) -> None:
+        """
+        Permanently delete an archived graphic.
+
+        Raises:
+            NotFoundError: if the graphic does not exist.
+            ConflictError: if the graphic is not archived.
+        """
+        graphic = self._get_graphic_or_error(graphic_id)
         if not graphic.archived:
-            return False  # Only archived graphics can be permanently deleted
-        
-        # Create final archive record before deletion
-        final_archive = Archive(
+            raise ConflictError("Only archived graphics can be permanently deleted.")
+
+        archive_record = Archive(
             graphic_id=graphic_id,
             archived_by=user_name,
-            reason="Permanently deleted"
+            reason="Permanently deleted",
         )
-        
-        # Delete the graphic
+
+        self.db.add(archive_record)
         self.db.delete(graphic)
-        self.db.add(final_archive)
         self.db.commit()
-        
-        return True
-    
-    def refresh_lock(self, graphic_id: int, user_name: str) -> Dict[str, Any]:
-        """Refresh an existing canvas lock"""
-        from ..models import CanvasLock
-        
-        # Find existing active lock for this user and graphic
-        existing_lock = self.db.query(CanvasLock).filter(
-            and_(
-                CanvasLock.graphic_id == graphic_id,
-                CanvasLock.user_name == user_name,
-                CanvasLock.locked == True,
-                CanvasLock.expires_at > datetime.utcnow()
-            )
-        ).first()
-        
-        if not existing_lock:
-            return {
-                "success": False,
-                "message": "No active lock found for this user and graphic"
-            }
-        
-        # Extend the lock expiration
-        existing_lock.expires_at = datetime.utcnow() + timedelta(minutes=5)
-        self.db.commit()
-        self.db.refresh(existing_lock)
-        
+
+    # --------------------------------------------------------------------- #
+    # Public helpers
+    # --------------------------------------------------------------------- #
+    def public_view(self, graphic_id: int) -> Dict[str, Any]:
+        """
+        Retrieve a graphic for public consumption.
+
+        Raises:
+            NotFoundError: if the graphic does not exist or is archived.
+        """
+        graphic = self._get_graphic_or_error(graphic_id)
+        if graphic.archived:
+            raise NotFoundError("Graphic not available.")
+
+        serialized = self._serialize_graphic(graphic)
         return {
-            "id": existing_lock.id,
-            "graphic_id": existing_lock.graphic_id,
-            "user_name": existing_lock.user_name,
-            "locked": True,
-            "locked_at": existing_lock.locked_at,
-            "expires_at": existing_lock.expires_at,
-            "can_edit": True,
-            "success": True,
-            "message": "Lock refreshed successfully"
+            "id": serialized["id"],
+            "title": serialized["title"],
+            "data_json": serialized["data_json"],
         }

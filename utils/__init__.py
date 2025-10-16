@@ -14,6 +14,12 @@ from .logging_utils import (
     sanitize_log_message, SecureLogger
 )
 
+from .feature_flags import (
+    deployment_stage,
+    rollout_flags_snapshot,
+    sheets_refactor_enabled,
+)
+
 __all__ = [
     'resolve_member',
     'send_reminder_dms',
@@ -24,5 +30,8 @@ __all__ = [
     'mask_discord_tokens', 
     'mask_api_keys',
     'sanitize_log_message',
-    'SecureLogger'
+    'SecureLogger',
+    'deployment_stage',
+    'rollout_flags_snapshot',
+    'sheets_refactor_enabled',
 ]

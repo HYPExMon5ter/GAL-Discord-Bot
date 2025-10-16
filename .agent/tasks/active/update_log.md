@@ -116,6 +116,12 @@ Executing comprehensive brand update for GAL Live Graphics Dashboard to align wi
 - **Lock State Handling**: Prevention of deletion for locked graphics
 - **Error Handling**: Improved error responses and user feedback
 
+### ✅ Rollout Controls Finalised (2025-10-16)
+- **Feature Flags**: Introduced `GAL_FEATURE_SHEETS_REFACTOR` and `GAL_DEPLOYMENT_STAGE` to orchestrate the staged rollout of the sheet integration refactor with instant rollback capability.
+- **Integration Logging**: `integrations/sheets.py` now logs the active deployment stage and falls back to legacy cache + column resolution when the refactor flag is disabled.
+- **Documentation Updates**: Deployment and emergency rollback SOPs describe how to toggle the new flags during incidents.
+- **Stakeholder Sign-off**: Bot operations and dashboard teams confirmed readiness; post-mortem follow-ups reference the Phase 0 baseline timings logged in `.agent/tasks/active/phase0-baseline-report.md`.
+
 #### Technical Implementation Details
 - **Differentiated Deletion**: Active graphics use confirmation, archives use direct deletion
 - **Real-time Updates**: WebSocket integration for immediate UI updates across clients

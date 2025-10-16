@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Tuple
 from config import get_sheet_settings, col_to_index
 from core.persistence import get_event_mode_for_guild
 from core.migration import ensure_guild_migration
+from utils.feature_flags import sheets_refactor_enabled
 
 
 class SheetIntegrationHelper:
@@ -32,73 +33,75 @@ class SheetIntegrationHelper:
             if current_time - cached_time < SheetIntegrationHelper._cache_ttl:
                 return cached_data
 
-        # Ensure guild is migrated
-        await ensure_guild_migration(guild_id)
+        column_config: Dict[str, Any] = {}
 
-        # Try to get from persistence first
-        try:
-            # Import locally to avoid circular imports
-            from integrations.sheet_detector import get_column_mapping
-            mapping = await get_column_mapping(guild_id)
+        if sheets_refactor_enabled():
+            # Ensure guild is migrated only when the refactor path is active
+            await ensure_guild_migration(guild_id)
 
-            # Build config-like dictionary from mapping
-            config = {}
+            try:
+                # Import locally to avoid circular imports
+                from integrations.sheet_detector import get_column_mapping
 
-            if mapping.discord_column:
-                config["discord_col"] = mapping.discord_column
-            if mapping.ign_column:
-                config["ign_col"] = mapping.ign_column
-            if mapping.alt_ign_column:
-                config["alt_ign_col"] = mapping.alt_ign_column
-            if mapping.pronouns_column:
-                config["pronouns_col"] = mapping.pronouns_column
-            if mapping.registered_column:
-                config["registered_col"] = mapping.registered_column
-            if mapping.checkin_column:
-                config["checkin_col"] = mapping.checkin_column
-            if mapping.team_column:
-                config["team_col"] = mapping.team_column
+                mapping = await get_column_mapping(guild_id)
 
-            # Add custom columns
-            if mapping.custom_columns:
-                config.update(mapping.custom_columns)
+                if mapping.discord_column:
+                    column_config["discord_col"] = mapping.discord_column
+                if mapping.ign_column:
+                    column_config["ign_col"] = mapping.ign_column
+                if mapping.alt_ign_column:
+                    column_config["alt_ign_col"] = mapping.alt_ign_column
+                if mapping.pronouns_column:
+                    column_config["pronouns_col"] = mapping.pronouns_column
+                if mapping.registered_column:
+                    column_config["registered_col"] = mapping.registered_column
+                if mapping.checkin_column:
+                    column_config["checkin_col"] = mapping.checkin_column
+                if mapping.team_column:
+                    column_config["team_col"] = mapping.team_column
+                if mapping.custom_columns:
+                    column_config.update(mapping.custom_columns)
 
-            # If we have at least the basic columns, return this config
-            if config.get("discord_col") and config.get("ign_col"):
-                return config
+            except Exception as exc:  # pragma: no cover - network/persistence edge case
+                logging.warning(
+                    "Failed to get column mapping from persistence for guild %s: %s",
+                    guild_id,
+                    exc,
+                )
+                column_config = {}
 
-        except Exception as e:
-            logging.warning(f"Failed to get column mapping from persistence for guild {guild_id}: {e}")
+        if not column_config:
+            # Fallback to config.yaml (legacy behaviour)
+            try:
+                mode = get_event_mode_for_guild(guild_id)
+                settings = get_sheet_settings(mode)
 
-        # Fallback to config.yaml
-        try:
-            mode = get_event_mode_for_guild(guild_id)
-            settings = get_sheet_settings(mode)
+                column_keys = [
+                    "discord_col",
+                    "ign_col",
+                    "alt_ign_col",
+                    "pronouns_col",
+                    "registered_col",
+                    "checkin_col",
+                    "team_col",
+                ]
 
-            # Only return column-related settings
-            column_config = {}
-            column_keys = [
-                "discord_col", "ign_col", "alt_ign_col", "pronouns_col",
-                "registered_col", "checkin_col", "team_col"
-            ]
+                for key in column_keys:
+                    if key in settings:
+                        column_config[key] = settings[key]
 
-            for key in column_keys:
-                if key in settings:
-                    column_config[key] = settings[key]
+                logging.info("Using config.yaml fallback for guild %s", guild_id)
 
-            logging.info(f"Using config.yaml fallback for guild {guild_id}")
+            except Exception as exc:
+                logging.error(
+                    "Failed to get column config from all sources for guild %s: %s",
+                    guild_id,
+                    exc,
+                )
+                column_config = {}
 
-            # Cache the result
-            SheetIntegrationHelper._column_cache[cache_key] = (column_config, current_time)
-            return column_config
-
-        except Exception as e:
-            logging.error(f"Failed to get column config from all sources for guild {guild_id}: {e}")
-            return {}
-
-        # Cache the successful result
-        SheetIntegrationHelper._column_cache[cache_key] = (config, current_time)
-        return config
+        SheetIntegrationHelper._column_cache[cache_key] = (column_config, current_time)
+        return column_config
 
     @staticmethod
     async def get_column_indexes(guild_id: str) -> Dict[str, int]:

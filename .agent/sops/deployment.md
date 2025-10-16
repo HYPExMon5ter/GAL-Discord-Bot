@@ -25,6 +25,12 @@ This SOP covers the deployment process for the Guardian Angel League Discord Bot
 - Configuration files (config.yaml, .env)
 - Database files (SQLite or PostgreSQL connection)
 
+### Deployment Feature Flags
+- `GAL_FEATURE_SHEETS_REFACTOR` (default `true`): disable to revert Google Sheets
+  integration to the legacy implementation during staged rollout or rollback.
+- `GAL_DEPLOYMENT_STAGE` (optional): set to `integrations`, `backend`, `bot`, or
+  `dashboard` to document the active rollout phase in logs and diagnostics.
+
 ## Deployment Process
 
 ### 1. Environment Setup

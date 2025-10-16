@@ -5,7 +5,7 @@ import json
 import os
 import random
 import time
-from typing import Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import discord
 import gspread
@@ -19,6 +19,11 @@ from integrations.sheet_optimizer import (
     fetch_required_columns_batch,
     update_cells_batch,
     detect_columns_optimized,
+)
+from utils.feature_flags import (
+    deployment_stage,
+    rollout_flags_snapshot,
+    sheets_refactor_enabled,
 )
 from utils.logging_utils import SecureLogger
 
@@ -40,11 +45,94 @@ class AuthenticationError(SheetsError):
 
 
 logger = SecureLogger(__name__)
-cache_manager = SheetCacheManager(
-    ttl_seconds=int(os.getenv("SHEET_CACHE_TTL", "600"))
-)
+
+
+class _LegacySheetCacheManager:
+    """Fallback cache manager that mimics legacy behaviour."""
+
+    def __init__(self) -> None:
+        self.data: Dict[str, Any] = {"users": {}, "last_refresh": 0.0}
+        self.lock = asyncio.Lock()
+
+    def is_stale(self) -> bool:
+        # Legacy path always refreshes to mirror pre-refactor behaviour
+        return True
+
+    def mark_refresh(self) -> None:
+        self.data["last_refresh"] = time.time()
+
+
+if sheets_refactor_enabled():
+    cache_manager = SheetCacheManager(
+        ttl_seconds=int(os.getenv("SHEET_CACHE_TTL", "600"))
+    )
+    logger.info(
+        "Sheet refactor flag enabled (stage=%s, flags=%s)",
+        deployment_stage(),
+        rollout_flags_snapshot(),
+    )
+else:
+    cache_manager = _LegacySheetCacheManager()
+    logger.warning(
+        "Sheet refactor flag disabled – using legacy cache path (stage=%s)",
+        deployment_stage(),
+    )
+
 sheet_cache = cache_manager.data
 cache_lock = cache_manager.lock
+
+
+async def _legacy_fetch_required_columns(
+    sheet,
+    column_indexes: Dict[str, int],
+    header_row: int,
+    max_players: int,
+) -> Dict[str, List[str]]:
+    """Fallback fetching that mirrors pre-refactor behaviour."""
+    result: Dict[str, List[str]] = {}
+    start_index = header_row  # col_values is 1-indexed, slicing handles header skip
+
+    for column_type, col_idx in column_indexes.items():
+        column_data = await retry_until_successful(sheet.col_values, col_idx)
+        # Drop header row entries
+        data_slice = column_data[start_index:start_index + max_players]
+        # Pad to maintain consistent length
+        if len(data_slice) < max_players:
+            data_slice.extend([""] * (max_players - len(data_slice)))
+        result[column_type] = data_slice
+
+    return result
+
+
+async def _legacy_update_cells(sheet, updates: List[Tuple[str, Any]]) -> bool:
+    """Update cells individually to emulate legacy flow."""
+    success = True
+    for cell_range, value in updates:
+        try:
+            await retry_until_successful(sheet.update_acell, cell_range, value)
+        except Exception as exc:  # pragma: no cover - network edge case
+            logger.warning("Legacy update failed for %s: %s", cell_range, exc)
+            success = False
+    return success
+
+
+async def fetch_required_columns(
+    sheet,
+    column_indexes: Dict[str, int],
+    header_row: int,
+    max_players: int,
+) -> Dict[str, List[str]]:
+    """Dispatch between refactored batch fetch and legacy behaviour."""
+    if sheets_refactor_enabled():
+        return await fetch_required_columns_batch(sheet, column_indexes, header_row, max_players)
+    return await _legacy_fetch_required_columns(sheet, column_indexes, header_row, max_players)
+
+
+async def apply_sheet_updates(sheet, updates: List[Tuple[str, Any]]) -> bool:
+    """Dispatch between batch updates and legacy individual updates."""
+    if sheets_refactor_enabled():
+        return await update_cells_batch(sheet, updates)
+    return await _legacy_update_cells(sheet, updates)
 
 
 def initialize_credentials():
@@ -332,7 +420,7 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
                     column_indexes["team_idx"] = tc
 
                 # Fetch all columns in one API call
-                batch_data = await fetch_required_columns_batch(sheet, column_indexes, hline, maxp)
+                batch_data = await fetch_required_columns(sheet, column_indexes, hline, maxp)
 
                 # Extract column data
                 discord_col = batch_data.get("discord_idx", [])
@@ -646,7 +734,7 @@ async def find_or_register_user(
 
             # Execute all updates in a single batch
             if batch_updates:
-                success = await update_cells_batch(sheet, batch_updates)
+                success = await apply_sheet_updates(sheet, batch_updates)
                 if not success:
                     raise SheetsError("Failed to update user data in batch")
 
@@ -671,7 +759,7 @@ async def find_or_register_user(
 
         # Fetch discord column only (we just need to find empty rows)
         discord_column_indexes = {"discord_idx": dc_idx}
-        discord_data = await fetch_required_columns_batch(sheet, discord_column_indexes, hline, maxp)
+        discord_data = await fetch_required_columns(sheet, discord_column_indexes, hline, maxp)
         discord_vals = discord_data.get("discord_idx", [])
 
         # Find first empty slot - check from header+1 to header+max_players for empty text content
@@ -721,7 +809,7 @@ async def find_or_register_user(
         if target_row:
             # Write to existing formatted row using batch update
             updates = [(f"{col}{target_row}", val) for col, val in writes.items()]
-            success = await update_cells_batch(sheet, updates)
+            success = await apply_sheet_updates(sheet, updates)
             if not success:
                 raise SheetsError("Failed to update user data in batch")
             row = target_row
@@ -741,7 +829,7 @@ async def find_or_register_user(
 
             # Get new row number by fetching just the discord column
             discord_column_indexes = {"discord_idx": dc_idx}
-            discord_data = await fetch_required_columns_batch(sheet, discord_column_indexes, hline, maxp + 10)
+            discord_data = await fetch_required_columns(sheet, discord_column_indexes, hline, maxp + 10)
             discord_vals = discord_data.get("discord_idx", [])
             row = len([v for v in discord_vals if v.strip()]) + hline
 

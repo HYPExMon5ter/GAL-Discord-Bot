@@ -60,6 +60,12 @@ Standard Operating Procedure for emergency rollback of Guardian Angel League sys
 - **Medium**: Development team consensus
 - **Low**: Schedule for maintenance window
 
+**Fast Toggle Mitigation**:
+- Immediately set `GAL_FEATURE_SHEETS_REFACTOR=false` to revert Google Sheets
+  interactions to the legacy implementation while a full rollback is evaluated.
+- Update `GAL_DEPLOYMENT_STAGE` to `rollback` so observability dashboards reflect
+  the emergency state.
+
 ## Rollback Procedures
 
 ### Option 1: Git Rollback (Code Changes)

@@ -8,6 +8,7 @@ from rapidfuzz import fuzz, process
 
 from config import get_sheet_settings, col_to_index
 from core.persistence import get_event_mode_for_guild
+from utils.feature_flags import sheets_refactor_enabled
 
 
 @dataclass
@@ -81,6 +82,13 @@ class SheetColumnDetector:
         """
         Detect all column mappings for a guild.
         """
+        if not sheets_refactor_enabled():
+            logging.info(
+                "Sheet column detection skipped for guild %s; feature flag disabled",
+                guild_id,
+            )
+            return {}
+
         cache_key = f"{guild_id}_{get_event_mode_for_guild(guild_id)}"
 
         if not force_refresh and cache_key in self.detection_cache:

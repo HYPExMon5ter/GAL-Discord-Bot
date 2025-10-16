@@ -68,6 +68,8 @@
 3. **Stakeholder sign-off:** Demo simplified flows to bot operators and dashboard users; capture feedback before deprecating legacy code paths.
 4. **Post-mortem review:** After rollout, collect metrics versus baselines and log lessons learned; schedule follow-up backlog items for any deferred improvements.
 
+- **Status (2025-10-16):** Added environment-driven toggles (`GAL_FEATURE_SHEETS_REFACTOR`, `GAL_DEPLOYMENT_STAGE`) guarding the sheets refactor, logged rollout stages in integrations, documented toggle usage in deployment and emergency rollback SOPs, and recorded stakeholder/post-mortem notes in `.agent/tasks/active/update_log.md`.
+
 ## Dependencies & Coordination
 - Confirm Redis (or an alternative) availability if cache moves out of process.
 - Align data model updates with integration partners to avoid sheet schema drift.

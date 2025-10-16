@@ -14,6 +14,7 @@ import { CopyGraphicDialog } from './CopyGraphicDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { Plus, Search, RefreshCw, AlertCircle, Sparkles, Zap, Target, Package } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
 
 export function GraphicsTab() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,6 +28,7 @@ export function GraphicsTab() {
   const router = useRouter();
   const { graphics, loading, error, refetch, createGraphic, deleteGraphic, permanentDeleteGraphic, archiveGraphic, updateGraphic, duplicateGraphic } = useGraphics();
   const { locks } = useLocks();
+  const { toast } = useToast();
 
   // Ensure graphics is always an array to prevent filter errors
   const safeGraphics = Array.isArray(graphics) ? graphics : [];
@@ -38,8 +40,6 @@ export function GraphicsTab() {
 
   const handleCreateGraphic = useCallback(async (data: { title: string; event_name?: string }) => {
     try {
-      console.log('Creating graphic with data:', data);
-      
       const canvasData = {
         elements: [],
         settings: {
@@ -55,25 +55,33 @@ export function GraphicsTab() {
         data_json: canvasData // Send as object (create endpoint expects dict)
       });
       
-      console.log('Create graphic result:', result);
-      
       if (result && result.id) {
-        console.log('Navigating to canvas editor for graphic ID:', result.id);
-        // Navigate to canvas editor after successful creation
+        toast({
+          title: 'Graphic created',
+          description: `“${result.title}” is ready to edit.`,
+        });
         router.push(`/canvas/edit/${result.id}`);
       } else {
-        console.error('No result or ID returned from createGraphic');
+        toast({
+          title: 'Create failed',
+          description: 'A new graphic could not be created. Please try again.',
+          variant: 'destructive',
+        });
       }
       
       return !!result;
     } catch (error) {
       console.error('Failed to create graphic:', error);
+      toast({
+        title: 'Create failed',
+        description: 'An unexpected error occurred while creating the graphic.',
+        variant: 'destructive',
+      });
       return false;
     }
-  }, [createGraphic, router]);
+  }, [createGraphic, router, toast]);
 
   const handleEditGraphic = useCallback((graphic: Graphic) => {
-    console.log('Editing graphic:', graphic);
     router.push(`/canvas/edit/${graphic.id}`);
   }, [router]);
 
@@ -88,29 +96,22 @@ export function GraphicsTab() {
     try {
       const result = await duplicateGraphic(graphicToCopy.id, title, eventName);
       if (result) {
-        // Show success message
-        const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
-        successMessage.textContent = `Graphic "${graphicToCopy.title}" copied successfully!`;
-        document.body.appendChild(successMessage);
-        setTimeout(() => {
-          document.body.removeChild(successMessage);
-        }, 3000);
+        toast({
+          title: 'Graphic duplicated',
+          description: `“${graphicToCopy.title}” copied successfully.`,
+        });
         return true;
       }
     } catch (error) {
       console.error('Failed to copy graphic:', error);
-      // Show error message
-      const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
-      errorMessage.textContent = `Failed to copy graphic "${graphicToCopy.title}". Please try again.`;
-      document.body.appendChild(errorMessage);
-      setTimeout(() => {
-        document.body.removeChild(errorMessage);
-      }, 5000);
+      toast({
+        title: 'Copy failed',
+        description: `Unable to copy “${graphicToCopy.title}”. Please try again.`,
+        variant: 'destructive',
+      });
     }
     return false;
-  }, [duplicateGraphic, graphicToCopy]);
+  }, [duplicateGraphic, graphicToCopy, toast]);
 
   const handleDeleteGraphic = useCallback((graphic: Graphic) => {
     setGraphicToDelete(graphic);
@@ -123,47 +124,41 @@ export function GraphicsTab() {
     try {
       const success = await permanentDeleteGraphic(graphicToDelete.id);
       if (success) {
-        // Show success message
-        const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
-        successMessage.textContent = `Graphic "${graphicToDelete.title}" permanently deleted!`;
-        document.body.appendChild(successMessage);
-        setTimeout(() => {
-          document.body.removeChild(successMessage);
-        }, 3000);
+        toast({
+          title: 'Graphic deleted',
+          description: `“${graphicToDelete.title}” has been permanently removed.`,
+        });
       }
       return success;
     } catch (error) {
       console.error('Failed to permanently delete graphic:', error);
+      toast({
+        title: 'Delete failed',
+        description: 'Unable to remove the graphic. Please try again.',
+        variant: 'destructive',
+      });
       return false;
     }
-  }, [graphicToDelete, permanentDeleteGraphic]);
+  }, [graphicToDelete, permanentDeleteGraphic, toast]);
 
   const handleArchiveGraphic = useCallback(async (graphic: Graphic) => {
     try {
       const success = await archiveGraphic(graphic.id);
       if (success) {
-        // Show success message
-        const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
-        successMessage.textContent = `Graphic "${graphic.title}" archived successfully!`;
-        document.body.appendChild(successMessage);
-        setTimeout(() => {
-          document.body.removeChild(successMessage);
-        }, 3000);
+        toast({
+          title: 'Graphic archived',
+          description: `“${graphic.title}” moved to the archive.`,
+        });
       }
     } catch (error) {
       console.error('Failed to archive graphic:', error);
-      // Show error message
-      const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
-      errorMessage.textContent = `Failed to archive graphic "${graphic.title}". Please try again.`;
-      document.body.appendChild(errorMessage);
-      setTimeout(() => {
-        document.body.removeChild(errorMessage);
-      }, 5000);
+      toast({
+        title: 'Archive failed',
+        description: `Unable to archive “${graphic.title}”. Please try again.`,
+        variant: 'destructive',
+      });
     }
-  }, [archiveGraphic]);
+  }, [archiveGraphic, toast]);
 
   const handleViewGraphic = useCallback((graphic: Graphic) => {
     // Open OBS view in new tab

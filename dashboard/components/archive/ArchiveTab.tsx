@@ -13,6 +13,7 @@ import { DeleteConfirmDialog } from '../graphics/DeleteConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { Search, RefreshCw, AlertCircle, Archive, Shield, Copy, Sparkles, Package, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/use-toast';
 
 export function ArchiveTab() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -30,6 +31,7 @@ export function ArchiveTab() {
     restoreGraphic, 
     permanentDeleteGraphic 
   } = useArchive();
+  const { toast } = useToast();
 
   // Simple admin check - in a real app, this would come from the backend
   const isAdmin = username === 'admin' || username === 'blake';
@@ -44,27 +46,20 @@ export function ArchiveTab() {
     try {
       const success = await restoreGraphic(graphic.id);
       if (success) {
-        // Show success message
-        const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
-        successMessage.textContent = `Graphic "${graphic.title}" restored successfully!`;
-        document.body.appendChild(successMessage);
-        setTimeout(() => {
-          document.body.removeChild(successMessage);
-        }, 3000);
+        toast({
+          title: 'Graphic restored',
+          description: `“${graphic.title}” moved back to Active Graphics.`,
+        });
       }
     } catch (error) {
       console.error('Failed to restore graphic:', error);
-      // Show error message
-      const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
-      errorMessage.textContent = `Failed to restore graphic "${graphic.title}". Please try again.`;
-      document.body.appendChild(errorMessage);
-      setTimeout(() => {
-        document.body.removeChild(errorMessage);
-      }, 5000);
+      toast({
+        title: 'Restore failed',
+        description: `Unable to restore “${graphic.title}”. Please try again.`,
+        variant: 'destructive',
+      });
     }
-  }, [restoreGraphic]);
+  }, [restoreGraphic, toast]);
 
   const handlePermanentDeleteGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
     setGraphicToDelete(graphic);
@@ -77,21 +72,22 @@ export function ArchiveTab() {
     try {
       const success = await permanentDeleteGraphic(graphicToDelete.id);
       if (success) {
-        // Show success message
-        const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
-        successMessage.textContent = `Archived graphic "${graphicToDelete.title}" permanently deleted!`;
-        document.body.appendChild(successMessage);
-        setTimeout(() => {
-          document.body.removeChild(successMessage);
-        }, 3000);
+        toast({
+          title: 'Archived graphic deleted',
+          description: `“${graphicToDelete.title}” removed permanently.`,
+        });
       }
       return success;
     } catch (error) {
       console.error('Failed to permanently delete archived graphic:', error);
+      toast({
+        title: 'Delete failed',
+        description: 'Unable to permanently delete the archived graphic.',
+        variant: 'destructive',
+      });
       return false;
     }
-  }, [graphicToDelete, permanentDeleteGraphic]);
+  }, [graphicToDelete, permanentDeleteGraphic, toast]);
 
   const handleDuplicateGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
     setGraphicToCopy(graphic);
@@ -105,29 +101,22 @@ export function ArchiveTab() {
       // Convert ArchivedGraphic to Graphic format for copying
       const result = await archiveApi.copyFromArchived(graphicToCopy.id, title, eventName);
       if (result) {
-        // Show success message
-        const successMessage = document.createElement('div');
-        successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded z-50';
-        successMessage.textContent = `Archived graphic "${graphicToCopy.title}" copied successfully!`;
-        document.body.appendChild(successMessage);
-        setTimeout(() => {
-          document.body.removeChild(successMessage);
-        }, 3000);
+        toast({
+          title: 'Graphic duplicated',
+          description: `Archived graphic “${graphicToCopy.title}” copied into Active Graphics.`,
+        });
         return true;
       }
     } catch (error) {
       console.error('Failed to copy archived graphic:', error);
-      // Show error message
-      const errorMessage = document.createElement('div');
-      errorMessage.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded z-50';
-      errorMessage.textContent = `Failed to copy archived graphic "${graphicToCopy.title}". Please try again.`;
-      document.body.appendChild(errorMessage);
-      setTimeout(() => {
-        document.body.removeChild(errorMessage);
-      }, 5000);
+      toast({
+        title: 'Copy failed',
+        description: `Unable to copy “${graphicToCopy.title}”. Please try again.`,
+        variant: 'destructive',
+      });
     }
     return false;
-  }, [graphicToCopy]);
+  }, [graphicToCopy, toast]);
 
   const handleViewGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
     // Open OBS view in new tab

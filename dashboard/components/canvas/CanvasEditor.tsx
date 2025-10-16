@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Graphic, CanvasLock } from '@/types';
+import {
+  Graphic,
+  CanvasLock,
+  CanvasElement,
+  CanvasState,
+  CanvasPropertyType,
+  SnapLine,
+  CanvasDataBinding,
+} from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useLocks } from '@/hooks/use-locks';
 import { Button } from '@/components/ui/button';
@@ -31,6 +39,21 @@ import {
 } from 'lucide-react';
 import { HistoryManager } from '@/lib/history-manager';
 import { usePerformanceMonitor } from '@/hooks/use-performance-monitor';
+import { useToast } from '@/components/ui/use-toast';
+import {
+  createPropertyElement,
+  createTextElement,
+  deserializeCanvasState,
+  updateCanvasElement,
+  removeCanvasElement,
+  snapValueToGrid,
+  clampPositionToCanvas,
+  calculateSnapAgainstElements,
+  serializeCanvasState,
+  updateCanvasBackground,
+  updateCanvasSettings,
+  DEFAULT_CANVAS_SETTINGS,
+} from '@/lib/canvas-helpers';
 
 interface CanvasEditorProps {
   graphic: Graphic;
@@ -42,17 +65,25 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const { username } = useAuth();
   const { acquireLock, releaseLock, refreshLock } = useLocks();
   const { createInterval, clearInterval } = usePerformanceMonitor('CanvasEditor');
+  const { toast } = useToast();
+
+  const initialCanvasState = useMemo<CanvasState>(() => {
+    return deserializeCanvasState(graphic.data_json);
+  }, [graphic.data_json]);
   
   const [lock, setLock] = useState<CanvasLock | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState(graphic.title);
   const [eventName, setEventName] = useState(graphic.event_name || '');
-  const [canvasData, setCanvasData] = useState<any>(null);
-  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
-  const [elements, setElements] = useState<any[]>([]);
-  const [selectedElement, setSelectedElement] = useState<any | null>(null);
+  const [canvasData, setCanvasData] = useState<CanvasState>(initialCanvasState);
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(
+    initialCanvasState.backgroundImage ?? null,
+  );
+  const [elements, setElements] = useState<CanvasElement[]>(initialCanvasState.elements);
+  const [selectedElement, setSelectedElement] = useState<CanvasElement | null>(null);
   const [activeTab, setActiveTab] = useState('design');
+  const canvasSettings = canvasData?.settings ?? DEFAULT_CANVAS_SETTINGS;
   
   // Canvas state
   const [zoom, setZoom] = useState(1);
@@ -76,7 +107,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   
   // Element snapping
   const [snapToElements, setSnapToElements] = useState(true);
-  const [snapLines, setSnapLines] = useState<{x?: number, y?: number}[]>([]);
+  const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
   
   // Event management
   const [availableEvents, setAvailableEvents] = useState<string[]>([]);
@@ -97,41 +128,10 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   // Load canvas data
   useEffect(() => {
-    try {
-      let data;
-      // data_json should now be a string from the API
-      if (typeof graphic.data_json === 'string') {
-        data = JSON.parse(graphic.data_json || '{}');
-      } else if (typeof graphic.data_json === 'object' && graphic.data_json !== null) {
-        data = graphic.data_json || {};
-      } else {
-        data = {
-          elements: [],
-          settings: {
-            width: 5000,
-            height: 5000,
-            backgroundColor: '#2a2a2a'
-          }
-        };
-      }
-      
-      setCanvasData(data);
-      setElements(data.elements || []);
-      setBackgroundImage(data.backgroundImage || null);
-    } catch (error) {
-      console.error('Failed to parse canvas data:', error);
-      const defaultData = {
-        elements: [],
-        settings: {
-          width: 5000,
-          height: 5000,
-          backgroundColor: '#2a2a2a'
-        }
-      };
-      setCanvasData(defaultData);
-      setElements([]);
-      setBackgroundImage(null);
-    }
+    const parsed = deserializeCanvasState(graphic.data_json);
+    setCanvasData(parsed);
+    setElements(parsed.elements);
+    setBackgroundImage(parsed.backgroundImage ?? null);
   }, [graphic.data_json]);
 
   // History management
@@ -148,260 +148,174 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }, []);
 
   // Snap to grid function
-  const snapToGrid = useCallback((value: number) => {
-    if (!gridSnapEnabled) return value;
-    return Math.round(value / gridSize) * gridSize;
-  }, [gridSnapEnabled]);
+  const snapToGrid = useCallback(
+    (value: number) => snapValueToGrid(value, gridSize, gridSnapEnabled),
+    [gridSnapEnabled],
+  );
 
-  // Memoize elements array to prevent unnecessary re-renders
-  const memoizedElements = useMemo(() => elements, [elements]);
-
-  // Debounced snap calculation to improve performance
-  const debouncedSnapCalculation = useMemo(() => {
-    let timeoutId: NodeJS.Timeout;
-    return (element: any, newX: number, newY: number, callback: (result: { x: number, y: number }) => void) => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        callback(snapToElementsFunc(element, newX, newY));
-      }, 16); // ~60fps
-    };
-  }, [snapToElementsFunc]);
-
-  // Element snapping function
-  const snapToElementsFunc = useCallback((element: any, newX: number, newY: number) => {
-    if (!snapToElements) return { x: newX, y: newY };
-    
-    const snapThreshold = gridSize; // 20px
-    let snappedX = newX;
-    let snappedY = newY;
-    const newSnapLines: {x?: number, y?: number}[] = [];
-    
-    memoizedElements.forEach(otherElement => {
-      if (otherElement.id === element.id) return;
-      
-      // Snap to edges
-      const otherLeft = otherElement.x;
-      const otherRight = otherElement.x + (otherElement.width || 100);
-      const otherTop = otherElement.y;
-      const otherBottom = otherElement.y + (otherElement.height || 50);
-      
-      const elemLeft = newX;
-      const elemRight = newX + (element.width || 100);
-      const elemTop = newY;
-      const elemBottom = newY + (element.height || 50);
-      
-      // Check left edge snap
-      if (Math.abs(elemLeft - otherLeft) < snapThreshold) {
-        snappedX = otherLeft;
-        newSnapLines.push({ x: otherLeft });
-      }
-      if (Math.abs(elemLeft - otherRight) < snapThreshold) {
-        snappedX = otherRight;
-        newSnapLines.push({ x: otherRight });
-      }
-      
-      // Check right edge snap
-      if (Math.abs(elemRight - otherLeft) < snapThreshold) {
-        snappedX = otherLeft - (element.width || 100);
-        newSnapLines.push({ x: otherLeft });
-      }
-      if (Math.abs(elemRight - otherRight) < snapThreshold) {
-        snappedX = otherRight - (element.width || 100);
-        newSnapLines.push({ x: otherRight });
-      }
-      
-      // Check top edge snap
-      if (Math.abs(elemTop - otherTop) < snapThreshold) {
-        snappedY = otherTop;
-        newSnapLines.push({ y: otherTop });
-      }
-      if (Math.abs(elemTop - otherBottom) < snapThreshold) {
-        snappedY = otherBottom;
-        newSnapLines.push({ y: otherBottom });
-      }
-      
-      // Check bottom edge snap
-      if (Math.abs(elemBottom - otherTop) < snapThreshold) {
-        snappedY = otherTop - (element.height || 50);
-        newSnapLines.push({ y: otherTop });
-      }
-      if (Math.abs(elemBottom - otherBottom) < snapThreshold) {
-        snappedY = otherBottom - (element.height || 50);
-        newSnapLines.push({ y: otherBottom });
-      }
-      
-      // Check center alignment
-      const otherCenterX = otherLeft + (otherElement.width || 100) / 2;
-      const otherCenterY = otherTop + (otherElement.height || 50) / 2;
-      const elemCenterX = elemLeft + (element.width || 100) / 2;
-      const elemCenterY = elemTop + (element.height || 50) / 2;
-      
-      if (Math.abs(elemCenterX - otherCenterX) < snapThreshold) {
-        snappedX = otherCenterX - (element.width || 100) / 2;
-        newSnapLines.push({ x: otherCenterX });
-      }
-      if (Math.abs(elemCenterY - otherCenterY) < snapThreshold) {
-        snappedY = otherCenterY - (element.height || 50) / 2;
-        newSnapLines.push({ y: otherCenterY });
-      }
-    });
-    
-    setSnapLines(newSnapLines);
-    return { x: snappedX, y: snappedY };
-  }, [snapToElements, gridSize, memoizedElements]);
+  const applyElementSnapping = useCallback(
+    (element: CanvasElement, newPosition: { x: number; y: number }) => {
+      const { position, lines } = calculateSnapAgainstElements({
+        element,
+        elements,
+        position: newPosition,
+        snapToElements,
+        gridSize,
+      });
+      setSnapLines(lines);
+      return position;
+    },
+    [elements, snapToElements, gridSize],
+  );
 
   // Background image upload handler
-  const handleBackgroundUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
+  const handleBackgroundUpload = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
       const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        const previousBg = backgroundImage;
-        
-        // Create image element to get dimensions
+      reader.onload = (uploadEvent) => {
+        const result = uploadEvent.target?.result;
+        if (typeof result !== 'string') {
+          toast({
+            title: 'Upload failed',
+            description: 'Could not read the selected image. Please try again.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const previousBackground = backgroundImage;
+
         const img = new Image();
         img.onload = () => {
-          const imageWidth = img.naturalWidth;
-          const imageHeight = img.naturalHeight;
-          
-          // Update canvas size to match image
-          const newCanvasData = {
-            ...canvasData,
-            backgroundImage: result,
-            settings: {
-              ...canvasData?.settings,
-              width: imageWidth,
-              height: imageHeight
-            }
+          const dimensions = {
+            width: img.naturalWidth || DEFAULT_CANVAS_SETTINGS.width,
+            height: img.naturalHeight || DEFAULT_CANVAS_SETTINGS.height,
           };
-          
+
+          setCanvasData((prevState) => {
+            const updated = updateCanvasBackground(prevState, result, dimensions);
+
+            addToHistory(
+              HistoryManager.createActionTypes.updateBackground(previousBackground, result),
+            );
+            addToHistory(
+              HistoryManager.createActionTypes.updateSettings(
+                { settings: prevState.settings },
+                { settings: updated.settings },
+                'Update canvas size to fit image',
+              ),
+            );
+
+            return updated;
+          });
+
           setBackgroundImage(result);
-          setCanvasData(newCanvasData);
-          setZoom(1); // Reset zoom to fit the new size
-          setPan({ x: 0, y: 0 }); // Reset pan
-          
-          addToHistory(HistoryManager.createActionTypes.updateBackground(previousBg, result));
-          addToHistory(HistoryManager.createActionTypes.updateSettings(
-            { settings: canvasData?.settings },
-            { settings: newCanvasData.settings },
-            'Update canvas size to fit image'
-          ));
+          setZoom(1);
+          setPan({ x: 0, y: 0 });
+
+          toast({
+            title: 'Background updated',
+            description: 'Canvas resized to match the uploaded image.',
+          });
+        };
+        img.onerror = () => {
+          toast({
+            title: 'Upload failed',
+            description: 'Unable to load the selected image file.',
+            variant: 'destructive',
+          });
         };
         img.src = result;
       };
+      reader.onerror = () => {
+        toast({
+          title: 'Upload failed',
+          description: 'Unable to read the selected image file.',
+          variant: 'destructive',
+        });
+      };
       reader.readAsDataURL(file);
-    }
-  }, [backgroundImage, canvasData, addToHistory]);
+    },
+    [backgroundImage, addToHistory, toast],
+  );
 
   // Add element handlers
   const addTextElement = useCallback(() => {
-    const newElement = {
-      id: Date.now().toString(),
-      type: 'text',
-      content: 'Text',
-      x: snapToGrid(100),
-      y: snapToGrid(100),
-      fontSize: 48,
-      fontFamily: 'Arial',
-      color: '#000000',
-      dataBinding: null
-    };
-    
-    setElements((prev: any[]) => [...prev, newElement]);
-    setCanvasData((prev: any) => ({
-      ...prev,
-      elements: [...(prev?.elements || []), newElement]
-    }));
+    const newElement = createTextElement(snapToGrid);
+    setElements((previous) => {
+      const nextElements = [...previous, newElement];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elements: nextElements,
+      }));
+      return nextElements;
+    });
     setSelectedElement(newElement);
-    
+
     addToHistory(HistoryManager.createActionTypes.addElement(newElement));
   }, [snapToGrid, addToHistory]);
 
-  const addPropertyElement = useCallback((propertyType: 'player' | 'score' | 'placement') => {
-    const propertyConfig = {
-      player: { placeholderText: 'Player Name', defaultWidth: 150, defaultHeight: 40 },
-      score: { placeholderText: 'Score', defaultWidth: 100, defaultHeight: 40 },
-      placement: { placeholderText: 'Placement', defaultWidth: 120, defaultHeight: 40 }
-    };
-    
-    const config = propertyConfig[propertyType];
-    const newElement = {
-      id: Date.now().toString(),
-      type: propertyType,
-      content: config.placeholderText,
-      x: snapToGrid(100),
-      y: snapToGrid(100),
-      width: snapToGrid(config.defaultWidth),
-      height: snapToGrid(config.defaultHeight),
-      fontSize: 24,
-      fontFamily: 'Arial',
-      color: '#000000',
-      backgroundColor: '#3B82F6',
-      dataBinding: {
-        source: 'api' as const,
-        field: `${propertyType}_name` as const,
-        apiEndpoint: null,
-        manualValue: null
-      },
-      isPlaceholder: true
-    };
-    
-    setElements((prev: any[]) => [...prev, newElement]);
-    setCanvasData((prev: any) => ({
-      ...prev,
-      elements: [...(prev?.elements || []), newElement]
-    }));
+  const addPropertyElement = useCallback((propertyType: CanvasPropertyType) => {
+    const newElement = createPropertyElement(propertyType, snapToGrid);
+    setElements((previous) => {
+      const nextElements = [...previous, newElement];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elements: nextElements,
+      }));
+      return nextElements;
+    });
     setSelectedElement(newElement);
-    
+
     addToHistory(HistoryManager.createActionTypes.addElement(newElement));
   }, [snapToGrid, addToHistory]);
 
-  // Removed shape elements - replaced with property elements
+  const updateElement = useCallback(
+    (elementId: string, updates: Partial<CanvasElement>) => {
+      const result = updateCanvasElement(elements, elementId, updates, {
+        gridSize,
+        gridSnapEnabled,
+      });
 
-  const updateElement = useCallback((elementId: string, updates: Partial<any>) => {
-    const currentElement = elements.find(el => el.id === elementId);
-    if (!currentElement) return;
-    
-    // Apply snap to grid for position updates
-    let processedUpdates = { ...updates };
-    if (updates.x !== undefined) processedUpdates.x = snapToGrid(updates.x);
-    if (updates.y !== undefined) processedUpdates.y = snapToGrid(updates.y);
-    if (updates.width !== undefined) processedUpdates.width = snapToGrid(updates.width);
-    if (updates.height !== undefined) processedUpdates.height = snapToGrid(updates.height);
-    
-    const updatedElement = { ...currentElement, ...processedUpdates };
-    
-    setElements((prev: any[]) =>
-      prev.map((el: any) => (el.id === elementId ? updatedElement : el))
-    );
-    setCanvasData((prev: any) => ({
-      ...prev,
-      elements: (prev?.elements || elements).map((el: any) =>
-        el.id === elementId ? updatedElement : el
-      )
-    }));
-    
-    addToHistory(HistoryManager.createActionTypes.updateElement(
-      elementId, 
-      currentElement, 
-      updatedElement
-    ));
-  }, [memoizedElements, snapToGrid, addToHistory]);
+      if (!result) return;
 
-  const deleteElement = useCallback((elementId: string) => {
-    const elementToDelete = memoizedElements.find(el => el.id === elementId);
-    if (!elementToDelete) return;
-    
-    setElements((prev: any[]) => prev.filter((el: any) => el.id !== elementId));
-    setCanvasData((prev: any) => ({
-      ...prev,
-      elements: (prev?.elements || elements).filter((el: any) => el.id !== elementId)
-    }));
-    setSelectedElement(null);
-    
-    addToHistory(HistoryManager.createActionTypes.deleteElement(elementToDelete));
-  }, [memoizedElements, addToHistory]);
+      setElements(result.updatedElements);
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elements: result.updatedElements,
+      }));
+      setSelectedElement((prev) => (prev?.id === elementId ? result.next : prev));
+
+      addToHistory(
+        HistoryManager.createActionTypes.updateElement(
+          elementId,
+          result.previous,
+          result.next,
+        ),
+      );
+    },
+    [elements, gridSize, gridSnapEnabled, addToHistory],
+  );
+
+  const deleteElement = useCallback(
+    (elementId: string) => {
+      const { updatedElements, removed } = removeCanvasElement(elements, elementId);
+      if (!removed) return;
+
+      setElements(updatedElements);
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elements: updatedElements,
+      }));
+      setSelectedElement((prev) => (prev?.id === elementId ? null : prev));
+
+      addToHistory(HistoryManager.createActionTypes.deleteElement(removed));
+    },
+    [elements, addToHistory],
+  );
 
   // Canvas controls
   const handleZoomIn = useCallback(() => {
@@ -440,8 +354,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       if (container) {
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
-        const canvasWidth = canvasData?.settings?.width || 5000;
-        const canvasHeight = canvasData?.settings?.height || 5000;
+        const canvasWidth = canvasSettings.width;
+        const canvasHeight = canvasSettings.height;
         
         const scaleX = containerWidth / canvasWidth;
         const scaleY = containerHeight / canvasHeight;
@@ -458,7 +372,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         ));
       }
     }
-  }, [canvasData, zoom, pan, addToHistory]);
+  }, [canvasSettings, zoom, pan, addToHistory]);
 
   const toggleGrid = useCallback(() => {
     const newGridVisible = !gridVisible;
@@ -484,32 +398,56 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const handleUndo = useCallback(() => {
     const action = historyManagerRef.current.undo();
     if (!action) return;
-    
-    // Apply the inverse of the action
+
     switch (action.type) {
       case 'add_element':
-        setElements((prev: any[]) => prev.filter((el: any) => el.id !== action.data.elementId));
+        setElements((prev) => {
+          const next = prev.filter((el) => el.id !== action.data.elementId);
+          setCanvasData((prevData) => ({ ...prevData, elements: next }));
+          setSelectedElement((current) =>
+            current?.id === action.data.elementId ? null : current,
+          );
+          return next;
+        });
         break;
       case 'update_element':
-        setElements((prev: any[]) =>
-          prev.map((el: any) => (el.id === action.data.elementId ? action.data.before : el))
-        );
+        setElements((prev) => {
+          const next = prev.map((el) =>
+            el.id === action.data.elementId ? action.data.before : el,
+          );
+          setCanvasData((prevData) => ({ ...prevData, elements: next }));
+          setSelectedElement((current) =>
+            current?.id === action.data.elementId ? action.data.before : current,
+          );
+          return next;
+        });
         break;
       case 'delete_element':
-        setElements((prev: any[]) => [...prev, action.data.before]);
+        setElements((prev) => {
+          const next = [...prev, action.data.before];
+          setCanvasData((prevData) => ({ ...prevData, elements: next }));
+          return next;
+        });
         break;
       case 'update_background':
         setBackgroundImage(action.data.before);
-        setCanvasData((prev: any) => ({ ...prev, backgroundImage: action.data.before }));
+        setCanvasData((prevData) => ({ ...prevData, backgroundImage: action.data.before }));
         break;
       case 'update_settings':
+        if (action.data.before.settings) {
+          setCanvasData((prevData) =>
+            updateCanvasSettings(prevData, action.data.before.settings),
+          );
+        }
         if (action.data.before.zoom !== undefined) setZoom(action.data.before.zoom);
         if (action.data.before.pan !== undefined) setPan(action.data.before.pan);
-        if (action.data.before.gridVisible !== undefined) setGridVisible(action.data.before.gridVisible);
-        if (action.data.before.gridSnapEnabled !== undefined) setGridSnapEnabled(action.data.before.gridSnapEnabled);
+        if (action.data.before.gridVisible !== undefined)
+          setGridVisible(action.data.before.gridVisible);
+        if (action.data.before.gridSnapEnabled !== undefined)
+          setGridSnapEnabled(action.data.before.gridSnapEnabled);
         break;
     }
-    
+
     setCanUndo(historyManagerRef.current.canUndo());
     setCanRedo(historyManagerRef.current.canRedo());
   }, []);
@@ -517,32 +455,56 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const handleRedo = useCallback(() => {
     const action = historyManagerRef.current.redo();
     if (!action) return;
-    
-    // Apply the action
+
     switch (action.type) {
       case 'add_element':
-        setElements((prev: any[]) => [...prev, action.data.after]);
+        setElements((prev) => {
+          const next = [...prev, action.data.after];
+          setCanvasData((prevData) => ({ ...prevData, elements: next }));
+          return next;
+        });
         break;
       case 'update_element':
-        setElements((prev: any[]) =>
-          prev.map((el: any) => (el.id === action.data.elementId ? action.data.after : el))
-        );
+        setElements((prev) => {
+          const next = prev.map((el) =>
+            el.id === action.data.elementId ? action.data.after : el,
+          );
+          setCanvasData((prevData) => ({ ...prevData, elements: next }));
+          setSelectedElement((current) =>
+            current?.id === action.data.elementId ? action.data.after : current,
+          );
+          return next;
+        });
         break;
       case 'delete_element':
-        setElements((prev: any[]) => [...prev, action.data.before]);
+        setElements((prev) => {
+          const next = prev.filter((el) => el.id !== action.data.elementId);
+          setCanvasData((prevData) => ({ ...prevData, elements: next }));
+          setSelectedElement((current) =>
+            current?.id === action.data.elementId ? null : current,
+          );
+          return next;
+        });
         break;
       case 'update_background':
         setBackgroundImage(action.data.after);
-        setCanvasData((prev: any) => ({ ...prev, backgroundImage: action.data.after }));
+        setCanvasData((prevData) => ({ ...prevData, backgroundImage: action.data.after }));
         break;
       case 'update_settings':
+        if (action.data.after.settings) {
+          setCanvasData((prevData) =>
+            updateCanvasSettings(prevData, action.data.after.settings),
+          );
+        }
         if (action.data.after.zoom !== undefined) setZoom(action.data.after.zoom);
         if (action.data.after.pan !== undefined) setPan(action.data.after.pan);
-        if (action.data.after.gridVisible !== undefined) setGridVisible(action.data.after.gridVisible);
-        if (action.data.after.gridSnapEnabled !== undefined) setGridSnapEnabled(action.data.after.gridSnapEnabled);
+        if (action.data.after.gridVisible !== undefined)
+          setGridVisible(action.data.after.gridVisible);
+        if (action.data.after.gridSnapEnabled !== undefined)
+          setGridSnapEnabled(action.data.after.gridSnapEnabled);
         break;
     }
-    
+
     setCanUndo(historyManagerRef.current.canUndo());
     setCanRedo(historyManagerRef.current.canRedo());
   }, []);
@@ -558,100 +520,83 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }, [zoom]);
 
   // Pan handlers
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    console.log('Mouse down:', { button: e.button, clientX: e.clientX, clientY: e.clientY });
-    
-    // Element dragging - check if clicking on an element or its children
-    const target = e.target as HTMLElement;
-    console.log('Target element:', target.tagName, target.className, target);
-    
-    const elementElement = target.closest('[data-element-id]');
-    console.log('Found element with data-element-id:', elementElement);
-    
-    if (elementElement) {
-      const elementId = elementElement.getAttribute('data-element-id');
-      console.log('Element ID from attribute:', elementId);
-      
-      if (elementId) {
-        const element = elements.find(el => el.id === elementId);
-        console.log('Found element in state:', element);
-        
-        if (element) {
-          console.log('Starting element drag:', { elementId, elementType: element.type });
-          setDraggedElement(elementId);
-          setDragStart({ x: e.clientX, y: e.clientY });
-          setSelectedElement(element);
-          e.preventDefault();
-          e.stopPropagation();
-          return;
-        }
-      }
-    }
-    
-    // Canvas panning - if not clicking on an element, enable canvas drag
-    // Allow left-click (button 0) for empty area dragging, plus middle/right buttons
-    if (e.button === 0 || e.button === 1 || e.button === 2) {
-      console.log('Starting canvas pan');
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-      e.preventDefault();
-    }
-  }, [pan, elements]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const elementElement = target.closest('[data-element-id]');
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (draggedElement) {
-      // Element dragging
-      const element = elements.find(el => el.id === draggedElement);
-      if (element) {
-        // Calculate raw movement delta
-        const deltaX = (e.clientX - dragStart.x) / zoom;
-        const deltaY = (e.clientY - dragStart.y) / zoom;
-        
-        // Calculate new position based on current element position + delta
-        const rawNewX = element.x + deltaX;
-        const rawNewY = element.y + deltaY;
-        
-        // Apply snap to grid if enabled
-        let newX = snapToGrid(rawNewX);
-        let newY = snapToGrid(rawNewY);
-        
-        // Apply element snapping if enabled
-        if (snapToElements) {
-          const snapped = snapToElementsFunc(element, newX, newY);
-          newX = snapToGrid(snapped.x);
-          newY = snapToGrid(snapped.y);
-        }
-        
-        // Constrain to canvas boundaries
-        const canvasWidth = canvasData?.settings?.width || 5000;
-        const canvasHeight = canvasData?.settings?.height || 5000;
-        
-        const elementWidth = element.width || (element.type === 'text' ? 100 : 100);
-        const elementHeight = element.height || (element.type === 'text' ? 50 : 100);
-        
-        const constrainedX = Math.max(0, Math.min(newX, canvasWidth - elementWidth));
-        const constrainedY = Math.max(0, Math.min(newY, canvasHeight - elementHeight));
-        
-        // Only update if position actually changed significantly
-        const threshold = 1; // Only update if moved by at least 1px
-        if (Math.abs(constrainedX - element.x) >= threshold || Math.abs(constrainedY - element.y) >= threshold) {
-          updateElement(draggedElement, {
-            x: constrainedX,
-            y: constrainedY
-          });
-          
-          // Update drag start to the new mouse position to maintain smooth dragging
-          setDragStart({ x: e.clientX, y: e.clientY });
+      if (elementElement) {
+        const elementId = elementElement.getAttribute('data-element-id');
+        if (elementId) {
+          const element = elements.find((item) => item.id === elementId);
+          if (element) {
+            setDraggedElement(elementId);
+            setDragStart({ x: e.clientX, y: e.clientY });
+            setSelectedElement(element);
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
         }
       }
-    } else if (isDragging) {
-      // Canvas panning
-      setPan({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
-      });
-    }
-  }, [isDragging, dragStart, zoom, memoizedElements, draggedElement, snapToGrid, updateElement, canvasData, snapToElements, snapToElementsFunc]);
+
+      if (e.button === 0 || e.button === 1 || e.button === 2) {
+        setIsDragging(true);
+        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+        e.preventDefault();
+      }
+    },
+    [elements, pan],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (draggedElement) {
+        const element = elements.find((item) => item.id === draggedElement);
+        if (element) {
+          const deltaX = (e.clientX - dragStart.x) / zoom;
+          const deltaY = (e.clientY - dragStart.y) / zoom;
+
+          const snappedPosition = applyElementSnapping(element, {
+            x: snapToGrid(element.x + deltaX),
+            y: snapToGrid(element.y + deltaY),
+          });
+
+          const constrained = clampPositionToCanvas(snappedPosition, element, canvasSettings);
+
+          const threshold = 1;
+          if (
+            Math.abs(constrained.x - element.x) >= threshold ||
+            Math.abs(constrained.y - element.y) >= threshold
+          ) {
+            updateElement(draggedElement, {
+              x: constrained.x,
+              y: constrained.y,
+            });
+            setDragStart({ x: e.clientX, y: e.clientY });
+          }
+        }
+      } else if (isDragging) {
+        setPan({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y,
+        });
+        setSnapLines([]);
+      }
+    },
+    [
+      applyElementSnapping,
+      canvasSettings,
+      dragStart.x,
+      dragStart.y,
+      draggedElement,
+      elements,
+      isDragging,
+      snapToGrid,
+      updateElement,
+      zoom,
+    ],
+  );
 
   const handleMouseUp = useCallback(() => {
     setDraggedElement(null);
@@ -686,17 +631,26 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         if (acquiredLock) {
           setLock(acquiredLock);
         } else {
-          console.warn('Could not acquire lock for graphic');
+          toast({
+            title: 'Lock unavailable',
+            description: 'Unable to acquire an editing lock. This graphic may be in use.',
+            variant: 'destructive',
+          });
         }
       } catch (error) {
         console.error('Error acquiring lock:', error);
+        toast({
+          title: 'Lock error',
+          description: 'We could not acquire the editing lock.',
+          variant: 'destructive',
+        });
       } finally {
         setLoading(false);
       }
     };
 
     acquireInitialLock();
-  }, [graphic.id, acquireLock]);
+  }, [graphic.id, acquireLock, toast]);
 
   // Auto-refresh lock every 2 minutes
   useEffect(() => {
@@ -710,73 +664,77 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         }
       } catch (error) {
         console.error('Error refreshing lock:', error);
+        toast({
+          title: 'Lock refresh failed',
+          description: 'Unable to extend the editing lock. Save changes soon.',
+          variant: 'destructive',
+        });
       }
     }, 120000);
 
     return () => clearInterval(interval);
-  }, [lock, graphic.id, refreshLock]);
+  }, [lock, graphic.id, refreshLock, createInterval, clearInterval, toast]);
 
   // Release lock on unmount
   useEffect(() => {
     return () => {
       if (lock && lock.user_name === username) {
-        releaseLock(graphic.id).catch(console.error);
+        releaseLock(graphic.id).catch((error) => {
+          console.error('Error releasing lock:', error);
+          toast({
+            title: 'Lock release failed',
+            description: 'We could not release the editing lock cleanly.',
+            variant: 'destructive',
+          });
+        });
       }
     };
-  }, [lock, graphic.id, username, releaseLock]);
+  }, [lock, graphic.id, username, releaseLock, toast]);
 
   const handleSave = async () => {
     if (!title.trim() || !eventName.trim()) {
-      console.error('Cannot save: Title or event name is empty');
+      toast({
+        title: 'Missing details',
+        description: 'Title and event name are required before saving.',
+        variant: 'destructive',
+      });
       return;
     }
 
-    console.log('Starting save process...');
-    console.log('Current state:', {
-      title: title.trim(),
-      eventName: eventName.trim(),
-      elementsCount: elements.length,
-      hasBackgroundImage: !!backgroundImage,
-      canvasSettings: canvasData?.settings
-    });
-    
     setSaving(true);
     try {
-      const updatedCanvasData = {
+      const payload: CanvasState = {
         ...canvasData,
-        elements: elements,
-        backgroundImage: backgroundImage,
-        settings: {
-          ...canvasData?.settings,
-          width: canvasData?.settings?.width || 5000,
-          height: canvasData?.settings?.height || 5000,
-          backgroundColor: canvasData?.settings?.backgroundColor || '#2a2a2a'
-        }
+        elements,
+        backgroundImage,
       };
-
-      console.log('Saving data:', {
-        title: title.trim(),
-        data_json_length: JSON.stringify(updatedCanvasData).length,
-        elements: elements.length,
-        settings: updatedCanvasData.settings
-      });
 
       const success = await onSave({
         title: title.trim(),
         event_name: eventName.trim(),
-        data_json: JSON.stringify(updatedCanvasData)
+        data_json: serializeCanvasState(payload),
       });
 
-      console.log('Save result:', success);
-
       if (success) {
-        console.log('Save successful, closing...');
+        toast({
+          title: 'Graphic saved',
+          description: `"${title.trim()}" has been updated.`,
+        });
         onClose();
       } else {
-        console.error('Save failed: onSave returned false');
+        toast({
+          title: 'Save failed',
+          description: 'The server did not accept the update. Please try again.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('Error saving graphic:', error);
+      toast({
+        title: 'Save failed',
+        description: 'An unexpected error occurred while saving.',
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
@@ -789,6 +747,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         setLock(null);
       } catch (error) {
         console.error('Error releasing lock:', error);
+        toast({
+          title: 'Lock release failed',
+          description: 'We were unable to release the lock for this graphic.',
+          variant: 'destructive',
+        });
       }
     }
   };
@@ -801,8 +764,13 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       }
     } catch (error) {
       console.error('Error refreshing lock:', error);
+      toast({
+        title: 'Lock refresh failed',
+        description: 'Unable to refresh the editing lock.',
+        variant: 'destructive',
+      });
     }
-  }, [graphic.id, refreshLock]);
+  }, [graphic.id, refreshLock, toast]);
 
   const handleClose = async () => {
     onClose();
@@ -1128,14 +1096,18 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   <label className="text-xs text-muted-foreground">Data Binding</label>
                                   <Select
                                     value={selectedElement.dataBinding?.field || ''}
-                                    onValueChange={(value) =>
+                                    onValueChange={(value) => {
+                                      const binding: CanvasDataBinding = {
+                                        source: selectedElement.dataBinding?.source ?? 'api',
+                                        apiEndpoint: selectedElement.dataBinding?.apiEndpoint ?? null,
+                                        manualValue: selectedElement.dataBinding?.manualValue ?? null,
+                                        field: value as CanvasDataBinding['field'],
+                                      };
+
                                       updateElement(selectedElement.id, {
-                                        dataBinding: {
-                                          ...selectedElement.dataBinding,
-                                          field: value as any
-                                        }
-                                      })
-                                    }
+                                        dataBinding: binding,
+                                      });
+                                    }}
                                   >
                                     <SelectTrigger className="h-10">
                                       <SelectValue placeholder="Select field..." />
@@ -1333,14 +1305,23 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               <div className="text-sm font-medium">{element.content}</div>
                               <Select
                                 value={element.dataBinding?.field || ''}
-                                onValueChange={(value) =>
-                                  updateElement(element.id, { 
-                                    dataBinding: { 
-                                      ...element.dataBinding, 
-                                      field: value 
-                                    } 
-                                  })
-                                }
+                                onValueChange={(value) => {
+                                  const existingBinding = element.dataBinding ?? {
+                                    source: 'api' as CanvasDataBinding['source'],
+                                    apiEndpoint: null,
+                                    manualValue: null,
+                                    field: 'player_name' as CanvasDataBinding['field'],
+                                  };
+
+                                  const binding: CanvasDataBinding = {
+                                    source: existingBinding.source,
+                                    apiEndpoint: existingBinding.apiEndpoint ?? null,
+                                    manualValue: existingBinding.manualValue ?? null,
+                                    field: value as CanvasDataBinding['field'],
+                                  };
+
+                                  updateElement(element.id, { dataBinding: binding });
+                                }}
                               >
                                 <SelectTrigger className="h-10">
                                   <SelectValue placeholder="Bind to field..." />

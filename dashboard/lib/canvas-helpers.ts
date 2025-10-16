@@ -1,0 +1,407 @@
+import type {
+  CanvasElement,
+  CanvasPropertyType,
+  CanvasSettings,
+  CanvasState,
+  SnapLine,
+} from '@/types';
+
+export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
+  width: 5000,
+  height: 5000,
+  backgroundColor: '#2a2a2a',
+};
+
+const DEFAULT_TEXT_DIMENSIONS = { width: 100, height: 50 };
+const DEFAULT_BLOCK_DIMENSIONS = { width: 100, height: 50 };
+
+const PROPERTY_CONFIG: Record<
+  CanvasPropertyType,
+  { placeholder: string; width: number; height: number }
+> = {
+  player: { placeholder: 'Player Name', width: 150, height: 40 },
+  score: { placeholder: 'Score', width: 100, height: 40 },
+  placement: { placeholder: 'Placement', width: 120, height: 40 },
+};
+
+export function generateElementId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `element-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+export function normalizeCanvasElement(element: any): CanvasElement {
+  const type = (element?.type ?? 'text') as CanvasElement['type'];
+  return {
+    id: typeof element?.id === 'string' ? element.id : generateElementId(),
+    type,
+    content: typeof element?.content === 'string' ? element.content : undefined,
+    placeholderText:
+      typeof element?.placeholderText === 'string' ? element.placeholderText : undefined,
+    x: toNumberWithDefault(element?.x, 0),
+    y: toNumberWithDefault(element?.y, 0),
+    width: element?.width != null ? toOptionalNumber(element.width) : undefined,
+    height: element?.height != null ? toOptionalNumber(element.height) : undefined,
+    fontSize: element?.fontSize != null ? toOptionalNumber(element.fontSize) : undefined,
+    fontFamily:
+      typeof element?.fontFamily === 'string' ? element.fontFamily : undefined,
+    color: typeof element?.color === 'string' ? element.color : undefined,
+    backgroundColor:
+      typeof element?.backgroundColor === 'string' ? element.backgroundColor : undefined,
+    borderColor:
+      typeof element?.borderColor === 'string' ? element.borderColor : undefined,
+    borderWidth:
+      element?.borderWidth != null ? toOptionalNumber(element.borderWidth) : undefined,
+    borderRadius:
+      element?.borderRadius != null ? toOptionalNumber(element.borderRadius) : undefined,
+    dataBinding: normalizeDataBinding(element?.dataBinding),
+    isPlaceholder: Boolean(element?.isPlaceholder),
+  };
+}
+
+function normalizeDataBinding(binding: any): CanvasElement['dataBinding'] {
+  if (!binding) return null;
+  if (typeof binding !== 'object') return null;
+  const field = binding.field;
+  if (
+    field !== 'player_name' &&
+    field !== 'player_score' &&
+    field !== 'player_placement' &&
+    field !== 'player_rank' &&
+    field !== 'team_name'
+  ) {
+    return null;
+  }
+  const source = binding.source === 'manual' ? 'manual' : 'api';
+  return {
+    source,
+    field,
+    apiEndpoint:
+      typeof binding.apiEndpoint === 'string' || binding.apiEndpoint === null
+        ? binding.apiEndpoint
+        : undefined,
+    manualValue:
+      typeof binding.manualValue === 'string' || binding.manualValue === null
+        ? binding.manualValue
+        : undefined,
+  };
+}
+
+export function deserializeCanvasState(raw: unknown): CanvasState {
+  const parsed =
+    typeof raw === 'string'
+      ? safeJsonParse(raw)
+      : typeof raw === 'object'
+      ? raw
+      : undefined;
+
+  return normalizeCanvasState(parsed);
+}
+
+function safeJsonParse(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeCanvasState(value: any): CanvasState {
+  const elements: CanvasElement[] = Array.isArray(value?.elements)
+    ? value.elements.map(normalizeCanvasElement)
+    : [];
+
+  const settings = value?.settings ?? {};
+  return {
+    elements,
+    settings: {
+      width: toNumberWithDefault(settings.width, DEFAULT_CANVAS_SETTINGS.width),
+      height: toNumberWithDefault(settings.height, DEFAULT_CANVAS_SETTINGS.height),
+      backgroundColor:
+        typeof settings.backgroundColor === 'string'
+          ? settings.backgroundColor
+          : DEFAULT_CANVAS_SETTINGS.backgroundColor,
+    },
+    backgroundImage:
+      typeof value?.backgroundImage === 'string' ? value.backgroundImage : null,
+  };
+}
+
+function toNumberWithDefault(value: any, fallback: number): number {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
+function toOptionalNumber(value: any): number | undefined {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+export function createTextElement(snap: (value: number) => number): CanvasElement {
+  return {
+    id: generateElementId(),
+    type: 'text',
+    content: 'Text',
+    x: snap(100),
+    y: snap(100),
+    fontSize: 48,
+    fontFamily: 'Arial',
+    color: '#000000',
+  };
+}
+
+export function createPropertyElement(
+  type: CanvasPropertyType,
+  snap: (value: number) => number,
+): CanvasElement {
+  const config = PROPERTY_CONFIG[type];
+  return {
+    id: generateElementId(),
+    type,
+    content: config.placeholder,
+    placeholderText: config.placeholder,
+    x: snap(100),
+    y: snap(100),
+    width: snap(config.width),
+    height: snap(config.height),
+    fontSize: 24,
+    fontFamily: 'Arial',
+    color: '#000000',
+    backgroundColor: '#3B82F6',
+    dataBinding: {
+      source: 'api',
+      field:
+        type === 'player'
+          ? 'player_name'
+          : type === 'score'
+          ? 'player_score'
+          : 'player_placement',
+      apiEndpoint: null,
+      manualValue: null,
+    },
+    isPlaceholder: true,
+  };
+}
+
+export function snapValueToGrid(
+  value: number,
+  gridSize: number,
+  enabled: boolean,
+): number {
+  if (!enabled) return value;
+  return Math.round(value / gridSize) * gridSize;
+}
+
+export interface UpdateCanvasElementOptions {
+  gridSize: number;
+  gridSnapEnabled: boolean;
+}
+
+export function updateCanvasElement(
+  elements: CanvasElement[],
+  elementId: string,
+  updates: Partial<CanvasElement>,
+  options: UpdateCanvasElementOptions,
+): { updatedElements: CanvasElement[]; previous: CanvasElement; next: CanvasElement } | null {
+  const index = elements.findIndex((element) => element.id === elementId);
+  if (index === -1) return null;
+
+  const previous = elements[index];
+  const snappedUpdates: Partial<CanvasElement> = { ...updates };
+
+  if (updates.x != null) {
+    snappedUpdates.x = snapValueToGrid(updates.x, options.gridSize, options.gridSnapEnabled);
+  }
+  if (updates.y != null) {
+    snappedUpdates.y = snapValueToGrid(updates.y, options.gridSize, options.gridSnapEnabled);
+  }
+  if (updates.width != null) {
+    snappedUpdates.width = snapValueToGrid(
+      updates.width,
+      options.gridSize,
+      options.gridSnapEnabled,
+    );
+  }
+  if (updates.height != null) {
+    snappedUpdates.height = snapValueToGrid(
+      updates.height,
+      options.gridSize,
+      options.gridSnapEnabled,
+    );
+  }
+
+  const next: CanvasElement = normalizeCanvasElement({
+    ...previous,
+    ...snappedUpdates,
+  });
+
+  const updatedElements = [...elements];
+  updatedElements[index] = next;
+
+  return { updatedElements, previous, next };
+}
+
+export function removeCanvasElement(
+  elements: CanvasElement[],
+  elementId: string,
+): { updatedElements: CanvasElement[]; removed: CanvasElement | null } {
+  const index = elements.findIndex((element) => element.id === elementId);
+  if (index === -1) {
+    return { updatedElements: elements, removed: null };
+  }
+
+  const updatedElements = elements.slice(0, index).concat(elements.slice(index + 1));
+  return { updatedElements, removed: elements[index] };
+}
+
+export function clampPositionToCanvas(
+  position: { x: number; y: number },
+  element: CanvasElement,
+  settings: CanvasSettings,
+): { x: number; y: number } {
+  const { width, height } = getElementDimensions(element);
+
+  const clampedX = Math.max(0, Math.min(position.x, settings.width - width));
+  const clampedY = Math.max(0, Math.min(position.y, settings.height - height));
+
+  return { x: clampedX, y: clampedY };
+}
+
+function getElementDimensions(element: CanvasElement): { width: number; height: number } {
+  if (element.width != null && element.height != null) {
+    return { width: element.width, height: element.height };
+  }
+
+  if (element.type === 'text') {
+    return { ...DEFAULT_TEXT_DIMENSIONS };
+  }
+
+  return { ...DEFAULT_BLOCK_DIMENSIONS };
+}
+
+export function calculateSnapAgainstElements(options: {
+  element: CanvasElement;
+  elements: CanvasElement[];
+  position: { x: number; y: number };
+  snapToElements: boolean;
+  gridSize: number;
+}): { position: { x: number; y: number }; lines: SnapLine[] } {
+  const { element, elements, position, snapToElements, gridSize } = options;
+
+  if (!snapToElements) {
+    return { position, lines: [] };
+  }
+
+  const { width: elementWidth, height: elementHeight } = getElementDimensions(element);
+  let snappedX = position.x;
+  let snappedY = position.y;
+  const snapThreshold = gridSize;
+  const lines: SnapLine[] = [];
+
+  elements.forEach((other) => {
+    if (other.id === element.id) return;
+
+    const { width: otherWidth, height: otherHeight } = getElementDimensions(other);
+
+    const otherLeft = other.x;
+    const otherRight = other.x + otherWidth;
+    const otherTop = other.y;
+    const otherBottom = other.y + otherHeight;
+
+    const elemLeft = position.x;
+    const elemRight = position.x + elementWidth;
+    const elemTop = position.y;
+    const elemBottom = position.y + elementHeight;
+
+    if (Math.abs(elemLeft - otherLeft) < snapThreshold) {
+      snappedX = otherLeft;
+      lines.push({ x: otherLeft });
+    }
+    if (Math.abs(elemLeft - otherRight) < snapThreshold) {
+      snappedX = otherRight;
+      lines.push({ x: otherRight });
+    }
+    if (Math.abs(elemRight - otherLeft) < snapThreshold) {
+      snappedX = otherLeft - elementWidth;
+      lines.push({ x: otherLeft });
+    }
+    if (Math.abs(elemRight - otherRight) < snapThreshold) {
+      snappedX = otherRight - elementWidth;
+      lines.push({ x: otherRight });
+    }
+
+    if (Math.abs(elemTop - otherTop) < snapThreshold) {
+      snappedY = otherTop;
+      lines.push({ y: otherTop });
+    }
+    if (Math.abs(elemTop - otherBottom) < snapThreshold) {
+      snappedY = otherBottom;
+      lines.push({ y: otherBottom });
+    }
+    if (Math.abs(elemBottom - otherTop) < snapThreshold) {
+      snappedY = otherTop - elementHeight;
+      lines.push({ y: otherTop });
+    }
+    if (Math.abs(elemBottom - otherBottom) < snapThreshold) {
+      snappedY = otherBottom - elementHeight;
+      lines.push({ y: otherBottom });
+    }
+
+    const otherCenterX = otherLeft + otherWidth / 2;
+    const otherCenterY = otherTop + otherHeight / 2;
+    const elemCenterX = elemLeft + elementWidth / 2;
+    const elemCenterY = elemTop + elementHeight / 2;
+
+    if (Math.abs(elemCenterX - otherCenterX) < snapThreshold) {
+      snappedX = otherCenterX - elementWidth / 2;
+      lines.push({ x: otherCenterX });
+    }
+    if (Math.abs(elemCenterY - otherCenterY) < snapThreshold) {
+      snappedY = otherCenterY - elementHeight / 2;
+      lines.push({ y: otherCenterY });
+    }
+  });
+
+  return { position: { x: snappedX, y: snappedY }, lines };
+}
+
+export function serializeCanvasState(state: CanvasState): string {
+  const normalized = normalizeCanvasState({
+    elements: state.elements,
+    settings: state.settings,
+    backgroundImage: state.backgroundImage ?? null,
+  });
+
+  return JSON.stringify(normalized);
+}
+
+export function updateCanvasBackground(
+  state: CanvasState,
+  backgroundImage: string | null,
+  dimensions?: { width: number; height: number },
+): CanvasState {
+  return {
+    elements: state.elements,
+    backgroundImage,
+    settings: {
+      width: dimensions?.width ?? state.settings.width,
+      height: dimensions?.height ?? state.settings.height,
+      backgroundColor: state.settings.backgroundColor,
+    },
+  };
+}
+
+export function updateCanvasSettings(
+  state: CanvasState,
+  settings: Partial<CanvasSettings>,
+): CanvasState {
+  return {
+    ...state,
+    settings: {
+      width: settings.width ?? state.settings.width,
+      height: settings.height ?? state.settings.height,
+      backgroundColor: settings.backgroundColor ?? state.settings.backgroundColor,
+    },
+  };
+}

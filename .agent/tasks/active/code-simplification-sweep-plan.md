@@ -54,7 +54,7 @@
 3. **Component library hygiene:** Use barrel exports and consistent prop typing across `components/graphics`, `canvas`, and `ui`; remove obsolete props, reduce duplication by reusing existing primitives, and document complex component contracts.
 4. **Performance tuning:** Apply React Server Components where beneficial, enable route-level chunking, prune unused Tailwind utilities, and validate with bundle analysis.
 5. **Visual fidelity safeguards:** Add Playwright and screenshot assertions for critical flows (graphics list, editor, archive) to ensure the neon dark theme remains precise.
-- **Status (2025-10-16):** App Router now wraps `AuthProvider` + `DashboardDataProvider`, flattening tabs inside `DashboardLayout` and centralising graphics/archive/lock state. Remaining to-do: migrate CanvasEditor to the shared helpers, swap DOM notifications for toast utilities, and backfill Playwright smoke coverage.
+- **Status (2025-10-16):** CanvasEditor now relies on shared helpers, dashboard notifications leverage toast utilities, and Playwright smoke tests with screenshots cover the graphics list, editor, and archive experiences.
 
 ## Phase 5 - Cross-Cutting Tooling & Quality Gates
 1. **Unified lint and type tooling:** Enforce Ruff and Black for Python and ESLint, Prettier, and TypeScript strict mode for the dashboard; integrate into CI.

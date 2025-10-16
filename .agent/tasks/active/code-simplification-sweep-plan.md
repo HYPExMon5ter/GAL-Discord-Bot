@@ -61,6 +61,7 @@
 2. **CI pipeline hardening:** Extend pipelines to run test, lint, and benchmark suites; publish artefacts such as coverage and Lighthouse scores for each merge.
 3. **Telemetry and alerting:** Instrument key metrics (sheet latency, bot command duration, API response times) and set thresholds for regression alarms.
 4. **Documentation sync:** Ensure `.agent/system/*` docs auto-refresh with refactors; add new diagrams or tables when module boundaries change and record rationale for major deletions.
+- **Status (2025-10-16):** Metrics framework now centralises counters and timings via `utils.metrics`, the API exposes `/metrics`, command decorators and Sheets retry flows emit threshold-aware events, and `scripts/run_quality_checks.py` plus `pyproject.toml` wire Ruff, Black, pytest, and dashboard lint/type checks into a single local gate with refreshed developer documentation.
 
 ## Phase 6 - Deployment & Change Management
 1. **Staged rollout:** Sequence deliveries: integrations updates first (behind feature flags), then backend, then bot, and finally dashboard to keep recovery simple.

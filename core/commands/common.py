@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import functools
-import time
 from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
 
 import discord
@@ -11,6 +10,7 @@ from discord import app_commands
 
 from helpers import ErrorHandler, Validators
 from utils.logging_utils import SecureLogger
+from utils.metrics import increment_counter, time_block
 
 logger = SecureLogger(__name__)
 
@@ -33,21 +33,22 @@ def command_tracer(command_name: str) -> Callable[[AsyncCommand[T]], AsyncComman
     def decorator(func: AsyncCommand[T]) -> AsyncCommand[T]:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
-            start = time.perf_counter()
-            try:
-                logger.debug(f"Command '{command_name}' invoked")
-                return await func(*args, **kwargs)
-            except Exception as exc:
-                logger.error(
-                    f"Command '{command_name}' failed: {exc}",
-                    exc_info=True,
-                )
-                raise
-            finally:
-                duration = time.perf_counter() - start
-                logger.debug(
-                    f"Command '{command_name}' finished in {duration:.3f}s"
-                )
+            logger.debug(f"Command '{command_name}' invoked")
+            with time_block("command.duration", command=command_name):
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as exc:
+                    increment_counter(
+                        "command.errors",
+                        command=command_name,
+                        error_type=exc.__class__.__name__,
+                    )
+                    logger.error(
+                        f"Command '{command_name}' failed: {exc}",
+                        exc_info=True,
+                    )
+                    raise
+            logger.debug(f"Command '{command_name}' completed successfully")
 
         return wrapper
 

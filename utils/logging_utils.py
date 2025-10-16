@@ -2,8 +2,8 @@
 Logging utilities for secure token handling and log sanitization.
 """
 
+import logging
 import re
-from typing import Any, Dict, List
 
 
 def mask_token(token: str, mask_char: str = "*", show_last: int = 4) -> str:

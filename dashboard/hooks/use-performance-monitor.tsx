@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { logError, logInfo, logWarn } from '@/utils/logging';
 
 interface PerformanceMetrics {
   memoryUsage: number;
@@ -10,6 +12,12 @@ interface PerformanceMetrics {
   eventListenerCount: number;
 }
 
+type TrackedListener = {
+  element: EventTarget;
+  type: string;
+  handler: EventListenerOrEventListenerObject;
+};
+
 export function usePerformanceMonitor(componentName: string) {
   const [metrics, setMetrics] = useState<PerformanceMetrics>({
     memoryUsage: 0,
@@ -18,19 +26,20 @@ export function usePerformanceMonitor(componentName: string) {
     intervalCount: 0,
     eventListenerCount: 0,
   });
-  
+
   const renderStart = useRef<number>(0);
   const intervalRefs = useRef<Set<number>>(new Set());
-  const listenerRefs = useRef<Set<{element: any, type: string, handler: any}>>(new Set());
+  const listenerRefs = useRef<Set<TrackedListener>>(new Set());
 
   // Track render time
   useEffect(() => {
     renderStart.current = performance.now();
-    
+
     return () => {
       const renderTime = performance.now() - renderStart.current;
-      if (renderTime > 16) { // Log slow renders (> 60fps)
-        console.warn(`🐌 Slow render in ${componentName}: ${renderTime.toFixed(2)}ms`);
+      setMetrics(prev => ({ ...prev, renderTime }));
+      if (renderTime > 16) {
+        logWarn(componentName, `Render completed slowly: ${renderTime.toFixed(2)}ms`);
       }
     };
   });
@@ -39,9 +48,9 @@ export function usePerformanceMonitor(componentName: string) {
   useEffect(() => {
     const updateMetrics = () => {
       if ('memory' in performance) {
-        const memory = (performance as any).memory;
-        const usedMemory = memory.usedJSHeapSize / 1024 / 1024; // MB
-        
+        const memory = (performance as { memory: { usedJSHeapSize: number } }).memory;
+        const usedMemory = memory.usedJSHeapSize / 1024 / 1024;
+
         setMetrics(prev => ({
           ...prev,
           memoryUsage: usedMemory,
@@ -49,56 +58,60 @@ export function usePerformanceMonitor(componentName: string) {
           eventListenerCount: listenerRefs.current.size,
         }));
 
-        // Warn about high memory usage
-        if (usedMemory > 50) { // 50MB threshold
-          console.warn(`🔥 High memory usage in ${componentName}: ${usedMemory.toFixed(2)}MB`);
+        if (usedMemory > 50) {
+          logWarn(componentName, `High memory usage detected: ${usedMemory.toFixed(2)}MB`);
         }
       }
     };
 
-    // Check metrics every 5 seconds
-    const interval = setInterval(updateMetrics, 5000);
-    return () => clearInterval(interval);
+    const interval = window.setInterval(updateMetrics, 5000);
+    return () => window.clearInterval(interval);
   }, [componentName]);
 
   // Safe interval creation with tracking
-  const createInterval = (callback: () => void, delay: number) => {
-    const id = setInterval(callback, delay);
+  const createInterval = useCallback((callback: () => void, delay: number) => {
+    const id = window.setInterval(callback, delay);
     intervalRefs.current.add(id);
     return id;
-  };
+  }, []);
 
   // Safe interval cleanup
-  const clearInterval = (id: number) => {
+  const clearInterval = useCallback((id: number) => {
     window.clearInterval(id);
     intervalRefs.current.delete(id);
-  };
+  }, []);
 
   // Safe event listener creation with tracking
-  const addEventListener = (element: any, type: string, handler: any, options?: any) => {
-    const key = { element, type, handler };
-    listenerRefs.current.add(key);
-    element.addEventListener(type, handler, options);
-    return key;
-  };
+  const addEventListener = useCallback(
+    (
+      element: EventTarget,
+      type: string,
+      handler: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ) => {
+      const key = { element, type, handler };
+      listenerRefs.current.add(key);
+      element.addEventListener(type, handler, options);
+      return key;
+    },
+    [],
+  );
 
   // Safe event listener cleanup
-  const removeEventListener = (element: any, type: string, handler: any) => {
+  const removeEventListener = useCallback((element: EventTarget, type: string, handler: EventListenerOrEventListenerObject) => {
     const key = { element, type, handler };
     listenerRefs.current.delete(key);
     element.removeEventListener(type, handler);
-  };
+  }, []);
 
   // Cleanup all intervals and listeners
   useEffect(() => {
     return () => {
-      // Clean up intervals
       intervalRefs.current.forEach(id => {
-        clearInterval(id);
+        window.clearInterval(id);
       });
       intervalRefs.current.clear();
 
-      // Clean up event listeners
       listenerRefs.current.forEach(({ element, type, handler }) => {
         element.removeEventListener(type, handler);
       });
@@ -133,6 +146,10 @@ export class GlobalPerformanceMonitor {
     this.metrics.set(name, metrics);
     this.intervalCount += metrics.intervalCount;
     this.listenerCount += metrics.eventListenerCount;
+    logInfo(
+      name,
+      `Tracking component metrics (intervals=${metrics.intervalCount}, listeners=${metrics.eventListenerCount})`,
+    );
   }
 
   getMemoryReport(): string {
@@ -140,33 +157,39 @@ export class GlobalPerformanceMonitor {
     let totalIntervals = 0;
     let totalListeners = 0;
 
-    this.metrics.forEach((metrics, name) => {
-      totalMemory += metrics.memoryUsage;
-      totalIntervals += metrics.intervalCount;
-      totalListeners += metrics.eventListenerCount;
-      
-      console.log(`📊 ${name}: ${metrics.memoryUsage.toFixed(2)}MB, ${metrics.intervalCount} intervals, ${metrics.eventListenerCount} listeners`);
+    this.metrics.forEach((metricSet, name) => {
+      totalMemory += metricSet.memoryUsage;
+      totalIntervals += metricSet.intervalCount;
+      totalListeners += metricSet.eventListenerCount;
+
+      logInfo(
+        name,
+        `Memory ${metricSet.memoryUsage.toFixed(2)}MB | intervals=${metricSet.intervalCount} | listeners=${metricSet.eventListenerCount}`,
+      );
     });
 
-    return `
-🔍 Performance Report:
-💾 Total Memory: ${totalMemory.toFixed(2)}MB
-⏱️ Total Intervals: ${totalIntervals}
-🎧 Total Listeners: ${totalListeners}
-📦 Active Components: ${this.metrics.size}
-    `;
+    return [
+      'Performance Report:',
+      `Total Memory: ${totalMemory.toFixed(2)}MB`,
+      `Total Intervals: ${totalIntervals}`,
+      `Total Listeners: ${totalListeners}`,
+      `Active Components: ${this.metrics.size}`,
+    ].join('\n');
   }
 
   checkForLeaks(): void {
-    const totalMemory = Array.from(this.metrics.values()).reduce((sum, m) => sum + m.memoryUsage, 0);
-    const totalIntervals = Array.from(this.metrics.values()).reduce((sum, m) => sum + m.intervalCount, 0);
-    
+    const totalMemory = Array.from(this.metrics.values()).reduce((sum, metricSet) => sum + metricSet.memoryUsage, 0);
+    const totalIntervals = Array.from(this.metrics.values()).reduce(
+      (sum, metricSet) => sum + metricSet.intervalCount,
+      0,
+    );
+
     if (totalMemory > 100) {
-      console.error('🚨 CRITICAL: High memory usage detected!', this.getMemoryReport());
+      logError('GlobalPerformanceMonitor', 'Critical memory usage detected', this.getMemoryReport());
     }
-    
+
     if (totalIntervals > 10) {
-      console.warn('⚠️ WARNING: Many intervals running. Potential leak detected.', this.getMemoryReport());
+      logWarn('GlobalPerformanceMonitor', `Many intervals running. Potential leak detected.\n${this.getMemoryReport()}`);
     }
   }
 }

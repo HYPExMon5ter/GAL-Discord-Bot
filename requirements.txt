@@ -18,3 +18,10 @@ websockets
 redis
 jinja2
 python-jose[cryptography]
+pytest
+pytest-asyncio
+coverage
+httpx
+black
+ruff
+mypy

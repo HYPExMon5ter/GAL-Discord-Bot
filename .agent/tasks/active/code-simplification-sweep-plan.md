@@ -38,7 +38,7 @@
 3. **Schema harmonisation:** Map sheet column access to the canonical data models documented in `data-models.md`; generate typed adapters to eliminate fragile index-based access.
 4. **Error handling standardisation:** Replace bespoke exception handling with domain-specific error classes, centralise retry policies consistent with `event-system.md`, and ensure each path logs structured context for triage.
 5. **Riot and IGN integration sweep:** Extract rate-limiting and request serialisation into middleware; evaluate batching or memoisation on repeated lookups, removing redundant helper functions in the process.
-- **Status (2025-10-15):** Introduced `SheetCacheManager`, TTL-aware refresh gating, structured logging across sheets service, and hardened Riot/IGN integrations with shared retry handling.
+- **Status (2025-10-16):** Introduced `SheetCacheManager`, TTL-aware refresh gating, structured logging across sheets service, and hardened Riot/IGN integrations with shared retry handling. Verified column adapters through `SheetIntegrationHelper` + DAL alignment and confirmed `python -m pytest` (4 tests) green for Phase 2 coverage.
 
 ## Phase 3 - API Backend Modernisation (`api/`)
 1. **Router pruning:** Refactor `routers/graphics.py`, `routers/configuration.py`, and others into thin controllers that delegate to service layer methods; ensure response schemas stay aligned with `api/schemas`.
@@ -54,6 +54,7 @@
 3. **Component library hygiene:** Use barrel exports and consistent prop typing across `components/graphics`, `canvas`, and `ui`; remove obsolete props, reduce duplication by reusing existing primitives, and document complex component contracts.
 4. **Performance tuning:** Apply React Server Components where beneficial, enable route-level chunking, prune unused Tailwind utilities, and validate with bundle analysis.
 5. **Visual fidelity safeguards:** Add Playwright and screenshot assertions for critical flows (graphics list, editor, archive) to ensure the neon dark theme remains precise.
+- **Status (2025-10-16):** App Router now wraps `AuthProvider` + `DashboardDataProvider`, flattening tabs inside `DashboardLayout` and centralising graphics/archive/lock state. Remaining to-do: migrate CanvasEditor to the shared helpers, swap DOM notifications for toast utilities, and backfill Playwright smoke coverage.
 
 ## Phase 5 - Cross-Cutting Tooling & Quality Gates
 1. **Unified lint and type tooling:** Enforce Ruff and Black for Python and ESLint, Prettier, and TypeScript strict mode for the dashboard; integrate into CI.

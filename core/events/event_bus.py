@@ -7,7 +7,7 @@ prioritization, retry logic, and event filtering.
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -16,6 +16,11 @@ import json
 from collections import defaultdict
 
 from .event_types import Event, EventType, EventPriority, EventCategory
+
+
+def utcnow() -> datetime:
+    """Return current UTC timestamp with timezone info."""
+    return datetime.now(UTC)
 
 
 class EventHandler(ABC):
@@ -94,7 +99,7 @@ class EventSubscription:
     filter_func: Optional[Callable[[Event], bool]] = None
     async_handler: bool = True
     enabled: bool = True
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=utcnow)
     
     def can_handle(self, event: Event) -> bool:
         """Check if this subscription can handle the event."""
@@ -126,7 +131,7 @@ class EventMetrics:
     def record_emission(self) -> None:
         """Record an event emission."""
         self.events_emitted += 1
-        self.last_event_time = datetime.utcnow()
+        self.last_event_time = utcnow()
     
     def record_processing(self, processing_time: float) -> None:
         """Record event processing."""
@@ -328,7 +333,7 @@ class EventBus:
     
     async def _process_event(self, event: Event) -> None:
         """Process a single event."""
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         processed_count = 0
         
         try:
@@ -348,7 +353,7 @@ class EventBus:
                     self._metrics.record_failure()
             
             # Update metrics
-            processing_time = (datetime.utcnow() - start_time).total_seconds()
+            processing_time = (utcnow() - start_time).total_seconds()
             self._metrics.record_processing(processing_time)
             
             self.logger.debug(f"Processed event {event.event_id} with {processed_count} handlers")

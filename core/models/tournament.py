@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from .base_model import BaseModel
+from .base_model import BaseModel, utcnow
 
 
 class TournamentType(Enum):
@@ -47,7 +47,7 @@ class TournamentRegistration(BaseModel):
     tournament_id: str = ""
     user_id: str = ""
     status: RegistrationStatus = RegistrationStatus.PENDING
-    registration_date: datetime = field(default_factory=datetime.utcnow)
+    registration_date: datetime = field(default_factory=utcnow)
     partner_id: Optional[str] = None  # For doubles tournaments
     team_name: Optional[str] = None  # For team tournaments
     seed: Optional[int] = None
@@ -112,7 +112,7 @@ class Tournament(BaseModel):
         if self.status != TournamentStatus.REGISTRATION_OPEN:
             return False
         
-        now = datetime.utcnow()
+        now = utcnow()
         
         if self.registration_start and now < self.registration_start:
             return False
@@ -208,5 +208,5 @@ class TournamentMatch(BaseModel):
         self.player1_score = player1_score
         self.player2_score = player2_score
         self.status = "completed"
-        self.completed_time = datetime.utcnow()
+        self.completed_time = utcnow()
         self.update_timestamp()

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from .base_model import BaseModel
+from .base_model import BaseModel, utcnow
 
 
 @dataclass
@@ -119,8 +119,8 @@ class Guild(BaseModel):
     boosted: bool = False
     boost_level: int = 0
     is_active: bool = True
-    joined_at: Optional[datetime] = field(default_factory=datetime.utcnow)
-    last_activity: Optional[datetime] = field(default_factory=datetime.utcnow)
+    joined_at: Optional[datetime] = field(default_factory=utcnow)
+    last_activity: Optional[datetime] = field(default_factory=utcnow)
     
     # Configuration
     configuration: Optional[GuildConfiguration] = None
@@ -161,7 +161,7 @@ class Guild(BaseModel):
     
     def update_activity(self) -> None:
         """Update the last activity timestamp."""
-        self.last_activity = datetime.utcnow()
+        self.last_activity = utcnow()
         self.update_timestamp()
     
     def get_command_usage_stats(self) -> Dict[str, int]:
@@ -214,7 +214,7 @@ class GuildMember(BaseModel):
     
     guild_id: str = ""
     user_id: str = ""
-    joined_at: Optional[datetime] = field(default_factory=datetime.utcnow)
+    joined_at: Optional[datetime] = field(default_factory=utcnow)
     roles: List[str] = field(default_factory=list)
     nickname: Optional[str] = None
     is_boosting: bool = False
@@ -281,7 +281,7 @@ class GuildMember(BaseModel):
     def increment_message_count(self) -> None:
         """Increment message count and update last message time."""
         self.message_count += 1
-        self.last_message = datetime.utcnow()
+        self.last_message = utcnow()
         self.update_timestamp()
     
     def add_voice_time(self, minutes: int) -> None:

@@ -6,10 +6,15 @@ audit trail capabilities.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, Optional, Union
 from dataclasses import dataclass, field
 import json
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -23,8 +28,8 @@ class BaseModel(ABC):
     
     # Core fields
     id: Optional[str] = None
-    created_at: Optional[datetime] = field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = field(default_factory=datetime.utcnow)
+    created_at: Optional[datetime] = field(default_factory=utcnow)
+    updated_at: Optional[datetime] = field(default_factory=utcnow)
     created_by: Optional[str] = None
     updated_by: Optional[str] = None
     version: int = 1
@@ -118,7 +123,7 @@ class BaseModel(ABC):
         Args:
             user_id: ID of the user making the update
         """
-        self.updated_at = datetime.utcnow()
+        self.updated_at = utcnow()
         if user_id:
             self.updated_by = user_id
         self.version += 1

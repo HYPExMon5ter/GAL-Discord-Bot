@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 
-from .base_model import BaseModel
+from .base_model import BaseModel, utcnow
 
 
 class ConfigurationCategory(Enum):
@@ -287,7 +287,7 @@ class Configuration(BaseModel):
     
     def mark_backup(self) -> None:
         """Mark that a backup has been created."""
-        self.last_backup = datetime.utcnow()
+        self.last_backup = utcnow()
         self.update_timestamp()
 
 

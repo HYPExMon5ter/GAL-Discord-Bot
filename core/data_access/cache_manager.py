@@ -8,7 +8,7 @@ and automatic cache invalidation strategies.
 import asyncio
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Callable
 from dataclasses import dataclass, field
@@ -38,6 +38,11 @@ class CacheStrategy(Enum):
     MANUAL = "manual"  # Manual invalidation only
 
 
+def utcnow() -> datetime:
+    """Return the current time in UTC with timezone information."""
+    return datetime.now(UTC)
+
+
 @dataclass
 class CacheEntry:
     """Represents a cache entry with metadata."""
@@ -55,12 +60,12 @@ class CacheEntry:
         """Check if the cache entry has expired."""
         if self.expires_at is None:
             return False
-        return datetime.utcnow() > self.expires_at
+        return utcnow() > self.expires_at
     
     def access(self) -> Any:
         """Record an access to the cache entry."""
         self.access_count += 1
-        self.last_accessed = datetime.utcnow()
+        self.last_accessed = utcnow()
         return self.value
 
 
@@ -127,7 +132,7 @@ class MemoryCache:
             tags: Cache tags for group invalidation
         """
         async with self._lock:
-            now = datetime.utcnow()
+            now = utcnow()
             expires_at = now + (ttl or self.default_ttl)
             
             # Calculate size (rough estimate)
@@ -607,7 +612,7 @@ class CacheManager:
     async def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive cache statistics."""
         stats = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
             "memory_cache": await self.memory_cache.get_stats(),
             "redis_cache": None
         }

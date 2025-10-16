@@ -8,7 +8,7 @@ and automatic reconnection for database systems.
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, Optional, Union, AsyncContextManager
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -190,7 +190,7 @@ class DatabaseConnection:
             # Simple health check query
             await self.fetch_val("SELECT 1")
             
-            self._last_health_check = datetime.utcnow()
+            self._last_health_check = utcnow()
             
             return {
                 "status": "healthy",
@@ -200,11 +200,11 @@ class DatabaseConnection:
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             
             return {
                 "status": "unhealthy",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": utcnow().isoformat(),
                 "error": str(e),
                 "stats": self._stats.to_dict()
             }
@@ -226,7 +226,7 @@ class DatabaseConnection:
     def stats(self) -> ConnectionStats:
         """Get connection statistics."""
         if self._connected_at:
-            self._stats.uptime = datetime.utcnow() - self._connected_at
+            self._stats.uptime = utcnow() - self._connected_at
         return self._stats
 
 
@@ -259,7 +259,7 @@ class PostgreSQLConnection(DatabaseConnection):
                 }
             )
             
-            self._connected_at = datetime.utcnow()
+            self._connected_at = utcnow()
             self.logger.info("PostgreSQL connection pool established")
             
             # Test connection
@@ -281,12 +281,12 @@ class PostgreSQLConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             async with self._pool.acquire() as conn:
                 result = await conn.execute(query, *args, **kwargs)
                 
-                query_time = (datetime.utcnow() - start_time).total_seconds()
+                query_time = (utcnow() - start_time).total_seconds()
                 self._update_stats(query_time)
                 
                 if self.config.echo:
@@ -297,7 +297,7 @@ class PostgreSQLConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query execution failed: {e}")
             raise
     
@@ -306,12 +306,12 @@ class PostgreSQLConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             async with self._pool.acquire() as conn:
                 result = await conn.fetch(query, *args, **kwargs)
                 
-                query_time = (datetime.utcnow() - start_time).total_seconds()
+                query_time = (utcnow() - start_time).total_seconds()
                 self._update_stats(query_time)
                 
                 return [dict(row) for row in result]
@@ -319,7 +319,7 @@ class PostgreSQLConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query fetch failed: {e}")
             raise
     
@@ -328,12 +328,12 @@ class PostgreSQLConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             async with self._pool.acquire() as conn:
                 result = await conn.fetchrow(query, *args, **kwargs)
                 
-                query_time = (datetime.utcnow() - start_time).total_seconds()
+                query_time = (utcnow() - start_time).total_seconds()
                 self._update_stats(query_time)
                 
                 return dict(result) if result else None
@@ -341,7 +341,7 @@ class PostgreSQLConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query fetch_one failed: {e}")
             raise
     
@@ -350,12 +350,12 @@ class PostgreSQLConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             async with self._pool.acquire() as conn:
                 result = await conn.fetchval(query, *args, **kwargs)
                 
-                query_time = (datetime.utcnow() - start_time).total_seconds()
+                query_time = (utcnow() - start_time).total_seconds()
                 self._update_stats(query_time)
                 
                 return result
@@ -363,7 +363,7 @@ class PostgreSQLConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query fetch_val failed: {e}")
             raise
     
@@ -409,7 +409,7 @@ class SQLiteConnection(DatabaseConnection):
             await self._pool.execute("PRAGMA journal_mode=WAL")
             await self._pool.execute("PRAGMA foreign_keys=ON")
             
-            self._connected_at = datetime.utcnow()
+            self._connected_at = utcnow()
             self.logger.info(f"SQLite connection established: {self.config.url}")
             
             # Test connection
@@ -431,12 +431,12 @@ class SQLiteConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             cursor = await self._pool.execute(query, args)
             await self._pool.commit()
             
-            query_time = (datetime.utcnow() - start_time).total_seconds()
+            query_time = (utcnow() - start_time).total_seconds()
             self._update_stats(query_time)
             
             if self.config.echo:
@@ -447,7 +447,7 @@ class SQLiteConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query execution failed: {e}")
             await self._pool.rollback()
             raise
@@ -457,13 +457,13 @@ class SQLiteConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             self._pool.row_factory = aiosqlite.Row
             cursor = await self._pool.execute(query, args)
             rows = await cursor.fetchall()
             
-            query_time = (datetime.utcnow() - start_time).total_seconds()
+            query_time = (utcnow() - start_time).total_seconds()
             self._update_stats(query_time)
             
             return [dict(row) for row in rows]
@@ -471,7 +471,7 @@ class SQLiteConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query fetch failed: {e}")
             raise
     
@@ -480,13 +480,13 @@ class SQLiteConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             self._pool.row_factory = aiosqlite.Row
             cursor = await self._pool.execute(query, args)
             row = await cursor.fetchone()
             
-            query_time = (datetime.utcnow() - start_time).total_seconds()
+            query_time = (utcnow() - start_time).total_seconds()
             self._update_stats(query_time)
             
             return dict(row) if row else None
@@ -494,7 +494,7 @@ class SQLiteConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query fetch_one failed: {e}")
             raise
     
@@ -503,12 +503,12 @@ class SQLiteConnection(DatabaseConnection):
         if not self._pool:
             await self.connect()
         
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         try:
             cursor = await self._pool.execute(query, args)
             row = await cursor.fetchone()
             
-            query_time = (datetime.utcnow() - start_time).total_seconds()
+            query_time = (utcnow() - start_time).total_seconds()
             self._update_stats(query_time)
             
             return row[0] if row else None
@@ -516,7 +516,7 @@ class SQLiteConnection(DatabaseConnection):
         except Exception as e:
             self._stats.connection_errors += 1
             self._stats.last_error = str(e)
-            self._stats.last_error_time = datetime.utcnow()
+            self._stats.last_error_time = utcnow()
             self.logger.error(f"Query fetch_val failed: {e}")
             raise
     
@@ -659,7 +659,7 @@ class ConnectionManager:
                 results[conn_name] = {
                     "status": "error",
                     "error": str(e),
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": utcnow().isoformat()
                 }
         
         return results
@@ -708,3 +708,6 @@ class ConnectionManager:
         
         await self.disconnect_all()
         self.logger.info("Connection manager shutdown complete")
+def utcnow() -> datetime:
+    """Return current UTC time with timezone information."""
+    return datetime.now(UTC)

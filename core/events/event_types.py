@@ -5,13 +5,18 @@ Defines all event types that can be emitted and handled
 by the event system.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, field
 import uuid
 
 from ..models.base_model import BaseModel
+
+
+def utcnow() -> datetime:
+    """Return current UTC timestamp."""
+    return datetime.now(UTC)
 
 
 class EventType(Enum):
@@ -105,7 +110,7 @@ class Event:
     event_type: EventType
     data: Dict[str, Any]
     source: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=utcnow)
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     priority: EventPriority = EventPriority.NORMAL
     category: EventCategory = EventCategory.SYSTEM

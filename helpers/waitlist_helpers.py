@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional, Dict, List
 
 import discord
@@ -20,6 +20,11 @@ from integrations.sheets import find_or_register_user, cache_lock, sheet_cache, 
 class WaitlistError(Exception):
     """Custom exception for waitlist-related errors."""
     pass
+
+
+def utcnow() -> datetime:
+    """Provide a timezone-aware UTC timestamp."""
+    return datetime.now(UTC)
 
 
 class WaitlistManager:
@@ -286,7 +291,7 @@ class WaitlistManager:
                         "pronouns": pronouns.strip() if pronouns else "",
                         "team_name": team_name.strip() if team_name else None,
                         "alt_igns": alt_igns.strip() if alt_igns else None,
-                        "added_at": entry.get("added_at", datetime.utcnow().isoformat())  # Preserve original time
+                        "added_at": entry.get("added_at", utcnow().isoformat())  # Preserve original time
                     }
                     WaitlistManager._save_waitlist_data(all_data)
                     logging.info(f"Updated waitlist entry for {discord_tag} at position {i + 1}")
@@ -300,7 +305,7 @@ class WaitlistManager:
                 "pronouns": pronouns.strip() if pronouns else "",
                 "team_name": team_name.strip() if team_name else None,
                 "alt_igns": alt_igns.strip() if alt_igns else None,
-                "added_at": datetime.utcnow().isoformat()
+                "added_at": utcnow().isoformat()
             }
 
             waitlist.append(new_entry)
@@ -662,7 +667,7 @@ class WaitlistManager:
                                     title="✅ Waitlist Registration",
                                     description=f"**{next_user['discord_tag']}** ({next_user['ign']}) has been automatically registered from the waitlist{team_info}.",
                                     color=discord.Color.green(),
-                                    timestamp=datetime.utcnow()
+                                    timestamp=utcnow()
                                 )
                                 await log_channel.send(embed=log_embed)
                             except Exception as log_error:

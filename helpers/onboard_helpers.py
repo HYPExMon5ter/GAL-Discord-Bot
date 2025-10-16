@@ -2,7 +2,7 @@
 
 import logging
 from typing import Dict, Optional, Set
-from datetime import datetime
+from datetime import UTC, datetime
 
 import discord
 
@@ -11,6 +11,11 @@ from config import (
     get_onboard_approval_role, get_allowed_roles
 )
 from helpers.role_helpers import RoleManager
+
+
+def utcnow() -> datetime:
+    """Return a timezone-aware UTC timestamp."""
+    return datetime.now(UTC)
 
 
 class OnboardManager:
@@ -24,7 +29,7 @@ class OnboardManager:
         """Add a user to pending submissions."""
         cls._pending_submissions[user_id] = {
             **submission_data,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': utcnow().isoformat(),
             'user_id': user_id
         }
         logging.info(f"Added pending onboard submission for user {user_id}")

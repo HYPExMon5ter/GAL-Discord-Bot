@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 
-from .base_model import BaseModel
+from .base_model import BaseModel, utcnow
 
 
 class UserRole(Enum):
@@ -47,7 +47,7 @@ class UserStats(BaseModel):
     ranking_points: float = 0.0
     current_rank: Optional[str] = None
     peak_rank: Optional[str] = None
-    last_active: Optional[datetime] = field(default_factory=datetime.utcnow)
+    last_active: Optional[datetime] = field(default_factory=utcnow)
     custom_stats: Dict[str, Any] = field(default_factory=dict)
     
     def validate(self) -> None:
@@ -135,8 +135,8 @@ class User(BaseModel):
     email: Optional[str] = None
     roles: List[UserRole] = field(default_factory=list)
     status: UserStatus = UserStatus.ACTIVE
-    joined_at: Optional[datetime] = field(default_factory=datetime.utcnow)
-    last_seen: Optional[datetime] = field(default_factory=datetime.utcnow)
+    joined_at: Optional[datetime] = field(default_factory=utcnow)
+    last_seen: Optional[datetime] = field(default_factory=utcnow)
     is_verified: bool = False
     is_banned: bool = False
     ban_reason: Optional[str] = None
@@ -157,7 +157,7 @@ class User(BaseModel):
             raise ValueError("Username is required")
         if self.is_banned and not self.ban_reason:
             raise ValueError("Ban reason is required when user is banned")
-        if self.ban_expires and self.ban_expires <= datetime.utcnow():
+        if self.ban_expires and self.ban_expires <= utcnow():
             # Auto-expire ban
             self.is_banned = False
             self.ban_reason = None
@@ -245,7 +245,7 @@ class User(BaseModel):
     
     def update_last_seen(self) -> None:
         """Update the last seen timestamp."""
-        self.last_seen = datetime.utcnow()
+        self.last_seen = utcnow()
         self.update_timestamp()
     
     def is_active(self) -> bool:

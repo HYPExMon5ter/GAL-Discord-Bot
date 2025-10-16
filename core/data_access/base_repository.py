@@ -7,12 +7,17 @@ CRUD operations, caching, and error handling.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, TypeVar, Generic, Union
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 import asyncio
 from contextlib import asynccontextmanager
 
 from ..models.base_model import BaseModel
+
+
+def utcnow() -> datetime:
+    """Return current UTC time with timezone info."""
+    return datetime.now(UTC)
 
 # Type variables for generic repository
 T = TypeVar('T', bound=BaseModel)
@@ -368,7 +373,7 @@ class BaseRepository(ABC, Generic[T, ID]):
         result = {
             "status": "healthy",
             "repository": self.__class__.__name__,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
             "cache_available": self.cache_manager is not None,
             "connection_available": self.connection_manager is not None
         }

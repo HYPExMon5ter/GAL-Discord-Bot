@@ -105,8 +105,8 @@ dashboard/app/dashboard/page.tsx → Main dashboard page        → live-graphic
 dashboard/components/graphics/*   → Graphics management UI     → frontend-components.md   ↔ dashboard/hooks/use-graphics.ts
 dashboard/hooks/use-*.tsx           → Custom React hooks          → frontend-components.md   ↔ dashboard/lib/api.ts
 dashboard/lib/api.ts              → API client                   → api-integration.md       ↔ FastAPI backend
-dashboard/api/*                    → Frontend API structure        → frontend-api-structure-sop.md ↔ dashboard/services/*
-dashboard/test-results/*           → Test results infrastructure   → testing-infrastructure-sop.md ↔ CI/CD pipeline
+dashboard/api/*                    → Frontend API structure        → sops/frontend-api-structure-sop.md ↔ dashboard/services/*
+dashboard/test-results/*           → Test results infrastructure   → sops/testing-infrastructure-sop.md ↔ CI/CD pipeline
 ```
 
 ### Configuration Files

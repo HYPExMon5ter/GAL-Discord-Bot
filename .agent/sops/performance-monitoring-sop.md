@@ -227,60 +227,26 @@ class DatabasePerformanceMonitor:
 
 ### Frontend Monitoring Setup
 
-#### Performance Observer Implementation
-```typescript
-// Performance monitoring setup
-class PerformanceMonitoringService {
-  private metrics: Map<string, number[]> = new Map();
-  
-  constructor() {
-    this.initializeMonitoring();
-  }
-  
-  private initializeMonitoring(): void {
-    // Monitor page load performance
-    window.addEventListener('load', () => {
-      this.measurePageLoad();
-    });
-    
-    // Monitor navigation performance
-    this.measureNavigationTiming();
-    
-    // Monitor resource loading
-    this.measureResourceTiming();
-    
-    // Monitor long tasks
-    this.measureLongTasks();
-  }
-  
-  private measurePageLoad(): void {
-    const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
-    const metrics = {
-      domContentLoaded: navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart,
-      loadComplete: navigation.loadEventEnd - navigation.loadEventStart,
-      firstPaint: performance.getEntriesByType('paint')[0]?.startTime || 0,
-      firstContentfulPaint: performance.getEntriesByType('paint')[1]?.startTime || 0
-    };
-    
-    this.reportMetrics('page_load', metrics);
-  }
-  
-  private measureLongTasks(): void {
-    if ('PerformanceObserver' in window) {
-      const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          this.reportMetric('long_task', entry.duration, {
-            name: entry.name,
-            startTime: entry.startTime
-          });
-        }
-      });
-      
-      observer.observe({ entryTypes: ['longtask'] });
-    }
-  }
-}
-```
+#### ⚠️ Current Monitoring Approach
+**Performance monitoring components have been removed from the codebase.**
+Current monitoring should use native browser APIs, server-side logging, and external monitoring tools.
+
+#### Recommended Monitoring Tools
+
+**Browser Performance Monitoring**
+- Use browser's native Performance API for frontend metrics
+- Implement Web Vitals monitoring for core user experience metrics
+- Utilize browser developer tools for debugging performance issues
+
+**Server-Side Monitoring**
+- Implement logging middleware for API performance tracking
+- Use application performance monitoring (APM) tools
+- Monitor database query performance and resource usage
+
+**Third-Party Solutions**
+- Consider integrating APM services (DataDog, New Relic, etc.)
+- Use real user monitoring (RUM) for production performance tracking
+- Implement uptime and performance monitoring services
 
 ### Backend Monitoring Setup
 

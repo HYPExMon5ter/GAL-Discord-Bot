@@ -52,7 +52,7 @@
 - Design and add SQLAlchemy tables for `matches` and `match_participants` (or a flattened `standings` table) in `api/models.py` with migrations/initialization steps.
 - Create Pydantic schemas and repository/service abstractions (new module under `api/services/standings_service.py`, repository in `core/data_access` if shared).
 - Add persistence helpers for upsert + history retention (match timestamp, source, Riot match id, scoring metadata).
-- **Testing:** `.\.venv\Scripts\python.exe -m pytest` (2025-10-18) ✅
+- **Testing:** .\.venv\Scripts\python.exe -m pytest (2025-10-18) - passed
 
 ### Phase 2 - Riot Data Aggregation Service (1.5d)
 - Build a dedicated standings aggregator that:
@@ -63,7 +63,8 @@
 - Implement caching and rate-limit guards; reuse Redis if available (`api/services/ign_verification.py`) with fallbacks.
 - Surface structured errors for missing Riot IDs, API failures, or incomplete match data, with hooks for manual re-run of specific players or lobbies.
 - Ensure archived graphics (and any datasets tied to them) are excluded from refresh output, with explicit logging of skipped ids.
-- **Testing (required):** `.\.venv\Scripts\python.exe -m pytest` plus targeted aggregation unit tests.
+- **Testing:** .\.venv\Scripts\python.exe -m pytest api/tests/test_standings_aggregator.py (2025-10-18) - passed
+- **Next required tests:** .\.venv\Scripts\python.exe -m pytest plus targeted aggregation unit tests.
 
 ### Phase 3 - Command Trigger & Orchestration (1.0d)
 - Add a new `/gal standings refresh` (working name) subcommand in `core/commands/registration.py` (or new module) that:

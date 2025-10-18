@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from .auth import TokenData, get_current_user
 from .services.configuration_service import ConfigurationService
 from .services.graphics_service import GraphicsService
+from .services.standings_aggregator import StandingsAggregator
 from .services.standings_service import StandingsService
 from .services.tournament_service import TournamentService
 from .services.user_service import UserService
@@ -117,6 +118,15 @@ get_tournament_service = _service_factory(TournamentService)
 get_user_service = _service_factory(UserService)
 
 
+def get_standings_aggregator(
+    standings_service: StandingsService = Depends(get_standings_service),
+) -> StandingsAggregator:
+    """
+    Provide a standings aggregator bound to the current database session.
+    """
+    return StandingsAggregator(standings_service)
+
+
 __all__ = [
     "get_db",
     "get_database_session",
@@ -125,7 +135,8 @@ __all__ = [
     "require_roles",
     "get_configuration_service",
     "get_graphics_service",
-    "get_standings_service",
     "get_tournament_service",
     "get_user_service",
+    "get_standings_service",
+    "get_standings_aggregator",
 ]

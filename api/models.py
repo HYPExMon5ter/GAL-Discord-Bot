@@ -4,8 +4,9 @@ SQLAlchemy models for graphics management
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 
 Base = declarative_base()
 
@@ -129,3 +130,73 @@ class ActiveSession(Base):
 
     def __repr__(self):
         return f"<ActiveSession(id={self.id}, user='{self.username}', expires_at='{self.expires_at}')>"
+
+
+class ScoreboardSnapshot(Base):
+    """Represents a persisted snapshot of tournament standings."""
+
+    __tablename__ = "scoreboard_snapshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(String(255), nullable=True, index=True)
+    tournament_name = Column(String(255), nullable=True)
+    guild_id = Column(String(64), nullable=True, index=True)
+    source = Column(String(64), nullable=True)
+    source_timestamp = Column(DateTime(timezone=True), nullable=True, index=True)
+    round_names = Column(MutableList.as_mutable(JSON), default=list, nullable=False)
+    extras = Column(MutableDict.as_mutable(JSON), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    # Relationships
+    entries = relationship(
+        "ScoreboardEntry",
+        back_populates="snapshot",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        Index("idx_scoreboard_snapshot_tournament", "tournament_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ScoreboardSnapshot(id={self.id}, tournament_id={self.tournament_id}, "
+            f"rounds={len(self.round_names) if self.round_names else 0})>"
+        )
+
+
+class ScoreboardEntry(Base):
+    """Per-player standings data for a scoreboard snapshot."""
+
+    __tablename__ = "scoreboard_entries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    snapshot_id = Column(
+        Integer,
+        ForeignKey("scoreboard_snapshots.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    player_id = Column(String(255), nullable=True, index=True)
+    player_name = Column(String(255), nullable=False, index=True)
+    discord_id = Column(String(255), nullable=True, index=True)
+    riot_id = Column(String(255), nullable=True)
+    standing_rank = Column(Integer, nullable=True, index=True)
+    total_points = Column(Integer, nullable=False, default=0)
+    round_scores = Column(MutableDict.as_mutable(JSON), default=dict, nullable=False)
+    extras = Column(MutableDict.as_mutable(JSON), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+
+    snapshot = relationship("ScoreboardSnapshot", back_populates="entries")
+
+    __table_args__ = (
+        Index("idx_scoreboard_entry_player", "snapshot_id", "player_name"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ScoreboardEntry(id={self.id}, snapshot_id={self.snapshot_id}, "
+            f"player='{self.player_name}', total_points={self.total_points})>"
+        )

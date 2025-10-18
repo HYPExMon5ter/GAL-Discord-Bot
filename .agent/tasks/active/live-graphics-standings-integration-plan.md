@@ -45,12 +45,14 @@
 - Document scoring and tie-breaking rules; capture in config defaults with override capability (`config.yaml`, `core/config_ui.py`).
 - Decide minimum command arguments and confirm user roles allowed to execute refreshes.
 - Audit Google Sheet structure to confirm round score columns (or other markers) and document fallback strategy when data is missing or ambiguous.
-- Catalogue existing dashboard graphic templates and identify target slots for the new “Round Scoreboard” overlay.
+- Catalogue existing dashboard graphic templates and identify target slots for the new "Round Scoreboard" overlay.
+- **Testing:** Not applicable (planning/documentation only).
 
 ### Phase 1 - Standings Data Model & Storage (1.0d)
 - Design and add SQLAlchemy tables for `matches` and `match_participants` (or a flattened `standings` table) in `api/models.py` with migrations/initialization steps.
 - Create Pydantic schemas and repository/service abstractions (new module under `api/services/standings_service.py`, repository in `core/data_access` if shared).
 - Add persistence helpers for upsert + history retention (match timestamp, source, Riot match id, scoring metadata).
+- **Testing:** `.\.venv\Scripts\python.exe -m pytest` (2025-10-18) ✅
 
 ### Phase 2 - Riot Data Aggregation Service (1.5d)
 - Build a dedicated standings aggregator that:
@@ -61,6 +63,7 @@
 - Implement caching and rate-limit guards; reuse Redis if available (`api/services/ign_verification.py`) with fallbacks.
 - Surface structured errors for missing Riot IDs, API failures, or incomplete match data, with hooks for manual re-run of specific players or lobbies.
 - Ensure archived graphics (and any datasets tied to them) are excluded from refresh output, with explicit logging of skipped ids.
+- **Testing (required):** `.\.venv\Scripts\python.exe -m pytest` plus targeted aggregation unit tests.
 
 ### Phase 3 - Command Trigger & Orchestration (1.0d)
 - Add a new `/gal standings refresh` (working name) subcommand in `core/commands/registration.py` (or new module) that:
@@ -70,28 +73,30 @@
   - Calls the aggregator, persists results, and reports summary metrics to the interaction.
 - Integrate observability (structured logging, metrics counters) via `utils/logging_utils.py`.
 - Document manual fallback/override switches (e.g., `--force`, `--replay`, `--player`) so staff can recover from partial failures without waiting on automation.
+- **Testing (required):** `.\.venv\Scripts\python.exe -m pytest` plus command-level integration tests.
 
 ### Phase 4 - API Surface for Standings (1.0d)
 - Expose REST endpoints (e.g., `GET /api/v1/standings/{tournament_id}` with filters for lobby/round) in `api/routers`.
 - Add service methods to deliver normalized datasets ready for dashboard consumption (sorted by placement, include metadata, version stamps).
 - Implement ETag/last-modified headers or version numbers so the dashboard can avoid redundant fetches.
 - Include Sheet source metadata (timestamp, worksheet) in responses so consumers know when a refresh last synced from the canonical data.
+- **Testing (required):** `.\.venv\Scripts\python.exe -m pytest` plus API contract tests (FastAPI client).
 
 ### Phase 5 - Dashboard Data Binding & OBS Rendering (1.0d)
 - Extend `CanvasDataBinding` schema to include dataset identifiers and field selectors (e.g., `{ dataset: "scoreboard", row: 1, round: "round_1" }`). Update serialization helpers (`dashboard/lib/canvas-helpers.ts`, `dashboard/types/index.ts`).
 - Update Canvas editor UI to support table-style layouts (rows × columns) bound to scoreboard datasets, persisting bindings back through `graphicsApi.update`.
-- Introduce a “binding grid” template: designers draw a row prototype (player name cell + per-round cells + total cell) and assign semantic slots (`player_name`, `round_1`, …, `total`). The runtime duplicates this row for each dataset entry, auto-placing values without manual element duplication.
+- Introduce a "binding grid" template: designers draw a row prototype (player name cell + per-round cells + total cell) and assign semantic slots (`player_name`, `round_1`, …, `total`). The runtime duplicates this row for each dataset entry, auto-placing values without manual element duplication.
 - Adapt OBS view (`dashboard/app/canvas/view/[id]/page.tsx`) to fetch scoreboard data via the new API, resolve bindings, and render fallbacks when data missing or stale.
 - Consider websocket hook for live push; if deferred, implement polling with TTL.
 - Respect archival state when resolving bindings (cached data for archived graphics, live fetch for active ones).
 - Provide editor presets/templates for the scoreboard layout (e.g., up to N players per page, column headers for rounds plus total).
+- **Testing (required):** `.\.venv\Scripts\python.exe -m pytest` plus dashboard E2E/UI regression tests.
 
 ### Phase 6 - QA, Testing, and Observability (0.5d)
 - Add unit tests for aggregation logic (mock Riot responses) and API contracts (`api/tests`).
 - Create integration test covering command -> aggregator -> API -> dashboard binding flow (may require fixtures/mocks).
 - Add monitoring hooks/logging dashboards for Riot quota usage, failed refreshes, archived skip counts, and binding resolution issues.
-
-## Iteration Strategy
+- **Testing (required):** Full automation suite (`.\.venv\Scripts\python.exe -m pytest` + dashboard test harness) prior to release.`r`n`r`n## Iteration Strategy
 - **Iteration 1 (MVP):** Command-driven refresh for a single lobby/round, synchronous update of one dashboard graphic, manual binding configuration.
 - **Iteration 2:** Support multiple graphics/lobbies, caching & incremental updates, improved editor UX (bulk binding).
 - **Iteration 3:** Button-triggered refresh from dashboard UI, background polling/websocket updates, spectator overlays.
@@ -114,3 +119,6 @@
 - Add dashboard button workflows via WebSocket-triggered refreshes.
 - Stream overlay package export (auto-generate JSON/HTML fragments per lobby).
 - Historical analytics for match timelines and player performance trends.
+
+
+

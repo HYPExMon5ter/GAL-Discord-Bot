@@ -256,6 +256,14 @@ dashboard/components/
   - References: Event System, API Backend System, Frontend Components
   - Referenced by: Development Team, Infrastructure Team, Real-time Features
 
+- **[Service Lifecycle Management](./service-lifecycle-management.md)** - Enhanced dashboard service management with process cleanup
+  - References: Integration Modules, Process Management, Bot Lifecycle Management SOP
+  - Referenced by: Development Team, System Administrators, Dashboard Operations Team
+
+- **[Process Management](./process-management.md)** - Windows-specific subprocess handling and cross-platform process management
+  - References: Service Lifecycle Management, Integration Modules, System Architecture
+  - Referenced by: Development Team, Windows Platform Specialists, System Administrators
+
 #### Component Documentation
 - **[API Backend System](./api-backend-system.md)** - FastAPI application details
   - References: Data Models, Data Access Layer, Authentication SOP
@@ -316,9 +324,9 @@ dashboard/components/
   - References: Integration modules, Helper modules
   - Referenced by: Bot maintenance, Legacy development
 
-- **[Integration Modules](./integration-modules.md)** - External service integrations
-  - References: Google Sheets API, Riot API, DAL
-  - Referenced by: Integration developers, System administrators
+- **[Integration Modules](./integration-modules.md)** - External service integrations and internal service management
+  - References: Google Sheets API, Riot API, DAL, Service Lifecycle Management
+  - Referenced by: Integration developers, System administrators, Dashboard Operations Team
 
 - **[Helper Modules](./helper-modules.md)** - Utility functions and helpers
   - References: Core modules, Error handling

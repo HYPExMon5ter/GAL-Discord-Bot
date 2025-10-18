@@ -1,14 +1,14 @@
 ---
 id: system.integration-modules
-version: 1.2
-last_updated: 2025-06-17
+version: 1.3
+last_updated: 2025-01-18
 tags: [system, integrations, modules, documentation]
 ---
 
-# Integration Modules Documentation
+# Integration and Service Modules Documentation
 
 ## Overview
-The `integrations/` directory contains modules that handle external service integrations including Google Sheets, Riot Games API, IGN verification, and specialized sheet optimization systems.
+The `integrations/` and `services/` directories contain modules that handle external service integrations and internal service management, including Google Sheets, Riot Games API, IGN verification, dashboard service lifecycle management, and specialized sheet optimization systems.
 
 ## Module Details
 
@@ -115,6 +115,36 @@ The `integrations/` directory contains modules that handle external service inte
 - **Used By**: Sheet setup, configuration, and dynamic column management
 - **Features**: Automatic detection of required columns with fallback strategies
 
+---
+
+## Service Modules
+
+### `services/__init__.py`
+- **Purpose**: Service package initialization and exports
+- **Key Functions**: Module imports and package setup
+- **Dependencies**: Internal service modules
+
+### `services/dashboard_manager.py`
+- **Purpose**: Enhanced dashboard service lifecycle management with comprehensive process cleanup (28,671 bytes)
+- **Key Functions**:
+  - `start_services()` - Start API and frontend services with health monitoring
+  - `stop_services()` - Enhanced shutdown with port-based process termination
+  - `_cleanup_services_by_ports()` - Primary cleanup method using port detection
+  - `_kill_process_tree()` - Cross-platform process tree termination
+  - `_find_actual_service_pid()` - Windows-specific subprocess chain resolution
+  - `health_check()` - Service health monitoring and status reporting
+- **Dependencies**: psutil, aiohttp, asyncio, subprocess, pathlib
+- **Used By**: Discord bot lifecycle management, dashboard operations
+- **Key Features**:
+  - Port-based process detection and termination (ports 8000, 3000)
+  - Windows subprocess chain handling and process tree termination
+  - Enhanced PID file management with stale file cleanup
+  - Graceful shutdown with timeout enforcement (15 seconds)
+  - Duplicate instance prevention and health monitoring
+- **Recent Changes**: Added psutil integration, enhanced Windows subprocess handling, improved cleanup mechanisms
+- **Platform Support**: Windows (netstat/taskkill), Unix (lsof/psutil)
+- **Service Configuration**: API on port 8000, Frontend on port 3000, 30-second health checks
+
 ## Integration Patterns
 
 ### Data Flow
@@ -148,20 +178,22 @@ User Request → API Call → External Service → Data Transform → Discord Em
 - **Data Privacy**: Minimal data collection
 - **Authentication**: OAuth 2.0 for Google Sheets
 
-## Recent Updates (2025-06-17)
-- **Added**: IGN verification system
-- **Enhanced**: Sheet optimization with better caching
-- **Improved**: Error handling for API failures
-- **Updated**: Rate limiting and performance optimization
-- **Documentation**: Updated line counts and module descriptions to match current codebase
+## Recent Updates (2025-01-18)
+- **Added**: Enhanced dashboard service lifecycle management system
+- **Enhanced**: Port-based process cleanup and Windows subprocess handling
+- **Improved**: Service health monitoring and graceful shutdown procedures
+- **Updated**: psutil integration for advanced process management
+- **Added**: Service modules documentation for dashboard management
+- **Previous (2025-06-17)**: IGN verification system, sheet optimization improvements
 
 ## Configuration Requirements
 - **Google Sheets**: API credentials and sheet IDs
 - **Riot API**: API key with proper permissions
 - **IGN System**: Configuration for validation rules
 - **Sheet Optimization**: Performance tuning parameters
+- **Dashboard Services**: Port configuration (8000, 3000), psutil dependency
 
 ---
-**Module Count**: 9 integration modules  
+**Module Count**: 9 integration modules + 2 service modules  
 **Documentation Status**: Complete  
-**Last Reviewed**: 2025-06-17
+**Last Reviewed**: 2025-01-18

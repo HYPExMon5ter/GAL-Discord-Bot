@@ -225,6 +225,9 @@ class GALBot(commands.Bot):
             # Initialize onboard system
             await self._setup_onboard_system()
 
+            # Start dashboard services
+            await self._setup_dashboard_services()
+
             logging.info("Bot setup completed successfully")
 
         except Exception as e:
@@ -424,6 +427,24 @@ class GALBot(commands.Bot):
         except Exception as e:
             logging.error(f"Failed to setup onboard system: {e}")
 
+    async def _setup_dashboard_services(self):
+        """Setup and start dashboard services during bot initialization."""
+        try:
+            # Import here to avoid circular imports
+            from services.dashboard_manager import start_dashboard_services
+            
+            logging.info("Starting dashboard services...")
+            success = await start_dashboard_services()
+            
+            if success:
+                logging.info("✅ Dashboard services started successfully")
+            else:
+                logging.warning("⚠️ Dashboard services failed to start - continuing without dashboard")
+                
+        except Exception as e:
+            logging.error(f"Failed to setup dashboard services: {e}")
+            logging.warning("Continuing without dashboard services")
+
 
     async def close(self):
         """Cleanup when the bot is shutting down."""
@@ -434,6 +455,36 @@ class GALBot(commands.Bot):
         logging.info("Bot shutdown initiated...")
 
         try:
+            # Stop dashboard services with timeout
+            try:
+                from services.dashboard_manager import stop_dashboard_services
+                # Add timeout to ensure dashboard services stop properly
+                await asyncio.wait_for(stop_dashboard_services(), timeout=15.0)
+                logging.info("Stopped dashboard services")
+            except asyncio.TimeoutError:
+                logging.warning("Dashboard services cleanup timed out - forcing termination")
+                # Force cleanup by importing the manager directly
+                from services.dashboard_manager import get_dashboard_manager
+                manager = get_dashboard_manager()
+                await manager._cleanup_services_by_ports()
+            except Exception as e:
+                logging.error(f"Error stopping dashboard services: {e}")
+
+            # Stop event bus
+            try:
+                # Access event bus from bot instance
+                if hasattr(self, 'event_bus') and self.event_bus:
+                    await self.event_bus.stop()
+                    logging.info("Stopped event bus")
+                else:
+                    # Fallback: import directly from event_bus module
+                    from core.events.event_bus import get_event_bus
+                    event_bus = get_event_bus()
+                    await event_bus.stop()
+                    logging.info("Stopped event bus")
+            except Exception as e:
+                logging.error(f"Error stopping event bus: {e}")
+
             # Close any additional resources here
             logging.info("All resources cleaned up successfully")
 
@@ -446,14 +497,13 @@ class GALBot(commands.Bot):
             except Exception as e:
                 logging.error(f"Error closing database connections: {e}")
 
-            # Clean up waitlist database connections
+            # Clean up waitlist storage service
             try:
                 from helpers.waitlist_helpers import WaitlistManager
-                if WaitlistManager._connection_pool:
-                    WaitlistManager._connection_pool.closeall()
-                    logging.info("Closed waitlist database connection pool")
+                # No connection pool to close - storage service handles cleanup
+                logging.info("Waitlist storage service cleanup completed")
             except Exception as e:
-                logging.error(f"Error closing waitlist database connections: {e}")
+                logging.error(f"Error during waitlist cleanup: {e}")
 
             # Close the bot connection
             await super().close()
@@ -500,6 +550,8 @@ async def health_check():
         "config_valid": True,
         "database_connected": False,
         "sheets_available": False,
+        "dashboard_available": False,
+        "ign_verification_available": False,
         "errors": []
     }
 
@@ -527,6 +579,43 @@ async def health_check():
     except Exception as e:
         health_status["errors"].append(f"Sheets check failed: {e}")
 
+    try:
+        # Check dashboard dependencies
+        import aiohttp
+        import asyncio
+        
+        # Check if Node.js is available (for frontend)
+        import subprocess
+        result = subprocess.run(['node', '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            health_status["dashboard_available"] = True
+        else:
+            health_status["errors"].append("Node.js not available for dashboard frontend")
+            
+        # Check if ports are available
+        import socket
+        def check_port(port):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                return s.connect_ex(('localhost', port)) != 0
+        
+        if check_port(8000) and check_port(3000):
+            logging.info("Dashboard ports 8000 and 3000 are available")
+        else:
+            health_status["errors"].append("Dashboard ports may be in use")
+            
+    except Exception as e:
+        health_status["errors"].append(f"Dashboard dependency check failed: {e}")
+
+    try:
+        # Check IGN verification dependencies
+        import os
+        if os.getenv("RIOT_API_KEY"):
+            health_status["ign_verification_available"] = True
+        else:
+            health_status["errors"].append("RIOT_API_KEY not set - IGN verification will be disabled")
+    except Exception as e:
+        health_status["errors"].append(f"IGN verification check failed: {e}")
+
     return health_status
 
 
@@ -546,8 +635,17 @@ async def startup_checks():
     if not health["database_connected"]:
         logging.warning("Database not connected - using file fallback")
 
+    if not health["dashboard_available"]:
+        logging.warning("Dashboard dependencies not fully available - dashboard may not start")
+
+    if not health["ign_verification_available"]:
+        logging.info("IGN verification will be disabled (no RIOT_API_KEY)")
+
     if health["errors"]:
         logging.warning(f"Startup warnings: {health['errors']}")
+        # Log specific warnings for better debugging
+        for error in health["errors"]:
+            logging.warning(f"  - {error}")
 
     logging.info("Startup checks completed")
     return True

@@ -74,7 +74,8 @@
   - Calls the aggregator, persists results, and reports summary metrics to the interaction.
 - Integrate observability (structured logging, metrics counters) via `utils/logging_utils.py`.
 - Document manual fallback/override switches (e.g., `--force`, `--replay`, `--player`) so staff can recover from partial failures without waiting on automation.
-- **Testing (required):** `.\.venv\Scripts\python.exe -m pytest` plus command-level integration tests.
+- **Testing:** .\.venv\Scripts\python.exe -m pytest tests/test_registration_standings.py (2025-10-18) - passed
+- **Next required tests:** .\.venv\Scripts\python.exe -m pytest plus end-to-end command wiring (manual verification).
 
 ### Phase 4 - API Surface for Standings (1.0d)
 - Expose REST endpoints (e.g., `GET /api/v1/standings/{tournament_id}` with filters for lobby/round) in `api/routers`.

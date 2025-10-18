@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import List, Optional, Sequence, Tuple
 
 import discord
 from discord import app_commands
 
+from api.dependencies import SessionLocal
+from api.schemas.scoreboard import ScoreboardSnapshot
+from api.services.standings_aggregator import StandingsAggregator
+from api.services.standings_service import StandingsService
 from config import (
     _FULL_CFG,
     embed_from_cfg,
@@ -28,6 +33,70 @@ from .common import (
     logger,
     respond_with_message,
 )
+
+
+async def _refresh_scoreboard_snapshot(
+    guild_id: int,
+    *,
+    tournament_id: Optional[str],
+    tournament_name: Optional[str],
+    region: str,
+    fetch_riot: bool,
+    replace_existing: bool,
+    round_names: Optional[List[str]] = None,
+) -> ScoreboardSnapshot:
+    """Run the standings aggregation pipeline and return a detached snapshot."""
+    db = SessionLocal()
+    try:
+        service = StandingsService(db)
+        aggregator = StandingsAggregator(service)
+        source = "riot_api" if fetch_riot else "manual"
+        snapshot_model = await aggregator.refresh_scoreboard(
+            guild_id=guild_id,
+            tournament_id=tournament_id,
+            tournament_name=tournament_name,
+            round_names=round_names,
+            region=region,
+            fetch_riot=fetch_riot,
+            replace_existing=replace_existing,
+            source=source,
+        )
+        snapshot_schema = ScoreboardSnapshot.from_orm(snapshot_model)
+        return snapshot_schema
+    finally:
+        db.close()
+
+
+def _format_standings_summary(
+    snapshot: ScoreboardSnapshot,
+    *,
+    elapsed_seconds: float,
+    fetch_riot: bool,
+    sheet_refresh: Optional[Tuple[int, int]] = None,
+) -> str:
+    """Produce a human-readable summary for command output."""
+    lines: List[str] = []
+    tournament_display = snapshot.tournament_name or snapshot.tournament_id or "Tournament"
+    lines.append(
+        f"✅ Refreshed scoreboard snapshot #{snapshot.id or 'pending'} for **{tournament_display}** "
+        f"in {elapsed_seconds:.2f}s."
+    )
+    if snapshot.round_names:
+        lines.append(f"Rounds: {', '.join(snapshot.round_names)}")
+    lines.append(f"Entries: {len(snapshot.entries)}")
+    if sheet_refresh:
+        changed, total = sheet_refresh
+        lines.append(f"Sheet cache refresh: {changed} updates across {total} rows")
+    lines.append(f"Riot data {'included' if fetch_riot else 'skipped'}")
+
+    top_entries = snapshot.entries[:5]
+    if top_entries:
+        lines.append("Top standings:")
+        for entry in top_entries:
+            rank = entry.standing_rank or top_entries.index(entry) + 1
+            lines.append(f"- #{rank} {entry.player_name} — {entry.total_points} pts")
+
+    return "\n".join(lines)
 
 
 def register(gal: app_commands.Group) -> None:
@@ -291,6 +360,80 @@ def register(gal: app_commands.Group) -> None:
 
         except Exception as exc:
             await handle_command_exception(interaction, exc, "Reminder Command")
+
+    @gal.command(
+        name="standings_refresh",
+        description="Refresh the live scoreboard data powering the graphics dashboard.",
+    )
+    @app_commands.describe(
+        tournament_id="Optional tournament identifier override (defaults to guild id).",
+        tournament_name="Optional tournament name override.",
+        region="Riot API region (ignored if Riot fetch disabled).",
+        fetch_riot="Fetch latest placements from the Riot API before scoring.",
+        replace_existing="Replace any previous snapshot for this tournament/source.",
+        sync_sheet="Refresh the Google Sheet cache before processing.",
+    )
+    @app_commands.choices(
+        region=[
+            localized_choice("NA (Americas)", "na"),
+            localized_choice("EUW (Europe West)", "euw"),
+            localized_choice("EUNE (Europe Nordic & East)", "eune"),
+            localized_choice("KR (Korea)", "kr"),
+            localized_choice("OCE (Oceania)", "oce"),
+        ]
+    )
+    @command_tracer("gal.standings_refresh")
+    async def standings_refresh(
+        interaction: discord.Interaction,
+        tournament_id: Optional[str] = None,
+        tournament_name: Optional[str] = None,
+        region: Optional[app_commands.Choice[str]] = None,
+        fetch_riot: bool = True,
+        replace_existing: bool = True,
+        sync_sheet: bool = False,
+    ):
+        """Refresh scoreboard snapshot and persist it for the dashboard."""
+        if not await ensure_staff(interaction, context="Standings Refresh"):
+            return
+
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "This command can only be used inside a guild.", ephemeral=True
+            )
+            return
+
+        region_value = (region.value if region else "na").lower()
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        sheet_stats: Optional[Tuple[int, int]] = None
+        try:
+            if sync_sheet:
+                try:
+                    sheet_stats = await refresh_sheet_cache(force=True)
+                except Exception as exc:  # pragma: no cover - sheet failures are non-fatal
+                    logger.warning("Sheet cache refresh failed: %s", exc)
+
+            start = time.perf_counter()
+            snapshot = await _refresh_scoreboard_snapshot(
+                interaction.guild.id,
+                tournament_id=tournament_id or str(interaction.guild.id),
+                tournament_name=tournament_name or interaction.guild.name,
+                region=region_value,
+                fetch_riot=fetch_riot,
+                replace_existing=replace_existing,
+            )
+            elapsed = time.perf_counter() - start
+
+            summary = _format_standings_summary(
+                snapshot,
+                elapsed_seconds=elapsed,
+                fetch_riot=fetch_riot,
+                sheet_refresh=sheet_stats,
+            )
+            await interaction.followup.send(summary, ephemeral=True)
+
+        except Exception as exc:  # pragma: no cover - discord context
+            await handle_command_exception(interaction, exc, "Standings Refresh")
 
     @gal.command(
         name="cache", description="Forces a manual refresh of the user cache from the Google Sheet."

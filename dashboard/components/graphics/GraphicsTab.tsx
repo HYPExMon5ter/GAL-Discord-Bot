@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Graphic } from '@/types';
 import { useGraphics } from '@/hooks/use-graphics';
-import { useLocks } from '@/hooks/use-locks';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -12,7 +11,7 @@ import { GraphicsTable } from './GraphicsTable';
 import { CreateGraphicDialog } from './CreateGraphicDialog';
 import { CopyGraphicDialog } from './CopyGraphicDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
-import { Plus, Search, RefreshCw, AlertCircle, Sparkles, Zap, Target, Package } from 'lucide-react';
+import { Plus, Search, RefreshCw, AlertCircle, Sparkles, Zap, Target, Package, Archive as ArchiveIcon, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -23,20 +22,171 @@ export function GraphicsTab() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [graphicToCopy, setGraphicToCopy] = useState<Graphic | null>(null);
   const [graphicToDelete, setGraphicToDelete] = useState<Graphic | null>(null);
+  const [selectedGraphicIds, setSelectedGraphicIds] = useState<number[]>([]);
   
   const { username } = useAuth();
   const router = useRouter();
-  const { graphics, loading, error, refetch, createGraphic, deleteGraphic, permanentDeleteGraphic, archiveGraphic, updateGraphic, duplicateGraphic } = useGraphics();
-  const { locks } = useLocks();
+  const {
+    graphics,
+    loading,
+    error,
+    refetch,
+    createGraphic,
+    permanentDeleteGraphic,
+    archiveGraphic,
+    updateGraphic,
+    duplicateGraphic,
+  } = useGraphics();
   const { toast } = useToast();
 
   // Ensure graphics is always an array to prevent filter errors
-  const safeGraphics = Array.isArray(graphics) ? graphics : [];
-
-  const filteredGraphics = safeGraphics.filter(graphic =>
-    graphic.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (graphic.event_name && graphic.event_name.toLowerCase().includes(searchTerm.toLowerCase()))
+  const safeGraphics = useMemo(
+    () => (Array.isArray(graphics) ? graphics : []),
+    [graphics],
   );
+
+  const filteredGraphics = useMemo(
+    () =>
+      safeGraphics.filter(
+        graphic =>
+          graphic.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (graphic.event_name && graphic.event_name.toLowerCase().includes(searchTerm.toLowerCase())),
+      ),
+    [safeGraphics, searchTerm],
+  );
+
+  useEffect(() => {
+    setSelectedGraphicIds(prev =>
+      prev.filter(id => safeGraphics.some(graphic => graphic.id === id)),
+    );
+  }, [safeGraphics]);
+
+  const selectedCount = selectedGraphicIds.length;
+
+  const toggleGraphicSelection = useCallback((id: number) => {
+    setSelectedGraphicIds(prev =>
+      prev.includes(id) ? prev.filter(existingId => existingId !== id) : [...prev, id],
+    );
+  }, []);
+
+  const toggleSelectAllVisible = useCallback(
+    (selectAll: boolean) => {
+      const visibleIds = filteredGraphics.map(graphic => graphic.id);
+      setSelectedGraphicIds(prev => {
+        if (selectAll) {
+          const merged = new Set(prev);
+          visibleIds.forEach(id => merged.add(id));
+          return Array.from(merged);
+        }
+        return prev.filter(id => !visibleIds.includes(id));
+      });
+    },
+    [filteredGraphics],
+  );
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedGraphicIds([]);
+  }, []);
+
+  const handleBulkArchive = useCallback(async () => {
+    if (selectedGraphicIds.length === 0) {
+      return;
+    }
+
+    const idsToArchive = selectedGraphicIds.filter(id =>
+      safeGraphics.some(graphic => graphic.id === id),
+    );
+    if (idsToArchive.length === 0) {
+      return;
+    }
+
+    const confirmArchive = window.confirm(
+      `Archive ${idsToArchive.length} selected graphic${idsToArchive.length === 1 ? '' : 's'}?`,
+    );
+    if (!confirmArchive) {
+      return;
+    }
+
+    let successCount = 0;
+    for (const id of idsToArchive) {
+      // eslint-disable-next-line no-await-in-loop
+      const success = await archiveGraphic(id);
+      if (success) {
+        successCount += 1;
+      }
+    }
+
+    setSelectedGraphicIds(prev => prev.filter(id => !idsToArchive.includes(id)));
+
+    if (successCount > 0) {
+      toast({
+        title: successCount === 1 ? 'Graphic archived' : `${successCount} graphics archived`,
+        description:
+          successCount === 1
+            ? 'Selected graphic moved to the archive.'
+            : 'Selected graphics moved to the archive.',
+      });
+    }
+
+    if (successCount !== idsToArchive.length) {
+      toast({
+        title: 'Archive issues',
+        description: `Archived ${successCount} of ${idsToArchive.length} selected graphics.`,
+        variant: 'destructive',
+      });
+    }
+  }, [archiveGraphic, safeGraphics, selectedGraphicIds, toast]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedGraphicIds.length === 0) {
+      return;
+    }
+
+    const idsToDelete = selectedGraphicIds.filter(id =>
+      safeGraphics.some(graphic => graphic.id === id),
+    );
+    if (idsToDelete.length === 0) {
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Permanently delete ${idsToDelete.length} selected graphic${
+        idsToDelete.length === 1 ? '' : 's'
+      }? This cannot be undone.`,
+    );
+    if (!confirmDelete) {
+      return;
+    }
+
+    let successCount = 0;
+    for (const id of idsToDelete) {
+      // eslint-disable-next-line no-await-in-loop
+      const success = await permanentDeleteGraphic(id);
+      if (success) {
+        successCount += 1;
+      }
+    }
+
+    setSelectedGraphicIds(prev => prev.filter(id => !idsToDelete.includes(id)));
+
+    if (successCount > 0) {
+      toast({
+        title: successCount === 1 ? 'Graphic deleted' : `${successCount} graphics deleted`,
+        description:
+          successCount === 1
+            ? 'Selected graphic removed permanently.'
+            : 'Selected graphics removed permanently.',
+      });
+    }
+
+    if (successCount !== idsToDelete.length) {
+      toast({
+        title: 'Delete issues',
+        description: `Deleted ${successCount} of ${idsToDelete.length} selected graphics.`,
+        variant: 'destructive',
+      });
+    }
+  }, [permanentDeleteGraphic, safeGraphics, selectedGraphicIds, toast]);
 
   const handleCreateGraphic = useCallback(async (data: { title: string; event_name?: string }) => {
     try {
@@ -121,40 +271,40 @@ export function GraphicsTab() {
   const handleConfirmDelete = useCallback(async (): Promise<boolean> => {
     if (!graphicToDelete) return false;
     
-    try {
-      const success = await permanentDeleteGraphic(graphicToDelete.id);
-      if (success) {
-        toast({
-          title: 'Graphic deleted',
-          description: `“${graphicToDelete.title}” has been permanently removed.`,
-        });
-      }
-      return success;
-    } catch (error) {
-      console.error('Failed to permanently delete graphic:', error);
+    const success = await permanentDeleteGraphic(graphicToDelete.id);
+    if (success) {
+      setSelectedGraphicIds(prev => prev.filter(id => id !== graphicToDelete.id));
       toast({
-        title: 'Delete failed',
-        description: 'Unable to remove the graphic. Please try again.',
-        variant: 'destructive',
+        title: 'Graphic deleted',
+        description: `"${graphicToDelete.title}" has been permanently removed.`,
       });
-      return false;
+      setGraphicToDelete(null);
+      return true;
     }
+
+    toast({
+      title: 'Delete failed',
+      description: 'Unable to remove the graphic. Please try again.',
+      variant: 'destructive',
+    });
+    return false;
   }, [graphicToDelete, permanentDeleteGraphic, toast]);
 
   const handleArchiveGraphic = useCallback(async (graphic: Graphic) => {
     try {
       const success = await archiveGraphic(graphic.id);
       if (success) {
+        setSelectedGraphicIds(prev => prev.filter(id => id !== graphic.id));
         toast({
           title: 'Graphic archived',
-          description: `“${graphic.title}” moved to the archive.`,
+          description: `"${graphic.title}" moved to the archive.`,
         });
       }
     } catch (error) {
       console.error('Failed to archive graphic:', error);
       toast({
         title: 'Archive failed',
-        description: `Unable to archive “${graphic.title}”. Please try again.`,
+        description: `Unable to archive "${graphic.title}". Please try again.`,
         variant: 'destructive',
       });
     }
@@ -164,10 +314,6 @@ export function GraphicsTab() {
     // Open OBS view in new tab
     window.open(`/canvas/view/${graphic.id}`, '_blank');
   }, []);
-
-  const getLockForGraphic = (graphicId: number) => {
-    return locks.find(lock => lock.graphic_id === graphicId);
-  };
 
   if (loading && safeGraphics.length === 0) {
     return (
@@ -224,6 +370,46 @@ export function GraphicsTab() {
         </Button>
       </div>
 
+      {safeGraphics.length > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearSelection}
+              disabled={selectedCount === 0}
+            >
+              Clear Selection
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {selectedCount} selected
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBulkArchive}
+              disabled={selectedCount === 0}
+              className="flex items-center gap-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+            >
+              <ArchiveIcon className="h-4 w-4" />
+              <span>Archive Selected</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={selectedCount === 0}
+              className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Delete Selected</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Error State */}
       {error && (
         <Card className="border-red-300 bg-gradient-to-r from-red-50 to-orange-50">
@@ -275,6 +461,10 @@ export function GraphicsTab() {
               onDelete={handleDeleteGraphic}
               onArchive={handleArchiveGraphic}
               onView={handleViewGraphic}
+              selectable
+              selectedIds={selectedGraphicIds}
+              onToggleSelect={toggleGraphicSelection}
+              onToggleSelectAll={toggleSelectAllVisible}
             />
           </CardContent>
         </Card>

@@ -16,7 +16,6 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from api.services.errors import ConflictError, NotFoundError
-
 from ..models import Archive, CanvasLock, Graphic
 from ..schemas.graphics import (
     CanvasLockCreate,
@@ -348,20 +347,26 @@ class GraphicsService:
 
     def permanent_delete_graphic(self, graphic_id: int, user_name: str) -> None:
         """
-        Permanently delete an archived graphic.
+        Permanently delete a graphic, regardless of its archived state.
 
         Raises:
             NotFoundError: if the graphic does not exist.
-            ConflictError: if the graphic is not archived.
+            ConflictError: if the graphic is locked by another user.
         """
         graphic = self._get_graphic_or_error(graphic_id)
+
+        lock = self._get_active_lock_model(graphic_id)
+        if lock and lock.user_name != user_name:
+            raise ConflictError("Cannot delete while another user holds the lock.")
+
+        reason = "Permanently deleted"
         if not graphic.archived:
-            raise ConflictError("Only archived graphics can be permanently deleted.")
+            reason = "Permanently deleted (active state)"
 
         archive_record = Archive(
             graphic_id=graphic_id,
             archived_by=user_name,
-            reason="Permanently deleted",
+            reason=reason,
         )
 
         self.db.add(archive_record)

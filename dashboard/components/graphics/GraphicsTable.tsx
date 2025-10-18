@@ -1,23 +1,21 @@
 'use client';
 
-import { useState, useMemo, memo } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Graphic, ArchivedGraphic } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { 
-  ChevronUp, 
-  ChevronDown, 
-  Edit, 
-  Copy, 
-  Archive, 
-  Trash2, 
+import {
+  ChevronUp,
+  ChevronDown,
+  Edit,
+  Copy,
+  Archive as ArchiveIcon,
+  Trash2,
   Eye,
   RotateCcw,
-  ExternalLink 
 } from 'lucide-react';
 
 interface GraphicsTableProps {
-  graphics: Graphic[] | ArchivedGraphic[];
+  graphics: (Graphic | ArchivedGraphic)[];
   loading: boolean;
   onEdit: (graphic: Graphic | ArchivedGraphic) => void;
   onDuplicate: (graphic: Graphic | ArchivedGraphic) => void;
@@ -27,25 +25,34 @@ interface GraphicsTableProps {
   onUnarchive?: (graphic: Graphic | ArchivedGraphic) => void;
   onRestore?: (graphic: Graphic | ArchivedGraphic) => void;
   isArchived?: boolean;
+  selectable?: boolean;
+  selectedIds?: number[];
+  onToggleSelect?: (graphicId: number) => void;
+  onToggleSelectAll?: (selecting: boolean) => void;
 }
 
 type SortField = 'title' | 'event_name' | 'updated_at' | 'archived_at';
 type SortDirection = 'asc' | 'desc';
 
-const GraphicsTableComponent = function GraphicsTable({ 
-  graphics, 
-  loading, 
-  onEdit, 
-  onDuplicate, 
-  onArchive, 
-  onDelete, 
+const GraphicsTableComponent = ({
+  graphics,
+  loading,
+  onEdit,
+  onDuplicate,
+  onArchive,
+  onDelete,
   onView,
   onUnarchive,
   onRestore,
-  isArchived = false 
-}: GraphicsTableProps) {
-  const [sortField, setSortField] = useState<SortField>('updated_at');
+  isArchived = false,
+  selectable = false,
+  selectedIds = [],
+  onToggleSelect,
+  onToggleSelectAll,
+}: GraphicsTableProps) => {
+  const [sortField, setSortField] = useState<SortField>(isArchived ? 'archived_at' : 'updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const headerCheckboxRef = useRef<HTMLInputElement>(null);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -70,17 +77,15 @@ const GraphicsTableComponent = function GraphicsTable({
           aValue = a.event_name?.toLowerCase() || '';
           bValue = b.event_name?.toLowerCase() || '';
           break;
-
+        case 'archived_at':
+          aValue = new Date((a as ArchivedGraphic).archived_at ?? a.updated_at);
+          bValue = new Date((b as ArchivedGraphic).archived_at ?? b.updated_at);
+          break;
         case 'updated_at':
+        default:
           aValue = new Date(a.updated_at);
           bValue = new Date(b.updated_at);
           break;
-        case 'archived_at':
-          aValue = new Date((a as ArchivedGraphic).archived_at || a.updated_at);
-          bValue = new Date((b as ArchivedGraphic).archived_at || b.updated_at);
-          break;
-        default:
-          return 0;
       }
 
       if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
@@ -89,20 +94,34 @@ const GraphicsTableComponent = function GraphicsTable({
     });
   }, [graphics, sortField, sortDirection]);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const visibleIds = useMemo(() => sortedGraphics.map(graphic => graphic.id), [sortedGraphics]);
+  const allVisibleSelected =
+    selectable && visibleIds.length > 0 && visibleIds.every(id => selectedSet.has(id));
+  const hasPartialSelection =
+    selectable && !allVisibleSelected && visibleIds.some(id => selectedSet.has(id));
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = hasPartialSelection;
+    }
+  }, [hasPartialSelection]);
+
+  const formatDate = (value: string | undefined) => {
+    if (!value) return '—';
+    const date = new Date(value);
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
   const getDisplayDate = (graphic: Graphic | ArchivedGraphic) => {
-    if (isArchived && (graphic as ArchivedGraphic).archived_at) {
-      return formatDate((graphic as ArchivedGraphic).archived_at);
+    if (isArchived && 'archived_at' in graphic) {
+      return formatDate(graphic.archived_at);
     }
     return formatDate(graphic.updated_at);
   };
@@ -118,7 +137,15 @@ const GraphicsTableComponent = function GraphicsTable({
     );
   };
 
-  const ActionButtons = ({ graphic }: { graphic: Graphic | ArchivedGraphic }) => {
+  const resolveRestoreHandler = () => onRestore ?? onUnarchive ?? onArchive;
+  const showRestoreButton = isArchived && Boolean(resolveRestoreHandler());
+
+  const handleToggleSelectAllInternal = () => {
+    if (!selectable || !onToggleSelectAll) return;
+    onToggleSelectAll(!allVisibleSelected);
+  };
+
+  const renderActionButtons = (graphic: Graphic | ArchivedGraphic) => {
     if (isArchived) {
       return (
         <div className="flex items-center justify-center gap-1 flex-wrap">
@@ -132,35 +159,11 @@ const GraphicsTableComponent = function GraphicsTable({
             <Copy className="h-3 w-3 mr-1" />
             <span className="text-xs">Copy</span>
           </Button>
-          {onUnarchive && (
+          {showRestoreButton && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onUnarchive(graphic)}
-              className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
-              title="Restore to active"
-            >
-              <RotateCcw className="h-3 w-3 mr-1" />
-              <span className="text-xs">Unarchive</span>
-            </Button>
-          )}
-          {onRestore && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onRestore(graphic)}
-              className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
-              title="Restore to active"
-            >
-              <RotateCcw className="h-3 w-3 mr-1" />
-              <span className="text-xs">Restore</span>
-            </Button>
-          )}
-          {onArchive && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onArchive(graphic)}
+              onClick={() => resolveRestoreHandler()?.(graphic)}
               className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
               title="Restore to active"
             >
@@ -182,7 +185,7 @@ const GraphicsTableComponent = function GraphicsTable({
             variant="ghost"
             size="sm"
             onClick={() => onView(graphic)}
-            className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            className="h-8 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
             title="View in OBS"
           >
             <Eye className="h-3 w-3 mr-1" />
@@ -194,19 +197,16 @@ const GraphicsTableComponent = function GraphicsTable({
 
     return (
       <div className="flex items-center justify-center gap-1 flex-wrap">
-        {/* Edit button - only show for active graphics */}
-        {!isArchived && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onEdit(graphic)}
-            className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-            title="Edit graphic"
-          >
-            <Edit className="h-3 w-3 mr-1" />
-            <span className="text-xs">Edit</span>
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onEdit(graphic)}
+          className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+          title="Edit graphic"
+        >
+          <Edit className="h-3 w-3 mr-1" />
+          <span className="text-xs">Edit</span>
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -221,20 +221,11 @@ const GraphicsTableComponent = function GraphicsTable({
           variant="ghost"
           size="sm"
           onClick={() => onArchive(graphic)}
-          className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
-          title={isArchived ? "Restore to active" : "Archive graphic"}
+          className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+          title="Archive graphic"
         >
-          {isArchived ? (
-            <>
-              <RotateCcw className="h-3 w-3 mr-1" />
-              <span className="text-xs">Restore</span>
-            </>
-          ) : (
-            <>
-              <Archive className="h-3 w-3 mr-1" />
-              <span className="text-xs">Archive</span>
-            </>
-          )}
+          <ArchiveIcon className="h-3 w-3 mr-1" />
+          <span className="text-xs">Archive</span>
         </Button>
         <Button
           variant="ghost"
@@ -250,7 +241,7 @@ const GraphicsTableComponent = function GraphicsTable({
           variant="ghost"
           size="sm"
           onClick={() => onView(graphic)}
-          className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+          className="h-8 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
           title="View in OBS"
         >
           <Eye className="h-3 w-3 mr-1" />
@@ -263,7 +254,7 @@ const GraphicsTableComponent = function GraphicsTable({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
         <span className="ml-2">Loading graphics...</span>
       </div>
     );
@@ -284,6 +275,20 @@ const GraphicsTableComponent = function GraphicsTable({
       <table className="w-full border-collapse rounded-lg overflow-hidden">
         <thead>
           <tr className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+            {selectable && (
+              <th className="w-12 py-4 px-4">
+                <div className="flex items-center justify-center">
+                  <input
+                    ref={headerCheckboxRef}
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={handleToggleSelectAllInternal}
+                    aria-label={allVisibleSelected ? 'Deselect all graphics' : 'Select all graphics'}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </div>
+              </th>
+            )}
             <th className="text-center py-4 px-4 font-semibold text-gray-800">
               <button
                 onClick={() => handleSort('title')}
@@ -311,43 +316,62 @@ const GraphicsTableComponent = function GraphicsTable({
                 <SortIcon field={isArchived ? 'archived_at' : 'updated_at'} />
               </button>
             </th>
-
             <th className="text-center py-4 px-4 font-semibold text-gray-800">
-              <div className="flex items-center justify-center text-sm">
-                Actions
-              </div>
+              <div className="flex items-center justify-center text-sm">Actions</div>
             </th>
           </tr>
         </thead>
         <tbody>
-          {sortedGraphics.map((graphic, index) => (
-            <tr 
-              key={graphic.id} 
-              className={`border-b ${index === sortedGraphics.length - 1 ? 'border-transparent' : 'border-gray-100'}`}
-            >
-              <td className="text-center py-4 px-4">
-                <div className="font-semibold text-gray-100">{graphic.title}</div>
-              </td>
-              <td className="text-center py-4 px-4">
-                <div className="text-gray-200 font-medium">
-                  {graphic.event_name || <span className="text-gray-400 italic">No event</span>}
-                </div>
-              </td>
-              <td className="text-center py-4 px-4">
-                <div className="text-sm text-gray-300">
-                  {getDisplayDate(graphic)}
-                </div>
-              </td>
+          {sortedGraphics.map((graphic, index) => {
+            const isSelected = selectable && selectedSet.has(graphic.id);
+            const rowBorder =
+              index === sortedGraphics.length - 1 ? 'border-transparent' : 'border-gray-100';
 
-              <td className="text-center py-4 px-4">
-                <ActionButtons graphic={graphic} />
-              </td>
-            </tr>
-          ))}
+            return (
+              <tr
+                key={graphic.id}
+                className={`border-b ${rowBorder} ${
+                  isSelected ? 'bg-blue-50/70 dark:bg-blue-900/30' : 'bg-white dark:bg-slate-900'
+                }`}
+              >
+                {selectable && (
+                  <td className="w-12 py-4 px-4">
+                    <div className="flex items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => onToggleSelect?.(graphic.id)}
+                        aria-label={
+                          isSelected ? `Deselect ${graphic.title}` : `Select ${graphic.title}`
+                        }
+                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </div>
+                  </td>
+                )}
+                <td className="text-center py-4 px-4">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100">
+                    {graphic.title}
+                  </div>
+                </td>
+                <td className="text-center py-4 px-4">
+                  <div className="text-gray-600 dark:text-gray-300 font-medium">
+                    {graphic.event_name || <span className="text-gray-400 italic">No event</span>}
+                  </div>
+                </td>
+                <td className="text-center py-4 px-4">
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    {getDisplayDate(graphic)}
+                  </div>
+                </td>
+                <td className="text-center py-4 px-4">{renderActionButtons(graphic)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
-}
+};
 
 export const GraphicsTable = memo(GraphicsTableComponent);

@@ -184,7 +184,7 @@ export function DashboardDataProvider({ children }: ProviderProps) {
       });
       return graphic;
     } catch (error) {
-      console.error(Failed to fetch graphic , error);
+      console.error("Failed to fetch graphic", error);
       return null;
     }
   }, [graphics]);

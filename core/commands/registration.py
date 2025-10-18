@@ -20,7 +20,6 @@ from core.persistence import get_event_mode_for_guild, persisted, save_persisted
 from helpers import EmbedHelper
 from integrations.sheets import refresh_sheet_cache
 from utils.utils import send_reminder_dms
-
 from .common import (
     command_tracer,
     ensure_staff,
@@ -379,7 +378,7 @@ async def _handle_toggle_pings(
         return
 
     try:
-        from core.events import recent_pings
+        from core.discord_events import recent_pings
 
         channel_name = get_unified_channel_name()
         unified_channel = discord.utils.get(guild.text_channels, name=channel_name)

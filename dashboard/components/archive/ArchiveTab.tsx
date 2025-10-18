@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { Graphic, ArchivedGraphic } from '@/types';
 import { useArchive } from '@/hooks/use-archive';
-import { useAuth } from '@/hooks/use-auth';
 import { archiveApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +10,7 @@ import { GraphicsTable } from '../graphics/GraphicsTable';
 import { CopyGraphicDialog } from '../graphics/CopyGraphicDialog';
 import { DeleteConfirmDialog } from '../graphics/DeleteConfirmDialog';
 import { Badge } from '@/components/ui/badge';
-import { Search, RefreshCw, AlertCircle, Archive, Shield, Copy, Sparkles, Package, Trash2 } from 'lucide-react';
+import { Search, RefreshCw, AlertCircle, Archive, RotateCcw, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -21,8 +20,7 @@ export function ArchiveTab() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [graphicToCopy, setGraphicToCopy] = useState<Graphic | ArchivedGraphic | null>(null);
   const [graphicToDelete, setGraphicToDelete] = useState<Graphic | ArchivedGraphic | null>(null);
-  
-  const { username } = useAuth();
+  const [selectedArchivedIds, setSelectedArchivedIds] = useState<number[]>([]);
   const { 
     archivedGraphics, 
     loading, 
@@ -33,22 +31,166 @@ export function ArchiveTab() {
   } = useArchive();
   const { toast } = useToast();
 
-  // Simple admin check - in a real app, this would come from the backend
-  const isAdmin = username === 'admin' || username === 'blake';
-
-  const filteredGraphics = archivedGraphics.filter(graphic =>
-    graphic.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (graphic.event_name && graphic.event_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    graphic.created_by.toLowerCase().includes(searchTerm.toLowerCase())
+  const safeArchivedGraphics = useMemo(
+    () => (Array.isArray(archivedGraphics) ? archivedGraphics : []),
+    [archivedGraphics],
   );
+
+  const filteredGraphics = useMemo(
+    () =>
+      safeArchivedGraphics.filter(
+        graphic =>
+          graphic.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (graphic.event_name && graphic.event_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          graphic.created_by.toLowerCase().includes(searchTerm.toLowerCase()),
+      ),
+    [safeArchivedGraphics, searchTerm],
+  );
+
+  useEffect(() => {
+    setSelectedArchivedIds(prev =>
+      prev.filter(id => safeArchivedGraphics.some(graphic => graphic.id === id)),
+    );
+  }, [safeArchivedGraphics]);
+
+  const selectedCount = selectedArchivedIds.length;
+
+  const toggleArchivedSelection = useCallback((id: number) => {
+    setSelectedArchivedIds(prev =>
+      prev.includes(id) ? prev.filter(existingId => existingId !== id) : [...prev, id],
+    );
+  }, []);
+
+  const toggleSelectAllVisible = useCallback(
+    (selectAll: boolean) => {
+      const visibleIds = filteredGraphics.map(graphic => graphic.id);
+      setSelectedArchivedIds(prev => {
+        if (selectAll) {
+          const merged = new Set(prev);
+          visibleIds.forEach(id => merged.add(id));
+          return Array.from(merged);
+        }
+        return prev.filter(id => !visibleIds.includes(id));
+      });
+    },
+    [filteredGraphics],
+  );
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedArchivedIds([]);
+  }, []);
+
+  const handleBulkRestore = useCallback(async () => {
+    if (selectedArchivedIds.length === 0) {
+      return;
+    }
+
+    const idsToRestore = selectedArchivedIds.filter(id =>
+      safeArchivedGraphics.some(graphic => graphic.id === id),
+    );
+    if (idsToRestore.length === 0) {
+      return;
+    }
+
+    const confirmRestore = window.confirm(
+      `Restore ${idsToRestore.length} archived graphic${
+        idsToRestore.length === 1 ? '' : 's'
+      } to Active Graphics?`,
+    );
+    if (!confirmRestore) {
+      return;
+    }
+
+    let successCount = 0;
+    for (const id of idsToRestore) {
+      // eslint-disable-next-line no-await-in-loop
+      const success = await restoreGraphic(id);
+      if (success) {
+        successCount += 1;
+      }
+    }
+
+    setSelectedArchivedIds(prev => prev.filter(id => !idsToRestore.includes(id)));
+
+    if (successCount > 0) {
+      toast({
+        title: successCount === 1 ? 'Graphic restored' : `${successCount} graphics restored`,
+        description:
+          successCount === 1
+            ? 'Selected graphic moved back to Active Graphics.'
+            : 'Selected graphics moved back to Active Graphics.',
+      });
+    }
+
+    if (successCount !== idsToRestore.length) {
+      toast({
+        title: 'Restore issues',
+        description: `Restored ${successCount} of ${idsToRestore.length} selected graphics.`,
+        variant: 'destructive',
+      });
+    }
+  }, [restoreGraphic, safeArchivedGraphics, selectedArchivedIds, toast]);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedArchivedIds.length === 0) {
+      return;
+    }
+
+
+    const idsToDelete = selectedArchivedIds.filter(id =>
+      safeArchivedGraphics.some(graphic => graphic.id === id),
+    );
+    if (idsToDelete.length === 0) {
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Permanently delete ${idsToDelete.length} archived graphic${
+        idsToDelete.length === 1 ? '' : 's'
+      }? This cannot be undone.`,
+    );
+    if (!confirmDelete) {
+      return;
+    }
+
+    let successCount = 0;
+    for (const id of idsToDelete) {
+      // eslint-disable-next-line no-await-in-loop
+      const success = await permanentDeleteGraphic(id);
+      if (success) {
+        successCount += 1;
+      }
+    }
+
+    setSelectedArchivedIds(prev => prev.filter(id => !idsToDelete.includes(id)));
+
+    if (successCount > 0) {
+      toast({
+        title: successCount === 1 ? 'Archived graphic deleted' : `${successCount} graphics deleted`,
+        description:
+          successCount === 1
+            ? 'Selected archived graphic removed permanently.'
+            : 'Selected archived graphics removed permanently.',
+      });
+    }
+
+    if (successCount !== idsToDelete.length) {
+      toast({
+        title: 'Delete issues',
+        description: `Deleted ${successCount} of ${idsToDelete.length} selected graphics.`,
+        variant: 'destructive',
+      });
+    }
+  }, [permanentDeleteGraphic, safeArchivedGraphics, selectedArchivedIds, toast]);
 
   const handleRestoreGraphic = useCallback(async (graphic: Graphic | ArchivedGraphic) => {
     try {
       const success = await restoreGraphic(graphic.id);
       if (success) {
+        setSelectedArchivedIds(prev => prev.filter(id => id !== graphic.id));
         toast({
           title: 'Graphic restored',
-          description: `“${graphic.title}” moved back to Active Graphics.`,
+          description: `"${graphic.title}" moved back to Active Graphics.`,
         });
       }
     } catch (error) {
@@ -68,25 +210,23 @@ export function ArchiveTab() {
 
   const handleConfirmDelete = useCallback(async (): Promise<boolean> => {
     if (!graphicToDelete) return false;
-    
-    try {
-      const success = await permanentDeleteGraphic(graphicToDelete.id);
-      if (success) {
-        toast({
-          title: 'Archived graphic deleted',
-          description: `“${graphicToDelete.title}” removed permanently.`,
-        });
-      }
-      return success;
-    } catch (error) {
-      console.error('Failed to permanently delete archived graphic:', error);
+    const success = await permanentDeleteGraphic(graphicToDelete.id);
+    if (success) {
+      setSelectedArchivedIds(prev => prev.filter(id => id !== graphicToDelete.id));
       toast({
-        title: 'Delete failed',
-        description: 'Unable to permanently delete the archived graphic.',
-        variant: 'destructive',
+        title: 'Archived graphic deleted',
+        description: `"${graphicToDelete.title}" removed permanently.`,
       });
-      return false;
+      setGraphicToDelete(null);
+      return true;
     }
+
+    toast({
+      title: 'Delete failed',
+      description: 'Unable to permanently delete the archived graphic.',
+      variant: 'destructive',
+    });
+    return false;
   }, [graphicToDelete, permanentDeleteGraphic, toast]);
 
   const handleDuplicateGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
@@ -146,14 +286,6 @@ export function ArchiveTab() {
         </div>
         
         <div className="flex items-center gap-3">
-          {isAdmin && (
-            <Badge variant="secondary" className="flex items-center gap-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
-              <Shield className="h-3 w-3" />
-              <span className="flex items-center gap-1">
-                Admin <span className="text-yellow-200">👑</span>
-              </span>
-            </Badge>
-          )}
           <Badge variant="outline" className="flex items-center gap-1 bg-gradient-to-r from-blue-100 to-purple-100 border-purple-200 text-purple-800">
             <Archive className="h-3 w-3 text-purple-600" />
             <span className="flex items-center gap-1">
@@ -162,24 +294,6 @@ export function ArchiveTab() {
           </Badge>
         </div>
       </div>
-
-      {/* Admin Notice */}
-      {isAdmin && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3 text-blue-800">
-              <Shield className="h-5 w-5 mt-0.5" />
-              <div>
-                <p className="font-medium">Administrator Access</p>
-                <p className="text-sm opacity-75">
-                  As an administrator, you can permanently delete archived graphics. 
-                  This action cannot be undone and will remove all data permanently.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
@@ -204,6 +318,46 @@ export function ArchiveTab() {
           Refresh
         </Button>
       </div>
+
+      {safeArchivedGraphics.length > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearSelection}
+              disabled={selectedCount === 0}
+            >
+              Clear Selection
+            </Button>
+            <span className="text-sm text-muted-foreground">{selectedCount} selected</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBulkRestore}
+              disabled={selectedCount === 0}
+              className="flex items-center gap-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>Restore Selected</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBulkDelete}
+              disabled={selectedCount === 0}
+              className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Delete Selected</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
 
       {/* Error State */}
       {error && (
@@ -245,6 +399,10 @@ export function ArchiveTab() {
               onArchive={handleRestoreGraphic} // Use restore instead of archive
               onView={handleViewGraphic}
               isArchived={true}
+              selectable
+              selectedIds={selectedArchivedIds}
+              onToggleSelect={toggleArchivedSelection}
+              onToggleSelectAll={toggleSelectAllVisible}
             />
           </CardContent>
         </Card>

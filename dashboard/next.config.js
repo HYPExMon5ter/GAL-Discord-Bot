@@ -1,3 +1,10 @@
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Load environment variables from parent directory
+dotenv.config({ path: path.join(__dirname, '../.env') });
+dotenv.config({ path: path.join(__dirname, '../.env.local'), override: true });
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,

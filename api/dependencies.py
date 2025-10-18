@@ -21,9 +21,11 @@ from .services.graphics_service import GraphicsService
 from .services.tournament_service import TournamentService
 from .services.user_service import UserService
 
-# Ensure environment variables are loaded without overriding any explicit
-# runtime configuration (useful for tests and deployments that set env vars).
-load_dotenv(".env.local", override=False)
+# Ensure environment variables are loaded with correct precedence
+# Load .env first, then .env.local overrides from parent directory
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(parent_dir, ".env"))
+load_dotenv(os.path.join(parent_dir, ".env.local"), override=True)
 
 # Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dashboard.db")

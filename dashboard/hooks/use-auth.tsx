@@ -1,8 +1,8 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-// import { usePerformanceMonitor } from './use-performance-monitor';
 import { useRouter } from 'next/navigation';
+import { isAxiosError } from 'axios';
 import { authApi } from '@/lib/api';
 
 interface AuthContextType {
@@ -16,7 +16,6 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // const { createInterval, clearInterval } = usePerformanceMonitor('AuthProvider');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,8 +44,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       return true;
     } catch (error) {
-      console.error('Login failed:', error);
-      return false;
+      if (isAxiosError(error) && error.response?.status === 401) {
+        return false;
+      }
+
+      throw error;
     }
   };
 

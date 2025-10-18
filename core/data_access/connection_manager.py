@@ -7,12 +7,11 @@ and automatic reconnection for database systems.
 
 import asyncio
 import logging
-from abc import ABC, abstractmethod
-from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, Optional, Union, AsyncContextManager
+from abc import abstractmethod
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-import json
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, Optional
 
 try:
     import asyncpg

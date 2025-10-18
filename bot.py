@@ -12,7 +12,7 @@ from config import DISCORD_TOKEN, APPLICATION_ID
 from core.commands import setup as setup_commands
 from core.events import setup_events
 from helpers.environment_helpers import EnvironmentHelper
-from utils.logging_utils import sanitize_log_message, mask_token
+from utils.logging_utils import mask_token
 
 
 # Configure logging with better formatting
@@ -24,7 +24,6 @@ def setup_logging():
 
     # Fix Windows console encoding for Unicode support
     if sys.platform == "win32":
-        import locale
         try:
             # Set console to UTF-8 mode
             if hasattr(sys.stdout, 'reconfigure'):
@@ -244,9 +243,13 @@ class GALBot(commands.Bot):
                 # Check guild commands
                 guild = self.get_guild(int(dev_guild_id))
                 if guild:
-                    # Use tree.fetch_commands for faster retrieval
-                    commands = await self.tree.fetch_commands(guild=guild)
-                    logging.info(f"Verified {len(commands)} commands in guild {guild.name}")
+                    # Use tree.fetch_commands for faster retrieval with timeout
+                    try:
+                        commands = await asyncio.wait_for(self.tree.fetch_commands(guild=guild), timeout=10.0)
+                        logging.info(f"Verified {len(commands)} commands in guild {guild.name}")
+                    except asyncio.TimeoutError:
+                        logging.error("Guild command fetch timed out - skipping verification")
+                        return
 
                     # Check for duplicates
                     command_names = {}
@@ -266,8 +269,12 @@ class GALBot(commands.Bot):
                         await self.cleanup_duplicate_commands(guild)
             else:
                 # Check global commands
-                commands = await self.tree.fetch_commands()
-                logging.info(f"Verified {len(commands)} global commands")
+                try:
+                    commands = await asyncio.wait_for(self.tree.fetch_commands(), timeout=10.0)
+                    logging.info(f"Verified {len(commands)} global commands")
+                except asyncio.TimeoutError:
+                    logging.error("Global command fetch timed out - skipping verification")
+                    return
 
                 # Check for duplicates
                 command_names = {}

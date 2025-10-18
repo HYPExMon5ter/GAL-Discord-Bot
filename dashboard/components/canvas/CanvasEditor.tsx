@@ -38,7 +38,6 @@ import {
   Settings
 } from 'lucide-react';
 import { HistoryManager } from '@/lib/history-manager';
-import { usePerformanceMonitor } from '@/hooks/use-performance-monitor';
 import { useToast } from '@/components/ui/use-toast';
 import {
   createPropertyElement,
@@ -64,7 +63,6 @@ interface CanvasEditorProps {
 export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const { username } = useAuth();
   const { acquireLock, releaseLock, refreshLock } = useLocks();
-  const { createInterval, clearInterval } = usePerformanceMonitor('CanvasEditor');
   const { toast } = useToast();
 
   const initialCanvasState = useMemo<CanvasState>(() => {
@@ -656,7 +654,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   useEffect(() => {
     if (!lock) return;
 
-    const interval = createInterval(async () => {
+    const interval = window.setInterval(async () => {
       try {
         const refreshedLock = await refreshLock(graphic.id);
         if (refreshedLock) {
@@ -672,8 +670,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       }
     }, 120000);
 
-    return () => clearInterval(interval);
-  }, [lock, graphic.id, refreshLock, createInterval, clearInterval, toast]);
+    return () => window.clearInterval(interval);
+  }, [lock, graphic.id, refreshLock, toast]);
 
   // Release lock on unmount
   useEffect(() => {

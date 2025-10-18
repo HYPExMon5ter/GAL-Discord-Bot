@@ -7,15 +7,12 @@ prioritization, retry logic, and event filtering.
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set, Union
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-import weakref
-import json
-from collections import defaultdict
+from datetime import UTC, datetime
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from .event_types import Event, EventType, EventPriority, EventCategory
+from .event_types import Event, EventType, EventPriority
 
 
 def utcnow() -> datetime:

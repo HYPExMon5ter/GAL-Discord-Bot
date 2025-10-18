@@ -13,9 +13,6 @@ from config import (
     get_sheet_settings
 )
 from core.persistence import get_event_mode_for_guild
-from integrations.sheets import (
-    get_sheet_for_guild, retry_until_successful
-)
 
 
 class UtilsError(Exception):
@@ -230,6 +227,8 @@ async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
                 return
 
         # Update sheet with hyperlink
+        from integrations.sheets import get_sheet_for_guild, retry_until_successful
+
         mode = get_event_mode_for_guild(guild_id)
         settings = get_sheet_settings(mode)
         sheet = await get_sheet_for_guild(guild_id, "GAL Database")

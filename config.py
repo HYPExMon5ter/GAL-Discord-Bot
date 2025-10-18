@@ -11,7 +11,9 @@ import discord
 import yaml
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env first, then .env.local overrides
+load_dotenv('.env')
+load_dotenv('.env.local', override=True)
 
 # Environment variable validation
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")

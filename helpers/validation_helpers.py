@@ -147,15 +147,6 @@ class Validators:
                 embed = validation.to_embed()
                 view = None
 
-                # Add appropriate action button based on error type
-                from core.views import QuickRegisterView, QuickCheckInView, AlreadyCheckedInView
-                if validation.embed_key == "registration_required":
-                    view = QuickRegisterView()
-                elif validation.embed_key == "already_checked_in":
-                    view = AlreadyCheckedInView()
-                elif validation.embed_key == "already_checked_out":
-                    view = QuickCheckInView()
-
                 if interaction.response.is_done():
                     await interaction.followup.send(
                         embed=embed,

@@ -1,20 +1,18 @@
 # core/config_ui.py
 
 import logging
-from typing import Optional, Dict, Any, List
-import discord
-from discord import ui, TextInput, ButtonStyle, SeparatorSpacing
-from discord.ext import commands
-import gspread.exceptions
+from typing import Dict, Any, List
 
-from config import embed_from_cfg, get_sheet_settings, _FULL_CFG
+import discord
+import gspread.exceptions
+from discord import ui
+
+from config import get_sheet_settings, _FULL_CFG, get_log_channel_name
+from core.persistence import get_guild_data, update_guild_data, get_event_mode_for_guild
 from integrations.sheet_detector import (
     detect_sheet_columns, get_column_mapping, save_column_mapping,
-    SheetColumnDetector, ColumnMapping
+    SheetColumnDetector
 )
-from core.persistence import get_guild_data, update_guild_data, get_event_mode_for_guild
-
-
 
 
 class ColumnMappingView(ui.LayoutView):
@@ -635,6 +633,9 @@ class SettingsView(ui.LayoutView):
             "mode": mode,
             "log_channel": _FULL_CFG.get("channels", {}).get("log_channel", "bot-log"),
             "unified_channel": _FULL_CFG.get("channels", {}).get("unified_channel", "🎫registration"),
+            "cache_refresh_seconds": _FULL_CFG.get("cache_refresh_seconds", 600),
+            "bot_status": _FULL_CFG.get("rich_presence", {}).get("message", "🛡️ TFT"),
+            "registered_role": "Registered",  # This could be made configurable later
         }
 
         return settings
@@ -705,15 +706,90 @@ class SettingsView(ui.LayoutView):
 
     async def respond_with_ui(self, interaction: discord.Interaction):
         """
-        Send the ephemeral UI response.
+        Send the ephemeral UI response using proper Discord UI components.
         """
-        container = self.build_container()
-        complete_view = ui.View(container)
+        # Create a proper Discord view with buttons for each setting
+        view = discord.ui.View(timeout=300)
 
-        await interaction.response.send_message(
-            view=complete_view,
-            ephemeral=True
+        # Add buttons for key settings
+        settings_buttons = [
+            ("📊 Max Players", "edit_max_players"),
+            ("📋 Header Line", "edit_header_line_num"),
+            ("🔄 Cache Refresh", "edit_cache_refresh_seconds"),
+            ("🎮 Bot Status", "edit_bot_status"),
+            ("📝 Log Channel", "edit_log_channel"),
+            ("🏆 Registered Role", "edit_registered_role"),
+        ]
+
+        for i, (label, custom_id) in enumerate(settings_buttons):
+            row = i // 2  # 2 buttons per row
+            button = discord.ui.Button(
+                label=label,
+                style=discord.ButtonStyle.primary,
+                row=row,
+                custom_id=custom_id
+            )
+            button.callback = self._create_button_callback(custom_id)
+            view.add_item(button)
+
+        # Add close button
+        close_button = discord.ui.Button(
+            label="❌ Close",
+            style=discord.ButtonStyle.danger,
+            row=3
         )
+        close_button.callback = lambda interaction: interaction.response.edit_message(
+            content="Settings menu closed.",
+            view=None
+        )
+        view.add_item(close_button)
+
+        # Create an embed showing current settings
+        embed = discord.Embed(
+            title="⚙️ Bot Configuration Settings",
+            description="Click a button below to edit a setting:",
+            color=discord.Color.blue()
+        )
+
+        # Add current settings info
+        guild_id = str(interaction.guild.id)
+        mode = get_event_mode_for_guild(guild_id)
+        settings = get_sheet_settings(mode)
+
+        embed.add_field(
+            name="📊 Sheet Settings",
+            value=f"**Mode:** {mode}\n"
+                  f"**Max Players:** {settings.get('max_players', 32)}\n"
+                  f"**Header Line:** {settings.get('header_line_num', 2)}",
+            inline=True
+        )
+
+        embed.add_field(
+            name="🤖 Bot Settings",
+            value=f"**Cache Refresh:** {_FULL_CFG.get('cache_refresh_seconds', 600)}s\n"
+                  f"**Bot Status:** {_FULL_CFG.get('rich_presence', {}).get('message', 'Not set')}",
+            inline=True
+        )
+
+        embed.add_field(
+            name="📋 Channels & Roles",
+            value=f"**Log Channel:** {get_log_channel_name()}\n"
+                  f"**Registered Role:** Registered",
+            inline=True
+        )
+
+        embed.set_footer(text="💡 Each setting opens a modal for editing")
+
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    def _create_button_callback(self, setting_key: str):
+        """Create a callback function for settings buttons."""
+
+        async def callback(interaction: discord.Interaction):
+            modal = SettingsEditModal(self, setting_key)
+            await interaction.response.send_modal(modal)
+
+        return callback
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """
@@ -738,7 +814,7 @@ class SettingsEditModal(ui.Modal):
         self.setting_key = setting_key
 
         # Configure the text input based on setting type
-        current_value = str(parent_view.settings[setting_key])
+        current_value = str(parent_view.settings.get(setting_key, ""))
 
         if setting_key in ["header_line_num", "max_players"]:
             label = setting_key.replace('_', ' ').title()
@@ -746,6 +822,18 @@ class SettingsEditModal(ui.Modal):
         elif setting_key == "mode":
             label = "Event Mode"
             placeholder = "normal or doubleup"
+        elif setting_key == "cache_refresh_seconds":
+            label = "Cache Refresh (seconds)"
+            placeholder = "Enter seconds (60-86400)"
+        elif setting_key == "bot_status":
+            label = "Bot Status Message"
+            placeholder = "Enter bot status message"
+        elif setting_key == "log_channel":
+            label = "Log Channel Name"
+            placeholder = "Enter channel name (e.g., bot-log)"
+        elif setting_key == "registered_role":
+            label = "Registered Role"
+            placeholder = "Enter role name (e.g., Registered)"
         else:
             label = setting_key.replace('_', ' ').title()
             placeholder = "Enter new value"
@@ -773,6 +861,17 @@ class SettingsEditModal(ui.Modal):
             except ValueError:
                 await interaction.response.send_message(
                     "❌ Please enter a valid positive number",
+                    ephemeral=True
+                )
+                return
+        elif self.setting_key == "cache_refresh_seconds":
+            try:
+                new_value = int(new_value)
+                if not (60 <= new_value <= 86400):
+                    raise ValueError("Cache refresh must be between 60 and 86400 seconds")
+            except ValueError:
+                await interaction.response.send_message(
+                    "❌ Cache refresh must be a number between 60 and 86400 seconds",
                     ephemeral=True
                 )
                 return

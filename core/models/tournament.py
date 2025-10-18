@@ -4,10 +4,10 @@ Tournament data models.
 Defines tournament-related entities and their relationships.
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field
 
 from .base_model import BaseModel, utcnow
 

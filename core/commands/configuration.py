@@ -2,26 +2,22 @@
 
 from __future__ import annotations
 
-import glob
 import os
-import shutil
 from typing import Optional
 
 import discord
+import yaml
 from discord import app_commands
 
 from config import (
     _FULL_CFG,
-    SHEET_CONFIG,
     embed_from_cfg,
     get_log_channel_name,
     get_sheet_settings,
-    get_unified_channel_name,
 )
 from core.config_ui import ColumnMappingView, SettingsView
 from core.persistence import get_event_mode_for_guild
 from helpers.environment_helpers import EnvironmentHelper
-
 from .common import command_tracer, ensure_staff, handle_command_exception, logger
 
 
@@ -163,7 +159,7 @@ def register(gal: app_commands.Group) -> None:
                 try:
                     # Download and validate the new config
                     content = await file.read()
-                    new_config = yaml.safe_load(content)
+                    new_config = yaml.safe_load(content.decode('utf-8'))
     
                     # Validate required sections
                     required_sections = ["embeds", "sheet_configuration"]
@@ -916,7 +912,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
         yaml_handler.width = 4096  # Prevent line wrapping
     except ImportError:
         # Fallback to regular yaml if ruamel not available
-        import yaml as yaml_fallback
+        # Use the already imported yaml module
         yaml_handler = None
 
     # Clean up old timestamped backups first (one-time cleanup)
@@ -960,7 +956,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
                 full_config = yaml_handler.load(f)
         else:
             with open("config.yaml", "r", encoding="utf-8") as f:
-                full_config = yaml_fallback.safe_load(f)
+                full_config = yaml.safe_load(f)
 
         guild_id = str(interaction.guild.id)
         current_mode = get_event_mode_for_guild(guild_id)
@@ -1086,7 +1082,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
                 if yaml_handler:
                     yaml_handler.dump(full_config, temp_f)
                 else:
-                    yaml_fallback.dump(full_config, temp_f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+                    yaml.dump(full_config, temp_f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
             # Atomically replace the config file
             shutil.move(temp_config_path, "config.yaml")
@@ -1126,8 +1122,7 @@ async def handle_config_update(interaction: discord.Interaction, modal, update_t
             await interaction.followup.send(embed=embed, ephemeral=True)
 
             # Log changes with revert button
-            from config import LOG_CHANNEL_NAME
-            log_channel = discord.utils.get(interaction.guild.text_channels, name=LOG_CHANNEL_NAME)
+            log_channel = discord.utils.get(interaction.guild.text_channels, name=get_log_channel_name())
             if log_channel:
                 # Clear old revert buttons first
                 await clear_old_config_views(log_channel)

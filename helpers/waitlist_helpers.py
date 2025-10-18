@@ -3,15 +3,15 @@
 import json
 import logging
 import os
-from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Optional, Dict, List
 
 import discord
 from rapidfuzz import fuzz, process
 
-from config import embed_from_cfg, get_sheet_settings, DATABASE_URL, get_log_channel_name
+from config import embed_from_cfg, get_sheet_settings, get_log_channel_name
 from core.persistence import get_event_mode_for_guild
+from core.storage_service import get_storage_service
 from helpers.error_handler import ErrorHandler
 from helpers.role_helpers import RoleManager
 from integrations.sheets import find_or_register_user, cache_lock, sheet_cache, refresh_sheet_cache
@@ -28,176 +28,96 @@ def utcnow() -> datetime:
 
 
 class WaitlistManager:
-    """Manages waitlist functionality with improved database/file persistence."""
+    """Manages waitlist functionality with unified storage service."""
+    # Legacy file path for migration purposes
     WAITLIST_FILE = os.path.join(os.path.dirname(__file__), "..", "waitlist_data.json")
 
-    # Database connection management
-    _connection_pool = None
+    # Storage service and data loading tracking
+    _storage_service = None
     _data_loaded = False  # Track if data has been loaded this session
 
     @classmethod
-    def _initialize_database(cls):
-        """Initialize database connection pool if available."""
-        if not DATABASE_URL or cls._connection_pool is not None:
-            return
-
-        try:
-            import psycopg2
-            from psycopg2 import pool
-
-            # Ensure proper URL format
-            db_url = DATABASE_URL
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql://", 1)
-
-            # Create connection pool
-            cls._connection_pool = psycopg2.pool.SimpleConnectionPool(
-                1, 5,  # min and max connections
-                db_url,
-                sslmode="require"
-            )
-
-            # Initialize schema
-            with cls._get_db_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
-                        CREATE TABLE IF NOT EXISTS waitlist_data (
-                            guild_id TEXT PRIMARY KEY,
-                            data JSONB,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        );
-                    """)
-
-                    # Add index for better performance
-                    cursor.execute("""
-                        CREATE INDEX IF NOT EXISTS idx_waitlist_updated_at 
-                        ON waitlist_data(updated_at);
-                    """)
-
-                    conn.commit()
-
-            logging.info("Waitlist database connection pool initialized")
-
-        except Exception as e:
-            logging.warning(f"Failed to initialize waitlist database: {e}")
-            cls._connection_pool = None
+    def _get_storage_service(cls):
+        """Get the storage service instance."""
+        if cls._storage_service is None:
+            cls._storage_service = get_storage_service()
+        return cls._storage_service
 
     @classmethod
-    @contextmanager
-    def _get_db_connection(cls):
-        """Context manager for database connections."""
-        if not cls._connection_pool:
-            raise WaitlistError("Database connection pool not available")
-
-        conn = None
-        try:
-            conn = cls._connection_pool.getconn()
-            yield conn
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            raise
-        finally:
-            if conn:
-                cls._connection_pool.putconn(conn)
+    def _initialize_database(cls):
+        """Initialize database - now handled by storage service."""
+        # Database initialization is now handled by the unified storage service
+        pass
 
     @staticmethod
     def _load_waitlist_data() -> Dict:
-        """Load waitlist data from database or file with proper error handling."""
-        # Initialize database connection if needed
-        WaitlistManager._initialize_database()
-
-        # Try database first
-        if WaitlistManager._connection_pool:
-            try:
-                with WaitlistManager._get_db_connection() as conn:
-                    with conn.cursor() as cursor:
-                        cursor.execute("SELECT guild_id, data FROM waitlist_data")
-                        rows = cursor.fetchall()
-
-                        if rows:
-                            result = {}
-                            for row in rows:
-                                guild_id, data = row
-                                result[guild_id] = data if isinstance(data, dict) else json.loads(data)
-                            # Only log once per session
-                            if not WaitlistManager._data_loaded:
-                                logging.debug("Loaded waitlist data from database")
-                                WaitlistManager._data_loaded = True
-                            return result
-
-                        return {}
-
-            except Exception as e:
-                logging.warning(f"Database load failed, falling back to file: {e}")
-
-        # File fallback
+        """Load waitlist data using unified storage service."""
         try:
-            if os.path.exists(WaitlistManager.WAITLIST_FILE):
-                with open(WaitlistManager.WAITLIST_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    # Only log once per session
-                    if not WaitlistManager._data_loaded:
-                        logging.debug("Loaded waitlist data from file")
-                        WaitlistManager._data_loaded = True
-                    return data
-            return {}
+            storage = WaitlistManager._get_storage_service()
+            data = storage.get_waitlist_data()
 
-        except json.JSONDecodeError as e:
-            logging.error(f"Corrupted waitlist file: {e}")
-            return {}
+            # Only log once per session
+            if not WaitlistManager._data_loaded:
+                logging.debug("Loaded waitlist data via storage service")
+                WaitlistManager._data_loaded = True
+
+            return data if data else {}
+
         except Exception as e:
-            logging.error(f"Error loading waitlist file: {e}")
-            return {}
+            logging.error(f"Failed to load waitlist data via storage service: {e}")
+
+            # Try legacy file fallback as last resort
+            try:
+                if os.path.exists(WaitlistManager.WAITLIST_FILE):
+                    with open(WaitlistManager.WAITLIST_FILE, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        # Only log once per session
+                        if not WaitlistManager._data_loaded:
+                            logging.debug("Loaded waitlist data via legacy file fallback")
+                            WaitlistManager._data_loaded = True
+                        return data
+                return {}
+            except Exception as fallback_error:
+                logging.error(f"Legacy file fallback also failed: {fallback_error}")
+                return {}
 
     @staticmethod
     def _save_waitlist_data(data: Dict) -> None:
-        """Save waitlist data to database or file with proper error handling."""
+        """Save waitlist data using unified storage service."""
         if not isinstance(data, dict):
             raise ValueError("Data must be a dictionary")
 
-        # Try database first
-        if WaitlistManager._connection_pool:
-            try:
-                with WaitlistManager._get_db_connection() as conn:
-                    with conn.cursor() as cursor:
-                        for guild_id, guild_data in data.items():
-                            cursor.execute(
-                                """INSERT INTO waitlist_data (guild_id, data, updated_at) 
-                                   VALUES (%s, %s, CURRENT_TIMESTAMP) 
-                                   ON CONFLICT (guild_id) 
-                                   DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP""",
-                                (guild_id, json.dumps(guild_data))
-                            )
-                        conn.commit()
-                        return
-
-            except Exception as e:
-                logging.warning(f"Database save failed, falling back to file: {e}")
-
-        # File fallback
         try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(WaitlistManager.WAITLIST_FILE), exist_ok=True)
-
-            # Write to temporary file first for atomic operation
-            temp_file = WaitlistManager.WAITLIST_FILE + ".tmp"
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-            # Atomic rename
-            os.replace(temp_file, WaitlistManager.WAITLIST_FILE)
+            storage = WaitlistManager._get_storage_service()
+            storage.save_waitlist_data(data)
+            return
 
         except Exception as e:
-            logging.error(f"Failed to save waitlist data: {e}")
-            # Clean up temp file if it exists
+            logging.error(f"Failed to save waitlist data via storage service: {e}")
+
+            # Try legacy file fallback as last resort
             try:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            except:
-                pass
-            raise WaitlistError(f"Failed to save waitlist data: {e}")
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(WaitlistManager.WAITLIST_FILE), exist_ok=True)
+
+                # Write to temporary file first for atomic operation
+                temp_file = WaitlistManager.WAITLIST_FILE + ".tmp"
+                with open(temp_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+
+                # Atomic rename
+                os.replace(temp_file, WaitlistManager.WAITLIST_FILE)
+                logging.info("Saved waitlist data via legacy file fallback")
+
+            except Exception as fallback_error:
+                logging.error(f"Legacy file fallback also failed: {fallback_error}")
+                # Clean up temp file if it exists
+                try:
+                    if 'temp_file' in locals() and os.path.exists(temp_file):
+                        os.remove(temp_file)
+                except:
+                    pass
+                raise WaitlistError(f"Failed to save waitlist data: {e}")
 
     @staticmethod
     async def _find_similar_team(team_name: str, guild_id: str) -> Optional[str]:

@@ -7,7 +7,9 @@ from contextlib import contextmanager
 from typing import Dict, Any, Optional, Tuple, Union
 
 from config import DATABASE_URL
+from .storage_service import get_storage_service
 
+# Legacy file path for migration purposes
 PERSIST_FILE = os.path.join("./persisted_views.json")
 
 # Database connection management
@@ -105,60 +107,53 @@ def get_db_connection():
 
 
 def load_persisted() -> Dict[str, Any]:
-    """Load persisted data."""
+    """Load persisted data using unified storage service."""
     is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
     dev_guild_id = os.getenv("DEV_GUILD_ID")
 
-    if connection_pool:
-        try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT data FROM persisted_views WHERE key = %s", ("default",))
-                    row = cursor.fetchone()
-                    if row:
-                        data = row[0] if row else {}
-
-                        # In dev mode, only load dev guild data
-                        if not is_production and dev_guild_id:
-                            filtered_data = {}
-                            for key, value in data.items():
-                                # Only load dev guild data
-                                if key == dev_guild_id:
-                                    filtered_data[key] = value
-                            return filtered_data
-
-                        return data
-                    return {}
-        except Exception as e:
-            logging.error(f"Failed to load from database, falling back to file: {e}")
-
-    # File fallback
     try:
-        with open(PERSIST_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        storage = get_storage_service()
+        data = storage.get_persisted_views()
 
-            # In dev mode, only load dev guild data
-            if not is_production and dev_guild_id:
-                filtered_data = {}
-                for key, value in data.items():
-                    if key == dev_guild_id:
-                        filtered_data[key] = value
-                return filtered_data
+        if not data:
+            return {}
 
-            return data
-    except FileNotFoundError:
-        logging.info("No persisted data file found, starting fresh")
-        return {}
-    except json.JSONDecodeError as e:
-        logging.error(f"Corrupted persisted data file: {e}")
-        return {}
+        # In dev mode, only load dev guild data
+        if not is_production and dev_guild_id:
+            filtered_data = {}
+            for key, value in data.items():
+                if key == dev_guild_id:
+                    filtered_data[key] = value
+            return filtered_data
+
+        return data
+
     except Exception as e:
-        logging.error(f"Error loading persisted data: {e}")
+        logging.error(f"Failed to load persisted data: {e}")
+
+        # Try legacy file fallback as last resort
+        try:
+            if os.path.exists(PERSIST_FILE):
+                with open(PERSIST_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                    # In dev mode, only load dev guild data
+                    if not is_production and dev_guild_id:
+                        filtered_data = {}
+                        for key, value in data.items():
+                            if key == dev_guild_id:
+                                filtered_data[key] = value
+                        return filtered_data
+
+                    return data
+        except Exception as fallback_error:
+            logging.error(f"Legacy file fallback also failed: {fallback_error}")
+
         return {}
 
 
 def save_persisted(data: Dict[str, Any]) -> None:
-    """Save persisted data with proper error handling and environment checking."""
+    """Save persisted data using unified storage service."""
     is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
     dev_guild_id = os.getenv("DEV_GUILD_ID")
 
@@ -177,65 +172,36 @@ def save_persisted(data: Dict[str, Any]) -> None:
             logging.debug("Skipping persistence save in dev mode - no dev guild data to save")
             return
 
-    if connection_pool:
-        try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cursor:
-                    # In dev mode, only update dev guild's data
-                    if not is_production and dev_guild_id:
-                        # Only update the specific dev guild's data
-                        cursor.execute(
-                            """INSERT INTO persisted_views (key, data, updated_at) 
-                               VALUES (%s, %s, CURRENT_TIMESTAMP) 
-                               ON CONFLICT (key) 
-                               DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP
-                               WHERE persisted_views.key = %s""",
-                            ("default", json.dumps(data), "default")
-                        )
-                    else:
-                        # Production mode - save everything
-                        try:
-                            cursor.execute(
-                                """INSERT INTO persisted_views (key, data, updated_at) 
-                                   VALUES (%s, %s, CURRENT_TIMESTAMP) 
-                                   ON CONFLICT (key) 
-                                   DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP""",
-                                ("default", json.dumps(data))
-                            )
-                        except psycopg2.errors.UndefinedColumn:
-                            # Fallback to without updated_at column
-                            cursor.execute(
-                                """INSERT INTO persisted_views (key, data) 
-                                   VALUES (%s, %s) 
-                                   ON CONFLICT (key) 
-                                   DO UPDATE SET data = EXCLUDED.data""",
-                                ("default", json.dumps(data))
-                            )
-                    conn.commit()
-            return
-        except Exception as e:
-            logging.error(f"Failed to save to database, falling back to file: {e}")
-
-    # File fallback
     try:
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(PERSIST_FILE), exist_ok=True)
-
-        # Write to temporary file first for atomic operation
-        temp_file = PERSIST_FILE + ".tmp"
-        with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-
-        # Atomic rename
-        os.replace(temp_file, PERSIST_FILE)
+        storage = get_storage_service()
+        storage.save_persisted_views(data)
+        return
 
     except Exception as e:
-        logging.error(f"Failed to save persisted data to file: {e}")
-        # Clean up temp file if it exists
+        logging.error(f"Failed to save persisted data via storage service: {e}")
+
+        # Try legacy file fallback as last resort
         try:
-            os.remove(temp_file)
-        except:
-            pass
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(PERSIST_FILE), exist_ok=True)
+
+            # Write to temporary file first for atomic operation
+            temp_file = PERSIST_FILE + ".tmp"
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            # Atomic rename
+            os.replace(temp_file, PERSIST_FILE)
+            logging.info("Saved persisted data via legacy file fallback")
+
+        except Exception as fallback_error:
+            logging.error(f"Legacy file fallback also failed: {fallback_error}")
+            # Clean up temp file if it exists
+            try:
+                if 'temp_file' in locals() and os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except:
+                pass
 
 
 # Load initial data

@@ -78,7 +78,7 @@ export function DeleteConfirmDialog({
               <div className="text-sm text-gray-600">Event: {graphic.event_name}</div>
             )}
             <div className="text-xs text-gray-500 mt-1">
-              {isArchived ? 'Archived' : 'Active'} Graphic • ID: {graphic.id}
+              {isArchived ? 'Archived' : 'Active'} Graphic - ID: {graphic.id}
             </div>
           </div>
         </div>

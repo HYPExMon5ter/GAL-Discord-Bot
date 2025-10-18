@@ -23,7 +23,6 @@ async def ensure_staff(interaction: discord.Interaction, context: str) -> bool:
     return await Validators.validate_and_respond(
         interaction,
         Validators.validate_staff_permission(interaction),
-        context=context,
     )
 
 

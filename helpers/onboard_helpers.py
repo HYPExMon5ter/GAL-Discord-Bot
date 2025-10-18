@@ -1,8 +1,8 @@
 # helpers/onboard_helpers.py
 
 import logging
-from typing import Dict, Optional, Set
 from datetime import UTC, datetime
+from typing import Dict, Optional
 
 import discord
 

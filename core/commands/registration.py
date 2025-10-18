@@ -61,7 +61,7 @@ async def _refresh_scoreboard_snapshot(
             replace_existing=replace_existing,
             source=source,
         )
-        snapshot_schema = ScoreboardSnapshot.from_orm(snapshot_model)
+        snapshot_schema = ScoreboardSnapshot.model_validate(snapshot_model)
         return snapshot_schema
     finally:
         db.close()

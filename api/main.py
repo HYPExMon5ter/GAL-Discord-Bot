@@ -7,10 +7,13 @@ CORS middleware, and includes all API routers.
 
 from datetime import UTC, datetime, timedelta
 
+import logging
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from .auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -139,9 +142,53 @@ async def root():
     }
 
 
+@app.on_event("startup")
+async def startup_event():
+    """
+    Initialize services on API startup
+    """
+    import os
+    from api.services.ign_verification import initialize_verification_service
+    
+    logger.info("Starting up Guardian Angel League API...")
+    
+    # Initialize IGN verification service
+    riot_api_key = os.getenv("RIOT_API_KEY")
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    
+    if riot_api_key:
+        success = await initialize_verification_service(riot_api_key, redis_url)
+        if success:
+            logger.info("✅ IGN verification service initialized")
+        else:
+            logger.warning("⚠️ Failed to initialize IGN verification service")
+    else:
+        logger.info("IGN verification service disabled (no RIOT_API_KEY)")
+    
+    logger.info("API startup completed")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Cleanup on API shutdown
+    """
+    from api.services.ign_verification import get_verification_service
+    
+    logger.info("Shutting down Guardian Angel League API...")
+    
+    # Cleanup IGN verification service
+    service = await get_verification_service()
+    if service:
+        await service.cleanup()
+        logger.info("✅ IGN verification service cleaned up")
+    
+    logger.info("API shutdown completed")
+
+
 
 # Import and include routers
-from .routers import configuration, graphics, tournaments, users, websocket
+from .routers import configuration, graphics, standings, tournaments, users, websocket, ign_verification
 from .middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 
 # Add custom middleware
@@ -154,6 +201,8 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(configuration.router, prefix="/api/v1/configuration", tags=["configuration"])
 app.include_router(websocket.router, prefix="/api/v1", tags=["websocket"])
 app.include_router(graphics.router, prefix="/api/v1", tags=["graphics"])
+app.include_router(standings.router, prefix="/api/v1", tags=["scoreboard"])
+app.include_router(ign_verification.router, prefix="/api/v1", tags=["ign-verification"])
 
 if __name__ == "__main__":
     uvicorn.run(

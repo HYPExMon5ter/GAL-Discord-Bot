@@ -12,6 +12,7 @@ from .scoreboard import (
     ScoreboardSnapshot,
     ScoreboardSnapshotCreate,
     ScoreboardSnapshotSummary,
+    ScoreboardRefreshRequest,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "Configuration", "ConfigurationUpdate",
     "ScoreboardEntry", "ScoreboardEntryCreate",
     "ScoreboardSnapshot", "ScoreboardSnapshotCreate", "ScoreboardSnapshotSummary",
+    "ScoreboardRefreshRequest",
 ]

@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ScoreboardEntryBase(BaseModel):
@@ -44,9 +44,7 @@ class ScoreboardEntry(ScoreboardEntryBase):
     id: int
     snapshot_id: int
     created_at: datetime
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScoreboardSnapshotBase(BaseModel):
@@ -91,9 +89,7 @@ class ScoreboardSnapshot(ScoreboardSnapshotBase):
     created_at: datetime
     updated_at: datetime
     entries: List[ScoreboardEntry] = Field(default_factory=list)
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ScoreboardSnapshotSummary(ScoreboardSnapshotBase):
@@ -103,6 +99,34 @@ class ScoreboardSnapshotSummary(ScoreboardSnapshotBase):
     created_at: datetime
     updated_at: datetime
     entry_count: int = Field(default=0)
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        orm_mode = True
+
+class ScoreboardRefreshRequest(BaseModel):
+    """Request payload for triggering a scoreboard refresh via API."""
+
+    guild_id: int = Field(..., description="Discord guild identifier.")
+    tournament_id: Optional[str] = Field(
+        default=None, description="Tournament identifier (defaults to guild)."
+    )
+    tournament_name: Optional[str] = Field(
+        default=None, description="Friendly tournament name."
+    )
+    region: str = Field(default="na", description="Riot API region for fetches.")
+    fetch_riot: bool = Field(
+        default=True, description="Whether to pull latest placements from Riot API."
+    )
+    round_names: Optional[List[str]] = Field(
+        default=None, description="Explicit round identifiers (optional)."
+    )
+    replace_existing: bool = Field(
+        default=True,
+        description="Replace previous snapshot for same tournament/source.",
+    )
+    sync_sheet: bool = Field(
+        default=True,
+        description="Refresh Google Sheet cache before aggregation.",
+    )
+    extras: Optional[Dict[str, Any]] = Field(
+        default=None, description="Additional metadata to embed in snapshot."
+    )

@@ -82,7 +82,8 @@
 - Add service methods to deliver normalized datasets ready for dashboard consumption (sorted by placement, include metadata, version stamps).
 - Implement ETag/last-modified headers or version numbers so the dashboard can avoid redundant fetches.
 - Include Sheet source metadata (timestamp, worksheet) in responses so consumers know when a refresh last synced from the canonical data.
-- **Testing (required):** `.\.venv\Scripts\python.exe -m pytest` plus API contract tests (FastAPI client).
+- **Testing:** .\.venv\Scripts\python.exe -m pytest api/tests/test_standings_router.py (2025-10-18) - passed
+- **Next required tests:** .\.venv\Scripts\python.exe -m pytest plus dashboard integration contract tests.
 
 ### Phase 5 - Dashboard Data Binding & OBS Rendering (1.0d)
 - Extend `CanvasDataBinding` schema to include dataset identifiers and field selectors (e.g., `{ dataset: "scoreboard", row: 1, round: "round_1" }`). Update serialization helpers (`dashboard/lib/canvas-helpers.ts`, `dashboard/types/index.ts`).

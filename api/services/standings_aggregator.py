@@ -54,6 +54,7 @@ class StandingsAggregator:
         replace_existing: bool = True,
         fetch_riot: bool = True,
         snapshot_override: Optional[Dict[str, Any]] = None,
+        extras: Optional[Dict[str, Any]] = None,
     ) -> ScoreboardSnapshot:
         """
         Build and persist a scoreboard snapshot.
@@ -89,6 +90,13 @@ class StandingsAggregator:
             riot_scores=round_scores_from_riot,
         )
 
+        snapshot_extras = {
+            "sheet_metadata": sheet_snapshot.get("metadata"),
+            "mode": sheet_snapshot.get("mode"),
+        }
+        if extras:
+            snapshot_extras.update(extras)
+
         snapshot_payload = ScoreboardSnapshotCreate(
             tournament_id=tournament_id,
             tournament_name=tournament_name,
@@ -96,10 +104,7 @@ class StandingsAggregator:
             source=source,
             source_timestamp=datetime.now(UTC),
             round_names=final_round_names,
-            extras={
-                "sheet_metadata": sheet_snapshot.get("metadata"),
-                "mode": sheet_snapshot.get("mode"),
-            },
+            extras=snapshot_extras,
             entries=entries_payload,
         )
 

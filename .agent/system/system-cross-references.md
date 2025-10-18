@@ -1,7 +1,7 @@
 ---
 id: system.cross_references
-version: 1.2
-last_updated: 2025-01-14
+version: 1.3
+last_updated: 2025-01-18
 tags: [cross-references, integration, system-links, documentation-map]
 ---
 
@@ -706,20 +706,23 @@ Configuration (1) ←→ (N) FeatureFlag
 | Tournament Management | [API Backend](./api-backend-system.md) | [Data Models](./data-models.md) |
 | User Management | [API Backend](./api-backend-system.md) | [Data Models](./data-models.md) |
 | Real-time Updates | [Event System](./event-system.md) | [API Backend](./api-backend-system.md) |
-| Data Persistence | [Data Access Layer](./data-access-layer.md) | [Data Models](./data-models.md) |
-| Authentication | [API Backend](./api-backend-system.md) | [Security SOP](../sops/security.md) |
+| Data Persistence | [Data Access Layer](./data-access-layer.md) | [Storage Architecture](./storage-architecture.md) |
+| Security & Authentication | [Security Architecture](./security-architecture.md) | [Security SOP](../sops/security.md) |
 | Configuration | [Helper Modules](./helper-modules.md) | [Data Models](./data-models.md) |
 | Monitoring | [Event Monitoring](../sops/event-system-monitoring.md) | [Troubleshooting](../sops/troubleshooting.md) |
+| Storage & Backup | [Storage Architecture](./storage-architecture.md) | [Database Migration SOP](../sops/database-migration-sop.md) |
+| Security Architecture | [Security Architecture](./security-architecture.md) | [Architecture Overview](./architecture.md) |
 
 ### By Role
 
 | Role | Primary Documentation | Quick Start |
 |------|----------------------|------------|
 | Developer | [Architecture Overview](./architecture.md) | [Data Models](./data-models.md) |
-| System Administrator | [Deployment SOP](../sops/deployment.md) | [API Deployment](../sops/api-deployment.md) |
+| System Administrator | [Storage Architecture](./storage-architecture.md) | [Deployment SOP](../sops/deployment.md) |
 | DevOps Engineer | [API Deployment](../sops/api-deployment.md) | [Event Monitoring](../sops/event-system-monitoring.md) |
-| Security Engineer | [Security SOP](../sops/security.md) | [API Backend](./api-backend-system.md) |
+| Security Engineer | [Security Architecture](./security-architecture.md) | [Security SOP](../sops/security.md) |
 | Support Engineer | [Troubleshooting SOP](../sops/troubleshooting.md) | [Event Monitoring](../sops/event-system-monitoring.md) |
+| Database Administrator | [Storage Architecture](./storage-architecture.md) | [Database Migration SOP](../sops/database-migration-sop.md) |
 
 ---
 

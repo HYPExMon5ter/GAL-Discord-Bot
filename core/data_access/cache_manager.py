@@ -8,6 +8,7 @@ and automatic cache invalidation strategies.
 import asyncio
 import json
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union, Callable
@@ -275,7 +276,7 @@ class RedisCache:
     """Redis-based cache implementation."""
     
     def __init__(self, 
-                 redis_url: str = "redis://localhost:6379",
+                 redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379"),
                  default_ttl: timedelta = timedelta(minutes=5),
                  key_prefix: str = "gal_cache:"):
         """
@@ -469,7 +470,7 @@ class CacheManager:
         if self.config.get("redis_enabled", False) and REDIS_AVAILABLE:
             try:
                 self.redis_cache = RedisCache(
-                    redis_url=self.config.get("redis_url", "redis://localhost:6379"),
+                    redis_url=self.config.get("redis_url", os.getenv("REDIS_URL", "redis://localhost:6379")),
                     default_ttl=timedelta(minutes=self.config.get("redis_ttl_minutes", 15)),
                     key_prefix=self.config.get("redis_key_prefix", "gal_cache:")
                 )

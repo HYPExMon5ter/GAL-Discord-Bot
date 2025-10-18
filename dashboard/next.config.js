@@ -5,10 +5,13 @@ const nextConfig = {
     domains: ['localhost'],
   },
   async rewrites() {
+    // Use environment variable for API URL, fallback to localhost for development
+    const apiUrl = process.env.API_BASE_URL || 'http://localhost:8000';
+    
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
+        destination: `${apiUrl}/api/:path*`,
       },
     ];
   },

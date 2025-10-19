@@ -105,32 +105,98 @@ Graphics can be archived to preserve them while removing them from active view:
 - **Archived**: `archived = true` - Visible in archive tab only
 - **Permanently Deleted**: Removed from database entirely
 
+## Data Schemas
+
+### Graphic Schema
+```python
+class GraphicBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255, description="Graphic title")
+    event_name: str = Field(..., min_length=1, max_length=255, description="Event name")
+    data_json: Optional[Dict[str, Any]] = Field(default=None, description="Canvas data as JSON")
+
+class GraphicCreate(GraphicBase):
+    """Schema for creating a new graphic"""
+    pass
+
+class GraphicUpdate(BaseModel):
+    """Schema for updating an existing graphic"""
+    title: Optional[str] = Field(None, min_length=1, max_length=255, description="Graphic title")
+    event_name: Optional[str] = Field(None, min_length=1, max_length=255, description="Event name")
+    data_json: Optional[str] = Field(None, description="Canvas data as JSON string")
+
+class GraphicResponse(BaseModel):
+    """Schema for graphic response"""
+    id: int
+    title: str
+    event_name: Optional[str]
+    data_json: Optional[str]
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+    archived: bool
+```
+
+### Lock Schema
+```python
+class CanvasLockCreate(BaseModel):
+    """Schema for creating a canvas lock"""
+    graphic_id: int
+    user_name: str
+
+class CanvasLockResponse(BaseModel):
+    """Schema for canvas lock response"""
+    id: int
+    graphic_id: int
+    user_name: str
+    locked: bool
+    locked_at: datetime
+    expires_at: datetime
+```
+
+### Archive Schema
+```python
+class ArchiveActionRequest(BaseModel):
+    """Schema for archive action requests"""
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for archiving")
+
+class ArchiveResponse(BaseModel):
+    """Schema for archive action response"""
+    success: bool
+    message: str
+    graphic_id: int
+    archived_at: Optional[datetime] = None
+    restored_at: Optional[datetime] = None
+```
+
 ## Request/Response Examples
 
 ### Get Graphics
 ```http
-GET /api/v1/graphics/?skip=0&limit=10
+GET /api/v1/graphics/?include_archived=false&skip=0&limit=10
 Authorization: Bearer {token}
 ```
 
-Response:
+**Request Parameters:**
+- `include_archived` (boolean, optional): Include archived graphics in results
+- `skip` (integer, optional): Number of items to skip for pagination
+- `limit` (integer, optional): Number of items per page (max: 100)
+
+**Response:**
 ```json
 {
   "graphics": [
     {
       "id": 13,
-      "title": "Title",
-      "event_name": "Event Name",
-      "data_json": {},
-      "created_by": "username",
+      "title": "Tournament Finals",
+      "event_name": "Winter Championship 2025",
+      "data_json": "{\"elements\": [...]}",
+      "created_by": "admin_user",
       "created_at": "2025-01-09T10:00:00Z",
       "updated_at": "2025-01-09T10:30:00Z",
       "archived": false
     }
   ],
-  "total": 1,
-  "page": 1,
-  "per_page": 10
+  "total": 1
 }
 ```
 
@@ -141,51 +207,289 @@ Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-  "title": "New Graphic",
-  "event_name": "Event Name",
-  "data_json": {}
+  "title": "New Tournament Bracket",
+  "event_name": "Spring Tournament 2025",
+  "data_json": {
+    "tournament_type": "single_elimination",
+    "participants": [],
+    "rounds": []
+  }
 }
 ```
 
-### Archive Graphic
+**Request Body:**
+```json
+{
+  "title": "string (1-255 chars)",
+  "event_name": "string (1-255 chars)", 
+  "data_json": "object (optional)"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 14,
+  "title": "New Tournament Bracket",
+  "event_name": "Spring Tournament 2025",
+  "data_json": "{\"tournament_type\": \"single_elimination\", \"participants\": [], \"rounds\": []}",
+  "created_by": "admin_user",
+  "created_at": "2025-01-09T11:00:00Z",
+  "updated_at": "2025-01-09T11:00:00Z",
+  "archived": false
+}
+```
+
+### Update Graphic
 ```http
-POST /api/v1/archive/13
+PUT /api/v1/graphics/14
 Authorization: Bearer {token}
 Content-Type: application/json
 
-{}
+{
+  "title": "Updated Tournament Bracket",
+  "data_json": "{\"tournament_type\": \"double_elimination\", \"participants\": [...], \"rounds\": [...]}"
+}
 ```
 
-Response:
+**Request Body:**
+```json
+{
+  "title": "string (1-255 chars, optional)",
+  "event_name": "string (1-255 chars, optional)",
+  "data_json": "string (JSON, optional)"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": 14,
+  "title": "Updated Tournament Bracket",
+  "event_name": "Spring Tournament 2025",
+  "data_json": "{\"tournament_type\": \"double_elimination\", \"participants\": [...], \"rounds\": [...]}",
+  "created_by": "admin_user",
+  "created_at": "2025-01-09T11:00:00Z",
+  "updated_at": "2025-01-09T11:15:00Z",
+  "archived": false
+}
+```
+
+### Delete Graphic
+```http
+DELETE /api/v1/graphics/14
+Authorization: Bearer {token}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Graphic deleted successfully"
+}
+```
+
+### Duplicate Graphic
+```http
+POST /api/v1/graphics/14/duplicate
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "new_title": "Copy of Tournament Bracket",
+  "new_event_name": "Spring Tournament 2025 (Copy)"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 15,
+  "title": "Copy of Tournament Bracket",
+  "event_name": "Spring Tournament 2025 (Copy)",
+  "data_json": "{\"tournament_type\": \"double_elimination\", \"participants\": [...], \"rounds\": [...]}",
+  "created_by": "admin_user",
+  "created_at": "2025-01-09T11:20:00Z",
+  "updated_at": "2025-01-09T11:20:00Z",
+  "archived": false
+}
+```
+
+### Lock Management
+
+#### Acquire Lock
+```http
+POST /api/v1/lock/14
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "graphic_id": 14
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": 6,
+  "graphic_id": 14,
+  "user_name": "admin_user",
+  "locked": true,
+  "locked_at": "2025-01-09T11:25:00Z",
+  "expires_at": "2025-01-09T11:30:00Z"
+}
+```
+
+#### Get Lock Status
+```http
+GET /api/v1/lock/14/status
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+  "locked": true,
+  "lock_info": {
+    "id": 6,
+    "graphic_id": 14,
+    "user_name": "admin_user",
+    "locked": true,
+    "locked_at": "2025-01-09T11:25:00Z",
+    "expires_at": "2025-01-09T11:30:00Z"
+  },
+  "can_edit": true
+}
+```
+
+#### Release Lock
+```http
+DELETE /api/v1/lock/14
+Authorization: Bearer {token}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Lock released successfully"
+}
+```
+
+#### Refresh Lock
+```http
+POST /api/v1/lock/14/refresh
+Authorization: Bearer {token}
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": 6,
+  "graphic_id": 14,
+  "user_name": "admin_user",
+  "locked": true,
+  "locked_at": "2025-01-09T11:25:00Z",
+  "expires_at": "2025-01-09T11:35:00Z"
+}
+```
+
+### Archive Operations
+
+#### Archive Graphic
+```http
+POST /api/v1/archive/14
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "reason": "Season ended, preparing for next tournament"
+}
+```
+
+**Request Body:**
+```json
+{
+  "reason": "string (max 500 chars, optional)"
+}
+```
+
+**Response (200 OK):**
 ```json
 {
   "success": true,
   "message": "Graphic archived successfully",
-  "graphic_id": 13,
-  "archived_at": "2025-01-09T10:30:00Z"
+  "graphic_id": 14,
+  "archived_at": "2025-01-09T11:40:00Z"
 }
 ```
 
-### Acquire Lock
+#### Restore Archived Graphic
 ```http
-POST /api/v1/lock/13
+POST /api/v1/archive/14/restore
 Authorization: Bearer {token}
-Content-Type: application/json
-
-{
-  "graphic_id": 13
-}
 ```
 
-Response:
+**Response (200 OK):**
 ```json
 {
   "success": true,
-  "lock_id": 5,
-  "graphic_id": 13,
-  "locked_by": "username",
-  "expires_at": "2025-01-09T10:35:00Z",
-  "can_edit": true
+  "message": "Graphic restored successfully",
+  "graphic_id": 14,
+  "restored_at": "2025-01-09T11:45:00Z"
+}
+```
+
+#### Get Archived Graphics
+```http
+GET /api/v1/archive/?skip=0&limit=10
+Authorization: Bearer {token}
+```
+
+**Response:**
+```json
+{
+  "archives": [
+    {
+      "id": 14,
+      "title": "Updated Tournament Bracket",
+      "event_name": "Spring Tournament 2025",
+      "data_json": "{\"tournament_type\": \"double_elimination\", \"participants\": [...], \"rounds\": [...]}",
+      "created_by": "admin_user",
+      "created_at": "2025-01-09T11:00:00Z",
+      "updated_at": "2025-01-09T11:15:00Z",
+      "archived": true
+    }
+  ],
+  "total": 1,
+  "can_delete": true
+}
+```
+
+#### Permanent Delete (Admin Only)
+```http
+DELETE /api/v1/archive/14/permanent
+Authorization: Bearer {token}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Graphic permanently deleted successfully"
+}
+```
+
+### Maintenance Operations
+
+#### Cleanup Expired Locks (Admin Only)
+```http
+POST /api/v1/maintenance/cleanup-locks
+Authorization: Bearer {token}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Cleaned up 3 expired locks",
+  "cleaned_count": 3
 }
 ```
 

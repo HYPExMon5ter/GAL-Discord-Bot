@@ -1,3 +1,29 @@
+/**
+ * CanvasEditor Component
+ * 
+ * A comprehensive canvas editing interface for creating and managing graphics.
+ * Features include element manipulation, data binding, real-time collaboration,
+ * and undo/redo functionality.
+ * 
+ * Features:
+ * - Text and property element creation
+ * - Drag-and-drop element positioning
+ * - Data binding to tournament datasets
+ * - Background image upload
+ * - Grid snapping and alignment
+ * - Zoom and pan controls
+ * - Undo/redo operations
+ * - Lock management for collaborative editing
+ * 
+ * @example
+ * ```tsx
+ * <CanvasEditor 
+ *   graphic={graphicData} 
+ *   onClose={() => {}} 
+ *   onSave={async (data) => { return true; }}
+ * />
+ * ```
+ */
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -9,6 +35,9 @@ import {
   CanvasPropertyType,
   SnapLine,
   CanvasDataBinding,
+  CanvasDatasetBinding,
+  CanvasBindingSource,
+  CanvasBindingField,
 } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useLocks } from '@/hooks/use-locks';
@@ -54,12 +83,144 @@ import {
   DEFAULT_CANVAS_SETTINGS,
 } from '@/lib/canvas-helpers';
 
+const DEFAULT_ROW_SPACING = 56;
+
+function createDefaultDatasetBinding(): CanvasDatasetBinding {
+  return {
+    id: 'scoreboard',
+    snapshotId: 'latest',
+    rowMode: 'static',
+    row: 1,
+    rowSpacing: DEFAULT_ROW_SPACING,
+    maxRows: null,
+    gridId: null,
+    slot: null,
+    roundId: null,
+  };
+}
+
+function getDefaultFieldForElement(element: CanvasElement): CanvasBindingField {
+  if (element.type === 'player') return 'player_name';
+  if (element.type === 'score') return 'player_score';
+  if (element.type === 'placement') return 'player_placement';
+  return 'player_name';
+}
+
+function createDefaultBinding(element: CanvasElement): CanvasDataBinding {
+  return {
+    source: 'dataset',
+    field: getDefaultFieldForElement(element),
+    apiEndpoint: null,
+    manualValue: element.content ?? '',
+    fallbackText: element.placeholderText ?? element.content ?? '',
+    dataset: createDefaultDatasetBinding(),
+  };
+}
+
+interface BindingElementSummary {
+  element: CanvasElement;
+  binding: CanvasDataBinding;
+  dataset: CanvasDatasetBinding;
+}
+
+interface BindingGridSummary {
+  id: string;
+  elements: BindingElementSummary[];
+  dataset: CanvasDatasetBinding;
+}
+
+function ensureBinding(element: CanvasElement): CanvasDataBinding {
+  const defaultBinding = createDefaultBinding(element);
+  const existing = element.dataBinding;
+
+  if (!existing) {
+    return defaultBinding;
+  }
+
+  const normalizedDataset =
+    existing.dataset && existing.dataset.id === 'scoreboard'
+      ? {
+          ...createDefaultDatasetBinding(),
+          ...existing.dataset,
+        }
+      : existing.dataset ?? createDefaultDatasetBinding();
+
+  return {
+    ...defaultBinding,
+    ...existing,
+    dataset: normalizedDataset,
+  };
+}
+
+/**
+ * Props interface for the CanvasEditor component
+ * @interface CanvasEditorProps
+ */
 interface CanvasEditorProps {
+  /** The graphic object containing canvas data and metadata */
   graphic: Graphic;
+  /** Callback function called when the editor should be closed */
   onClose: () => void;
+  /** Callback function to save the modified canvas data */
   onSave: (data: { title: string; event_name: string; data_json: string }) => Promise<boolean>;
 }
 
+/**
+ * CanvasEditor - Main canvas editing component
+ * 
+ * A comprehensive React component for creating and editing graphics with
+ * advanced features including real-time collaboration, data binding,
+ * and element manipulation.
+ * 
+ * @function CanvasEditor
+ * @param {CanvasEditorProps} props - Component props
+ * @returns {JSX.Element} The rendered canvas editor interface
+ * 
+ * @example
+ * ```tsx
+ * <CanvasEditor 
+ *   graphic={{
+ *     id: 1,
+ *     title: "Tournament Graphic",
+ *     event_name: "Finals",
+ *     data_json: "{}",
+ *     created_by: "admin",
+ *     created_at: new Date(),
+ *     updated_at: new Date(),
+ *     archived: false
+ *   }}
+ *   onClose={() => console.log('Editor closed')}
+ *   onSave={async (data) => {
+ *     console.log('Saving:', data);
+ *     return true;
+ *   }}
+ * />
+ * ```
+ * 
+ * @features
+ * - Canvas element manipulation (text, shapes, images)
+ * - Real-time lock management for collaboration
+ * - Data binding to tournament datasets
+ * - Undo/redo functionality with history management
+ * - Grid snapping and alignment tools
+ * - Background image upload and management
+ * - Zoom and pan controls for navigation
+ * - Real-time preview and validation
+ * 
+ * @state
+ * - `lock`: Canvas lock status for collaborative editing
+ * - `canvasState`: Current canvas state with elements
+ * - `selectedElement`: Currently selected canvas element
+ * - `lockTimer`: Timer for lock expiration
+ * - `historyStack`: Undo/redo history management
+ * 
+ * @hooks
+ * - `useAuth()`: Authentication context
+ * - `useLocks()`: Lock management hooks
+ * - `useToast()`: Toast notifications
+ * - `useMemo()`: Memoized state calculations
+ * - `useCallback()`: Optimized event handlers
+ */
 export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const { username } = useAuth();
   const { acquireLock, releaseLock, refreshLock } = useLocks();
@@ -123,6 +284,50 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const bindingElements = useMemo<BindingElementSummary[]>(() => {
+    return elements
+      .filter(
+        (element) =>
+          element.type === 'text' || ['player', 'score', 'placement'].includes(element.type),
+      )
+      .map((element) => {
+        const binding = ensureBinding(element);
+        const dataset = binding.dataset ?? createDefaultDatasetBinding();
+        return { element, binding, dataset };
+      });
+  }, [elements]);
+
+  const bindingGrids = useMemo<BindingGridSummary[]>(() => {
+    const map = new Map<string, BindingGridSummary>();
+
+    bindingElements.forEach((item) => {
+      const gridId = item.dataset.gridId;
+      if (!gridId) return;
+
+      if (!map.has(gridId)) {
+        map.set(gridId, {
+          id: gridId,
+          elements: [],
+          dataset: { ...item.dataset },
+        });
+      }
+
+      const summary = map.get(gridId)!;
+      summary.elements.push(item);
+    });
+
+    return Array.from(map.values());
+  }, [bindingElements]);
+
+  const representativeDataset = useMemo<CanvasDatasetBinding | null>(() => {
+    const found = bindingElements.find(
+      (item) => item.binding.source !== 'manual' && item.dataset?.id === 'scoreboard',
+    );
+    return found?.dataset ?? null;
+  }, [bindingElements]);
+
+  const snapshotInputRef = useRef<HTMLInputElement>(null);
 
   // Load canvas data
   useEffect(() => {
@@ -297,6 +502,93 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     },
     [elements, gridSize, gridSnapEnabled, addToHistory],
   );
+
+  const updateElementBinding = useCallback(
+    (
+      elementId: string,
+      patch: Partial<CanvasDataBinding>,
+      datasetPatch?: Partial<CanvasDatasetBinding> | null,
+    ) => {
+      const element = elements.find((item) => item.id === elementId);
+      if (!element) return;
+
+      const currentBinding = ensureBinding(element);
+      const nextDataset =
+        datasetPatch === undefined
+          ? currentBinding.dataset ?? null
+          : datasetPatch === null
+          ? null
+          : {
+              ...(currentBinding.dataset ?? createDefaultDatasetBinding()),
+              ...datasetPatch,
+            };
+
+      const nextBinding: CanvasDataBinding = {
+        ...currentBinding,
+        ...patch,
+        dataset: nextDataset,
+      };
+
+      updateElement(elementId, { dataBinding: nextBinding });
+    },
+    [elements, updateElement],
+  );
+
+  const updateGridElements = useCallback(
+    (gridId: string, datasetPatch: Partial<CanvasDatasetBinding>) => {
+      bindingElements
+        .filter(
+          (item) =>
+            item.dataset.gridId === gridId && item.binding.source !== 'manual',
+        )
+        .forEach((item) => {
+          updateElementBinding(item.element.id, { source: 'dataset' }, datasetPatch);
+        });
+    },
+    [bindingElements, updateElementBinding],
+  );
+
+  const applySnapshotToBindings = useCallback(() => {
+    if (!snapshotInputRef.current) return;
+    const raw = snapshotInputRef.current.value.trim();
+    let snapshotId: CanvasDatasetBinding['snapshotId'];
+
+    if (raw === '' || raw.toLowerCase() === 'latest') {
+      snapshotId = 'latest';
+    } else {
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        toast({
+          title: 'Invalid snapshot id',
+          description: 'Enter a positive integer id or `latest`.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      snapshotId = Math.floor(parsed);
+    }
+
+    let updated = 0;
+    bindingElements.forEach((item) => {
+      if (item.binding.source === 'manual') return;
+      updateElementBinding(item.element.id, { source: 'dataset' }, { snapshotId });
+      updated += 1;
+    });
+
+    toast({
+      title: 'Snapshot applied',
+      description:
+        updated > 0
+          ? `Updated ${updated} binding${updated === 1 ? '' : 's'} to ${
+              snapshotId === 'latest' ? 'use the latest snapshot' : `snapshot #${snapshotId}`
+            }.`
+          : 'No dataset-bound elements were updated.',
+    });
+    if (snapshotInputRef.current) {
+      snapshotInputRef.current.value =
+        snapshotId === 'latest' ? 'latest' : String(snapshotId);
+    }
+  }, [bindingElements, updateElementBinding, toast]);
 
   const deleteElement = useCallback(
     (elementId: string) => {
@@ -1079,47 +1371,256 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               </>
                             )}
 
-                            {['player', 'score', 'placement'].includes(selectedElement.type) && (
-                              <>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Type</label>
-                                  <div className="text-sm font-medium capitalize flex items-center gap-2">
-                                    {selectedElement.type === 'player' && <User className="h-4 w-4" />}
-                                    {selectedElement.type === 'score' && <Trophy className="h-4 w-4" />}
-                                    {selectedElement.type === 'placement' && <Medal className="h-4 w-4" />}
-                                    {selectedElement.type} Property
-                                  </div>
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Data Binding</label>
-                                  <Select
-                                    value={selectedElement.dataBinding?.field || ''}
-                                    onValueChange={(value) => {
-                                      const binding: CanvasDataBinding = {
-                                        source: selectedElement.dataBinding?.source ?? 'api',
-                                        apiEndpoint: selectedElement.dataBinding?.apiEndpoint ?? null,
-                                        manualValue: selectedElement.dataBinding?.manualValue ?? null,
-                                        field: value as CanvasDataBinding['field'],
-                                      };
+                            {['player', 'score', 'placement'].includes(selectedElement.type) &&
+                              (() => {
+                                const binding = ensureBinding(selectedElement);
+                                const dataset = binding.dataset ?? createDefaultDatasetBinding();
+                                const effectiveSource: CanvasBindingSource =
+                                  binding.source === 'manual' ? 'manual' : 'dataset';
+                                const rowMode = dataset.rowMode ?? 'static';
 
-                                      updateElement(selectedElement.id, {
-                                        dataBinding: binding,
-                                      });
-                                    }}
-                                  >
-                                    <SelectTrigger className="h-10">
-                                      <SelectValue placeholder="Select field..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="player_name">Player Name</SelectItem>
-                                      <SelectItem value="player_score">Player Score</SelectItem>
-                                      <SelectItem value="player_placement">Player Placement</SelectItem>
-                                      <SelectItem value="player_rank">Player Rank</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </>
-                            )}
+                                return (
+                                  <>
+                                    <div>
+                                      <label className="text-xs text-muted-foreground">Type</label>
+                                      <div className="text-sm font-medium capitalize flex items-center gap-2">
+                                        {selectedElement.type === 'player' && <User className="h-4 w-4" />}
+                                        {selectedElement.type === 'score' && <Trophy className="h-4 w-4" />}
+                                        {selectedElement.type === 'placement' && <Medal className="h-4 w-4" />}
+                                        {selectedElement.type} Property
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <label className="text-xs text-muted-foreground">Binding Source</label>
+                                      <Select
+                                        value={effectiveSource}
+                                        onValueChange={(value) => {
+                                          const nextSource = value as CanvasBindingSource;
+                                          if (nextSource === 'manual') {
+                                            updateElementBinding(
+                                              selectedElement.id,
+                                              { source: 'manual', manualValue: binding.manualValue ?? '' },
+                                              undefined,
+                                            );
+                                          } else {
+                                            updateElementBinding(
+                                              selectedElement.id,
+                                              { source: 'dataset' },
+                                              binding.dataset ? undefined : createDefaultDatasetBinding(),
+                                            );
+                                          }
+                                        }}
+                                      >
+                                        <SelectTrigger className="h-10">
+                                          <SelectValue placeholder="Select source..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="dataset">Scoreboard Dataset</SelectItem>
+                                          <SelectItem value="manual">Manual Value</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    {effectiveSource === 'manual' ? (
+                                      <div>
+                                        <label className="text-xs text-muted-foreground">Manual Value</label>
+                                        <Input
+                                          value={binding.manualValue ?? ''}
+                                          onChange={(e) =>
+                                            updateElementBinding(selectedElement.id, {
+                                              manualValue: e.target.value,
+                                            })
+                                          }
+                                          placeholder="Enter fallback text..."
+                                        />
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div>
+                                          <label className="text-xs text-muted-foreground">Dataset Field</label>
+                                          <Select
+                                            value={binding.field}
+                                            onValueChange={(value) =>
+                                              updateElementBinding(selectedElement.id, {
+                                                source: 'dataset',
+                                                field: value as CanvasBindingField,
+                                              })
+                                            }
+                                          >
+                                            <SelectTrigger className="h-10">
+                                              <SelectValue placeholder="Select field..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="player_name">Player Name</SelectItem>
+                                              <SelectItem value="player_score">Total Points</SelectItem>
+                                              <SelectItem value="total_points">Total Points (Raw)</SelectItem>
+                                              <SelectItem value="player_placement">Placement</SelectItem>
+                                              <SelectItem value="standing_rank">Standing Rank</SelectItem>
+                                              <SelectItem value="player_rank">Podium Rank (Legacy)</SelectItem>
+                                              <SelectItem value="round_score">Round Score</SelectItem>
+                                              <SelectItem value="team_name">Team Name</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+
+                                        {binding.field === 'round_score' && (
+                                          <div>
+                                            <label className="text-xs text-muted-foreground">Round Identifier</label>
+                                            <Input
+                                              value={dataset.roundId ?? ''}
+                                              onChange={(e) =>
+                                                updateElementBinding(
+                                                  selectedElement.id,
+                                                  { source: 'dataset' },
+                                                  { roundId: e.target.value.trim() || null },
+                                                )
+                                              }
+                                              placeholder="round_1"
+                                            />
+                                          </div>
+                                        )}
+
+                                        <div>
+                                          <label className="text-xs text-muted-foreground">Row Mode</label>
+                                          <Select
+                                            value={rowMode}
+                                            onValueChange={(value) =>
+                                              updateElementBinding(
+                                                selectedElement.id,
+                                                { source: 'dataset' },
+                                                { rowMode: value as CanvasDatasetBinding['rowMode'] },
+                                              )
+                                            }
+                                          >
+                                            <SelectTrigger className="h-10">
+                                              <SelectValue placeholder="Select mode..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="template">Repeat for dataset</SelectItem>
+                                              <SelectItem value="static">Single row</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+
+                                        {rowMode === 'static' ? (
+                                          <div>
+                                            <label className="text-xs text-muted-foreground">Row Number</label>
+                                            <Input
+                                              type="number"
+                                              min={1}
+                                              value={dataset.row ?? 1}
+                                              onChange={(e) => {
+                                                const parsed = Number(e.target.value);
+                                                const row = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+                                                updateElementBinding(
+                                                  selectedElement.id,
+                                                  { source: 'dataset' },
+                                                  { row },
+                                                );
+                                              }}
+                                            />
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <div>
+                                              <label className="text-xs text-muted-foreground">Row Spacing (px)</label>
+                                              <Input
+                                                type="number"
+                                                min={0}
+                                                value={dataset.rowSpacing ?? DEFAULT_ROW_SPACING}
+                                                onChange={(e) => {
+                                                  const parsed = Number(e.target.value);
+                                                  updateElementBinding(
+                                                    selectedElement.id,
+                                                    { source: 'dataset' },
+                                                    {
+                                                      rowSpacing: Number.isFinite(parsed)
+                                                        ? parsed
+                                                        : DEFAULT_ROW_SPACING,
+                                                    },
+                                                  );
+                                                }}
+                                              />
+                                            </div>
+                                            <div>
+                                              <label className="text-xs text-muted-foreground">Max Rows</label>
+                                              <Input
+                                                type="number"
+                                                min={1}
+                                                value={dataset.maxRows ?? ''}
+                                                onChange={(e) => {
+                                                  const raw = e.target.value.trim();
+                                                  const parsed = Number(raw);
+                                                  updateElementBinding(
+                                                    selectedElement.id,
+                                                    { source: 'dataset' },
+                                                    {
+                                                      maxRows:
+                                                        raw === ''
+                                                          ? null
+                                                          : Number.isFinite(parsed)
+                                                          ? Math.max(1, parsed)
+                                                          : null,
+                                                    },
+                                                  );
+                                                }}
+                                              />
+                                            </div>
+                                          </>
+                                        )}
+
+                                        <div>
+                                          <label className="text-xs text-muted-foreground">Grid ID</label>
+                                          <Input
+                                            value={dataset.gridId ?? ''}
+                                            onChange={(e) =>
+                                              updateElementBinding(
+                                                selectedElement.id,
+                                                { source: 'dataset' },
+                                                {
+                                                  gridId: e.target.value.trim() ? e.target.value.trim() : null,
+                                                },
+                                              )
+                                            }
+                                            placeholder="scoreboard-grid"
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="text-xs text-muted-foreground">Slot</label>
+                                          <Input
+                                            value={dataset.slot ?? ''}
+                                            onChange={(e) =>
+                                              updateElementBinding(
+                                                selectedElement.id,
+                                                { source: 'dataset' },
+                                                {
+                                                  slot: e.target.value.trim() ? e.target.value.trim() : null,
+                                                },
+                                              )
+                                            }
+                                            placeholder="player_name / total / round_1"
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+
+                                    <div>
+                                      <label className="text-xs text-muted-foreground">Fallback Text</label>
+                                      <Input
+                                        value={binding.fallbackText ?? ''}
+                                        onChange={(e) =>
+                                          updateElementBinding(selectedElement.id, {
+                                            fallbackText: e.target.value,
+                                          })
+                                        }
+                                        placeholder="Shown when data missing..."
+                                      />
+                                    </div>
+                                  </>
+                                );
+                              })()}
                             
                             {selectedElement.type !== 'text' && (
                               <div className="grid grid-cols-2 gap-2">
@@ -1276,65 +1777,283 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 </TabsContent>
 
                 <TabsContent value="data" className="m-0 h-full overflow-auto p-2">
-                  <div className="p-4">
+                  <div className="p-4 space-y-4">
                     <Card>
                       <CardHeader>
-                        <CardTitle>Data Source</CardTitle>
+                        <CardTitle>Scoreboard Dataset</CardTitle>
                       </CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          <div>
-                            <label>Bind To</label>
-                            <Select disabled={!lock || lock.user_name !== username}>
-                              <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Select data source..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="lobby-specific">Specific Lobby & Round</SelectItem>
-                                <SelectItem value="roster">Player Roster</SelectItem>
-                                <SelectItem value="tournament">Tournament Data</SelectItem>
-                                <SelectItem value="custom">Custom Data</SelectItem>
-                              </SelectContent>
-                            </Select>
+                      <CardContent className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Bindings resolve against persisted scoreboard snapshots. Refresh snapshots with the
+                          Discord `/gal standings` command before going live.
+                        </p>
+                        <div className="space-y-2">
+                          <label className="text-xs text-muted-foreground">Snapshot Id</label>
+                          <div className="flex gap-2">
+                            <Input
+                              ref={snapshotInputRef}
+                              defaultValue={
+                                representativeDataset?.snapshotId === 'latest' ||
+                                representativeDataset?.snapshotId == null
+                                  ? 'latest'
+                                  : String(representativeDataset.snapshotId)
+                              }
+                              placeholder="latest"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={applySnapshotToBindings}
+                            >
+                              Apply
+                            </Button>
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            Use `latest` to always use the newest snapshot or enter a specific snapshot id to freeze
+                            standings.
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
 
-                          {elements.filter((el: any) => el.type === 'text' || ['player', 'score', 'placement'].includes(el.type)).map((element) => (
-                            <div key={element.id} className="space-y-2">
-                              <div className="text-sm font-medium">{element.content}</div>
-                              <Select
-                                value={element.dataBinding?.field || ''}
-                                onValueChange={(value) => {
-                                  const existingBinding = element.dataBinding ?? {
-                                    source: 'api' as CanvasDataBinding['source'],
-                                    apiEndpoint: null,
-                                    manualValue: null,
-                                    field: 'player_name' as CanvasDataBinding['field'],
-                                  };
-
-                                  const binding: CanvasDataBinding = {
-                                    source: existingBinding.source,
-                                    apiEndpoint: existingBinding.apiEndpoint ?? null,
-                                    manualValue: existingBinding.manualValue ?? null,
-                                    field: value as CanvasDataBinding['field'],
-                                  };
-
-                                  updateElement(element.id, { dataBinding: binding });
-                                }}
-                              >
-                                <SelectTrigger className="h-10">
-                                  <SelectValue placeholder="Bind to field..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="player_name">Player Name</SelectItem>
-                                  <SelectItem value="player_score">Player Score</SelectItem>
-                                  <SelectItem value="player_placement">Player Placement</SelectItem>
-                                  <SelectItem value="player_rank">Player Rank</SelectItem>
-                                  <SelectItem value="team_name">Team Name</SelectItem>
-                                </SelectContent>
-                              </Select>
+                    {bindingGrids.length > 0 && (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Binding Grids</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {bindingGrids.map((grid) => (
+                            <div
+                              key={grid.id}
+                              className="space-y-3 rounded border border-border/60 p-3"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-sm font-medium">{grid.id}</div>
+                                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                                  {grid.elements.length} element{grid.elements.length === 1 ? '' : 's'}
+                                </div>
+                              </div>
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Row Mode</label>
+                                  <Select
+                                    value={grid.dataset.rowMode ?? 'template'}
+                                    onValueChange={(value) =>
+                                      updateGridElements(grid.id, {
+                                        rowMode: value as CanvasDatasetBinding['rowMode'],
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="h-10">
+                                      <SelectValue placeholder="Select mode..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="template">Repeat for dataset</SelectItem>
+                                      <SelectItem value="static">Single row</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Row Spacing (px)</label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={grid.dataset.rowSpacing ?? DEFAULT_ROW_SPACING}
+                                    onChange={(e) => {
+                                      const parsed = Number(e.target.value);
+                                      updateGridElements(grid.id, {
+                                        rowSpacing: Number.isFinite(parsed) ? parsed : DEFAULT_ROW_SPACING,
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Max Rows</label>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    value={grid.dataset.maxRows ?? ''}
+                                    onChange={(e) => {
+                                      const raw = e.target.value.trim();
+                                      const parsed = Number(raw);
+                                      updateGridElements(grid.id, {
+                                        maxRows:
+                                          raw === ''
+                                            ? null
+                                            : Number.isFinite(parsed)
+                                            ? Math.max(1, parsed)
+                                            : null,
+                                      });
+                                    }}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Template Guidance</label>
+                                  <p className="text-xs text-muted-foreground">
+                                    Draw a single prototype row. The runtime duplicates it for each dataset entry using
+                                    the spacing above.
+                                  </p>
+                                </div>
+                              </div>
                             </div>
                           ))}
-                        </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Bound Elements</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {bindingElements.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            No bindable elements yet. Add player/score/placement elements from the Design tab.
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {bindingElements.map(({ element, binding, dataset }) => {
+                              const effectiveSource: CanvasBindingSource =
+                                binding.source === 'manual' ? 'manual' : 'dataset';
+                              const displayLabel =
+                                element.content ||
+                                binding.fallbackText ||
+                                element.placeholderText ||
+                                `Element ${element.id.slice(0, 6)}`;
+                              const rowLabel =
+                                effectiveSource === 'manual'
+                                  ? 'Manual'
+                                  : dataset.rowMode === 'template'
+                                  ? 'Repeats'
+                                  : `Row ${dataset.row ?? 1}`;
+
+                              return (
+                                <div
+                                  key={element.id}
+                                  className="space-y-3 rounded border border-border/60 bg-card/40 p-3"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="text-sm font-medium truncate">{displayLabel}</div>
+                                    <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                                      {rowLabel}
+                                    </div>
+                                  </div>
+
+                                  {effectiveSource === 'manual' ? (
+                                    <div>
+                                      <label className="text-xs text-muted-foreground">Manual Value</label>
+                                      <Input
+                                        value={binding.manualValue ?? ''}
+                                        onChange={(e) =>
+                                          updateElementBinding(element.id, {
+                                            manualValue: e.target.value,
+                                            source: 'manual',
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div>
+                                        <label className="text-xs text-muted-foreground">Field</label>
+                                        <Select
+                                          value={binding.field}
+                                          onValueChange={(value) =>
+                                            updateElementBinding(element.id, {
+                                              source: 'dataset',
+                                              field: value as CanvasBindingField,
+                                            })
+                                          }
+                                        >
+                                          <SelectTrigger className="h-9">
+                                            <SelectValue placeholder="Select field..." />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="player_name">Player Name</SelectItem>
+                                            <SelectItem value="player_score">Total Points</SelectItem>
+                                            <SelectItem value="total_points">Total Points (Raw)</SelectItem>
+                                            <SelectItem value="player_placement">Placement</SelectItem>
+                                            <SelectItem value="standing_rank">Standing Rank</SelectItem>
+                                            <SelectItem value="player_rank">Podium Rank (Legacy)</SelectItem>
+                                            <SelectItem value="round_score">Round Score</SelectItem>
+                                            <SelectItem value="team_name">Team Name</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+
+                                      {binding.field === 'round_score' && (
+                                        <div>
+                                          <label className="text-xs text-muted-foreground">Round Identifier</label>
+                                          <Input
+                                            value={dataset.roundId ?? ''}
+                                            onChange={(e) =>
+                                              updateElementBinding(
+                                                element.id,
+                                                { source: 'dataset' },
+                                                { roundId: e.target.value.trim() || null },
+                                              )
+                                            }
+                                            placeholder="round_1"
+                                          />
+                                        </div>
+                                      )}
+
+                                      {dataset.rowMode === 'static' && (
+                                        <div>
+                                          <label className="text-xs text-muted-foreground">Row</label>
+                                          <Input
+                                            type="number"
+                                            min={1}
+                                            value={dataset.row ?? 1}
+                                            onChange={(e) => {
+                                              const parsed = Number(e.target.value);
+                                              updateElementBinding(
+                                                element.id,
+                                                { source: 'dataset' },
+                                                { row: Number.isFinite(parsed) && parsed > 0 ? parsed : 1 },
+                                              );
+                                            }}
+                                          />
+                                        </div>
+                                      )}
+
+                                      <div>
+                                        <label className="text-xs text-muted-foreground">Slot</label>
+                                        <Input
+                                          value={dataset.slot ?? ''}
+                                          placeholder="player_name / total / round_1"
+                                          onChange={(e) =>
+                                            updateElementBinding(
+                                              element.id,
+                                              { source: 'dataset' },
+                                              {
+                                                slot: e.target.value.trim() ? e.target.value.trim() : null,
+                                              },
+                                            )
+                                          }
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Fallback Text</label>
+                                    <Input
+                                      value={binding.fallbackText ?? ''}
+                                      onChange={(e) =>
+                                        updateElementBinding(element.id, {
+                                          fallbackText: e.target.value,
+                                        })
+                                      }
+                                      placeholder="Shown when data missing..."
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </div>

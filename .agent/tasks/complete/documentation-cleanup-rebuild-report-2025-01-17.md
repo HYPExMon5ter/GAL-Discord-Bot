@@ -240,8 +240,8 @@ The documentation system is now in excellent condition with comprehensive covera
 ## Appendix
 
 ### Files Referenced
-1. [Frontend API Structure SOP](../../drafts/frontend-api-structure-sop.md)
-2. [Testing Infrastructure SOP](../../drafts/testing-infrastructure-sop.md)
+1. [Frontend API Structure SOP](../../sops/frontend-api-structure-sop.md)
+2. [Testing Infrastructure SOP](../../sops/testing-infrastructure-sop.md)
 3. [Performance Monitoring SOP](../../sops/performance-monitoring-sop.md)
 4. [System Cross-References](../../system-cross-references.md)
 

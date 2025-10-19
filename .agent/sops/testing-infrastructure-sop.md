@@ -446,7 +446,7 @@ npx nyc report --reporter=text
 - [Dashboard Operations SOP](../sops/dashboard-operations.md)
 - [Component Lifecycle Management SOP](../sops/component-lifecycle-management.md)
 - [Integration Testing Procedures](../sops/integration-testing-procedures.md)
-- [Frontend API Structure SOP](../drafts/frontend-api-structure-sop.md)
+- [Frontend API Structure SOP](../sops/frontend-api-structure-sop.md)
 
 ---
 

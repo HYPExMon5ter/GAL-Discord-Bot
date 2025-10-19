@@ -79,6 +79,13 @@ Welcome to the Guardian Angel League (GAL) documentation system. This index prov
 
 #### Configuration Guide
 - **[Configuration Guide](configuration-guide.md)** - Complete configuration documentation for all system components
+- **[Configuration Management](CONFIGURATION.md)** - Database standardization and registration system improvements
+
+#### API Documentation
+- **[API Schema Documentation](api-schema-documentation.md)** - Enhanced with IGN verification API and fallback logic documentation
+
+#### Release Documentation
+- **[CHANGELOG.md](../CHANGELOG.md)** - Comprehensive changelog documenting system reliability improvements
 
 #### Component Documentation
 - **[CanvasEditor.tsx](../dashboard/components/canvas/CanvasEditor.tsx)** - Enhanced with comprehensive JSDoc documentation
@@ -127,7 +134,11 @@ Discord API ← Google Sheets → Riot API → External APIs
 ### For Users
 - **Bot Features**: [Bot Current Features](../.agent/system/bot_current_features.md) - Discord bot capabilities
 - **Dashboard**: [Live Graphics Dashboard](../.agent/system/live-graphics-dashboard.md) - Dashboard features
-- **Configuration**: [Configuration Guide](configuration-guide.md) - System configuration
+- **Configuration**: 
+  - [Configuration Guide](configuration-guide.md) - Complete system configuration
+  - [Configuration Management](CONFIGURATION.md) - Database and registration configuration
+  - [API Schema Documentation](api-schema-documentation.md) - API documentation with fallback logic
+- **Changelog**: [CHANGELOG.md](../CHANGELOG.md) - Recent system improvements and fixes
 
 ## 📊 Documentation Metrics
 

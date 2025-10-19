@@ -461,8 +461,192 @@ Authorization: Bearer <token>
 }
 ```
 
+## IGN Verification API
+
+### Health Check
+**Endpoint**: `GET /api/v1/ign-verification/health`
+
+**Response**:
+```json
+{
+  "status": "healthy",
+  "service": "ign-verification",
+  "timestamp": "2025-01-19T10:30:00Z",
+  "version": "1.0.0"
+}
+```
+
+### IGN Verification
+**Endpoint**: `POST /api/v1/ign-verification/verify`
+
+**Request**:
+```json
+{
+  "ign": "PlayerName123",
+  "region": "na"
+}
+```
+
+**Fields:**
+- `ign` (string, required): In-Game Name to verify
+- `region` (string, required): Riot API region (na, euw, kr, etc.)
+
+**Response (Success - User Exists)**:
+```json
+{
+  "exists": true,
+  "verified": true,
+  "ign": "PlayerName123",
+  "region": "na",
+  "riot_data": {
+    "puuid": "riot-puuid-example",
+    "summoner_id": "summoner-id-example",
+    "account_id": "account-id-example",
+    "level": 150,
+    "profile_icon_id": 1234
+  },
+  "verification_timestamp": "2025-01-19T10:30:00Z"
+}
+```
+
+**Response (Success - User Doesn't Exist)**:
+```json
+{
+  "exists": false,
+  "verified": true,
+  "ign": "PlayerName123",
+  "region": "na",
+  "riot_data": null,
+  "verification_timestamp": "2025-01-19T10:30:00Z",
+  "message": "IGN is available for registration"
+}
+```
+
+**Response (API Failure - Fallback Mode)**:
+```json
+{
+  "exists": null,
+  "verified": false,
+  "ign": "PlayerName123",
+  "region": "na",
+  "riot_data": null,
+  "error": "API_UNAVAILABLE",
+  "message": "IGN verification temporarily unavailable - registration allowed via fallback",
+  "fallback_activated": true,
+  "verification_timestamp": "2025-01-19T10:30:00Z"
+}
+```
+
+**Error Responses**:
+```json
+{
+  "detail": "Invalid request format",
+  "error_code": "INVALID_REQUEST"
+}
+```
+
+```json
+{
+  "detail": "Rate limit exceeded",
+  "error_code": "RATE_LIMITED",
+  "retry_after": 60
+}
+```
+
+**Fallback Behavior Documentation**:
+
+The IGN verification API implements resilient fallback logic to ensure tournament registration can continue even when external services are unavailable.
+
+#### Fallback Scenarios
+1. **Riot API Unavailable**: Service timeouts or rate limiting
+2. **Network Issues**: Connection failures or DNS resolution problems
+3. **Service Maintenance**: API endpoints temporarily unavailable
+4. **Authentication Failures**: Invalid API credentials or token expiration
+
+#### Fallback Logic
+```python
+# Pseudocode for fallback behavior
+try:
+    # Try Riot API verification
+    result = await verify_with_riot_api(ign, region)
+    return result
+except Exception as e:
+    # Any failure triggers fallback
+    log_error("IGN verification failed", e)
+    return {
+        "exists": null,
+        "verified": false,
+        "fallback_activated": true,
+        "message": "Registration allowed via fallback"
+    }
+```
+
+#### Integration with Registration System
+The registration system uses the API fallback as follows:
+
+1. **Normal Operation**: API responds with explicit `exists: true/false`
+2. **Fallback Activation**: API responds with `exists: null` and `fallback_activated: true`
+3. **Registration Decision**: System allows registration when fallback is activated
+4. **User Notification**: Clear message about verification status
+5. **Monitoring**: Comprehensive logging for follow-up when services restore
+
+#### Configuration for Fallback
+```yaml
+registration:
+  api_fallback_enabled: true
+  allow_registration_on_api_failure: true
+  show_fallback_messages: true
+  log_api_failures: true
+  api_timeout_seconds: 10
+  max_retries: 3
+```
+
+#### Monitoring Fallback Events
+```bash
+# Check for fallback activation in logs
+grep -i "fallback.*activated\|api.*unavailable" gal_bot.log
+
+# Monitor API health status
+curl -f http://localhost:8000/api/v1/ign-verification/health
+
+# Check verification API performance
+grep "ign.*verification.*completed\|ign.*verification.*failed" gal_bot.log
+```
+
+### Registration Integration Example
+
+```python
+# Example of how registration system integrates with fallback API
+async def process_registration(ign: str, discord_username: str, region: str = "na"):
+    try:
+        # Call IGN verification API
+        response = await verify_ign_api(ign, region)
+        
+        if response["verified"]:
+            if response["exists"] is False:
+                # IGN is available - proceed with registration
+                await complete_registration(ign, discord_username)
+                return "Registration successful - IGN available"
+            elif response["exists"] is True:
+                # IGN already exists - block registration
+                return "Registration failed - IGN already in use"
+            elif response["fallback_activated"]:
+                # API failed - allow registration via fallback
+                await complete_registration(ign, discord_username)
+                await log_fallback_event(ign, response)
+                return "Registration successful via fallback - API temporarily unavailable"
+        else:
+            return "Registration failed - verification error"
+            
+    except Exception as e:
+        # Complete system failure - allow registration
+        await complete_registration(ign, discord_username)
+        await log_system_failure(ign, e)
+        return "Registration successful - system fallback activated"
+```
+
 ---
 
 **Note**: All timestamps are in ISO 8601 format (UTC).  
 **Version**: 1.0.0  
-**Last Updated**: 2025-01-18
+**Last Updated**: 2025-01-19

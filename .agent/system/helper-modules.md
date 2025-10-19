@@ -45,4 +45,4 @@ safe_message = sanitize_log_message("Login with token: abcdef...")
 
 ---
 
-*Generated: 2025-10-18 02:10:26*
+*Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}*

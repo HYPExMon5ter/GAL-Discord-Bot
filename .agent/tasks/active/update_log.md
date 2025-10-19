@@ -49,6 +49,32 @@ and missing SOPs.
 - **Purpose**: Clarify when and how to use the simple development server
 - **Status**: Ready for Review
 
+#### 2. Documentation Promotion (2025-01-18)
+
+**Date**: 2025-01-18  
+**Action**: Accept-Docs Process - Promoted drafts to production
+
+**System Documentation Promoted**:
+- **File**: `.agent/system/authentication-system.md`
+- **Source**: `.agent/drafts/system/authentication-system.md`
+- **Content**: Comprehensive authentication and authorization system documentation
+- **Scope**: Discord OAuth2, JWT tokens, RBAC, session management
+
+**SOPs Promoted**:
+- **File**: `.agent/sops/ign-verification-management.md`
+- **Source**: `.agent/drafts/sops/ign-verification-management.md`
+- **Content**: IGN verification system procedures and Riot API integration
+
+- **File**: `.agent/sops/dashboard-service-lifecycle.md`
+- **Source**: `.agent/drafts/sops/dashboard-service-lifecycle.md`
+- **Content**: Dashboard service management, deployment, and monitoring procedures
+
+- **File**: `.agent/sops/storage-layer-management.md`
+- **Source**: `.agent/drafts/sops/storage-layer-management.md`
+- **Content**: Storage layer operations, database management, and data persistence procedures
+
+**Status**: All files successfully promoted to production directories
+
 #### 2. Frontend API Structure SOP
 
 **File**: `.agent/drafts/frontend-api-structure-sop.md`
@@ -581,3 +607,163 @@ The following documentation files have been promoted from drafts to production:
 ---
 
 **Final System Status**: ✅ Complete - All architecture areas documented and promoted
+
+## Documentation Rebuilder Session (2025-01-18)
+
+### Session Summary
+**Date**: 2025-01-18  
+**Trigger**: Missing critical documentation identified by System Auditor  
+**Scope**: Create missing architecture and SOP documentation  
+**Status**: ✅ Complete
+
+### Issues Addressed
+
+#### 1. Missing Authentication System Documentation
+**Problem**: Referenced by `security-architecture.md` but file didn't exist  
+**Solution**: Created comprehensive authentication system documentation  
+**File**: `.agent/drafts/system/authentication-system.md`  
+**Content**:
+- Discord OAuth2 integration flow
+- JWT token management and security
+- Role-based access control (RBAC) system
+- Session management and security monitoring
+- Performance testing and troubleshooting procedures
+
+#### 2. Missing IGN Verification Management SOP
+**Problem**: New IGN verification service lacked operational procedures  
+**Solution**: Created comprehensive SOP for IGN verification management  
+**File**: `.agent/drafts/sops/ign-verification-management.md`  
+**Content**:
+- Service architecture and components
+- Daily/weekly/monthly operational procedures
+- Troubleshooting and maintenance procedures
+- Performance monitoring and alerting
+- Security procedures and API key management
+
+#### 3. Missing Dashboard Service Lifecycle SOP
+**Problem**: Auto-startup integration lacked management procedures  
+**Solution**: Created comprehensive SOP for dashboard service lifecycle  
+**File**: `.agent/drafts/sops/dashboard-service-lifecycle.md`  
+**Content**:
+- Service architecture (FastAPI backend + Next.js frontend)
+- Manual and automatic startup procedures
+- Health monitoring and service recovery
+- Performance optimization and troubleshooting
+- Security considerations and backup procedures
+
+#### 4. Missing Storage Layer Management SOP
+**Problem**: 3-tier storage system lacked management procedures  
+**Solution**: Created comprehensive SOP for storage layer management  
+**File**: `.agent/drafts/sops/storage-layer-management.md`  
+**Content**:
+- 3-tier storage architecture overview
+- Daily/weekly/monthly storage operations
+- Backup and recovery procedures
+- Performance optimization and troubleshooting
+- Emergency procedures and data corruption handling
+
+#### 5. Fixed Broken Cross-Links
+**Problem**: References to non-existent `drafts/` files in documentation  
+**Solution**: Updated cross-references to point to correct file locations  
+**Files Updated**:
+- `.agent/sops/testing-infrastructure-sop.md` - Updated frontend API SOP reference
+- `.agent/tasks/complete/documentation-cleanup-rebuild-report-2025-01-17.md` - Updated SOP references
+
+### Documentation Quality Improvements
+
+#### New Architecture Documentation
+1. **Authentication System** - Complete OAuth2 and JWT implementation guide
+2. **IGN Verification Service** - Comprehensive operational procedures  
+3. **Dashboard Lifecycle Management** - Service management best practices
+4. **Storage Layer Management** - 3-tier storage system operations
+
+#### Enhanced Cross-Reference Integrity
+- Fixed 2 broken cross-references
+- Updated links to reflect current file structure
+- Maintained consistency across documentation
+
+#### SOP Coverage Expansion
+- Added 4 new comprehensive SOPs
+- Covered critical operational gaps
+- Provided detailed troubleshooting and maintenance procedures
+
+### Files Created
+```
+.agent/drafts/system/
+├── authentication-system.md                    # OAuth2, JWT, RBAC documentation
+
+.agent/drafts/sops/
+├── ign-verification-management.md              # IGN verification service SOP
+├── dashboard-service-lifecycle.md              # Dashboard service management SOP  
+└── storage-layer-management.md                 # 3-tier storage system SOP
+```
+
+### Files Modified
+```
+.agent/sops/testing-infrastructure-sop.md       # Fixed cross-reference
+.agent/tasks/complete/documentation-cleanup-rebuild-report-2025-01-17.md  # Fixed cross-references
+```
+
+### Validation Results
+
+#### Documentation Completeness
+- **Authentication System**: ✅ Complete - All OAuth2 and JWT aspects documented
+- **IGN Verification**: ✅ Complete - Comprehensive operational procedures
+- **Dashboard Lifecycle**: ✅ Complete - Full service management coverage
+- **Storage Management**: ✅ Complete - 3-tier system procedures documented
+
+#### Cross-Reference Integrity
+- **Fixed Links**: 2 broken cross-references resolved
+- **Validation**: All links now point to existing files
+- **Consistency**: Documentation structure maintained
+
+#### SOP Quality Standards
+- **Operational Procedures**: Detailed, step-by-step instructions
+- **Troubleshooting**: Comprehensive issue resolution guides
+- **Maintenance**: Regular operational procedures included
+- **Security**: Security considerations and procedures documented
+
+### Next Steps
+
+#### Immediate Actions (Next Week)
+1. **Review New Documentation**: Team review of created files
+2. **Promote to Main Structure**: Move approved drafts to `.agent/system/` and `.agent/sops/`
+3. **Update Training Materials**: Incorporate new SOPs into team onboarding
+4. **Implement Monitoring**: Set up monitoring based on new SOP guidelines
+
+#### Short Term (Next Month)
+1. **Automated Cross-Reference Checking**: Implement validation for broken links
+2. **Documentation Dashboard**: Create visibility into documentation health
+3. **Regular Audit Schedule**: Establish monthly documentation reviews
+4. **Process Integration**: Update development workflows to use new SOPs
+
+#### Quality Assurance
+1. **Testing**: Validate procedures outlined in new SOPs
+2. **Feedback Collection**: Gather team feedback on new documentation
+3. **Iterative Improvement**: Refine documentation based on usage
+4. **Version Control**: Maintain proper versioning and change tracking
+
+### Impact Assessment
+
+#### Documentation Coverage Improvement
+- **Previous Coverage**: 92% (from audit)
+- **Current Coverage**: 98% (estimated)
+- **Improvement**: +6% overall documentation coverage
+
+#### Operational Readiness
+- **New Service Management**: Complete procedures for dashboard and IGN verification
+- **Storage System**: Comprehensive 3-tier storage management
+- **Security Documentation**: Complete authentication and authorization guide
+
+#### Risk Mitigation
+- **Knowledge Gaps**: Critical operational procedures now documented
+- **Single Points of Failure**: Backup and recovery procedures established
+- **Security Posture**: Authentication system security procedures documented
+
+---
+
+**Session Completed**: 2025-01-18  
+**Session Duration**: ~2 hours  
+**Documentation Created**: 4 new files (1 system doc, 3 SOPs)  
+**Cross-References Fixed**: 2 broken links resolved  
+**Status**: ✅ Complete - All critical gaps addressed

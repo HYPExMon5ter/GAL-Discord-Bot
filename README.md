@@ -72,6 +72,11 @@ vim config.yaml
 
 4. **Start Services**
 ```bash
+# Option 1: Use the new centralized dashboard startup (RECOMMENDED)
+python start_dashboard.py
+# This starts both API backend and frontend automatically
+
+# Option 2: Start services manually (for development or debugging)
 # Start API backend
 cd api
 python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
@@ -83,6 +88,8 @@ python bot.py
 cd dashboard
 npm run dev
 ```
+
+**Note**: The centralized `start_dashboard.py` is now the recommended method as it handles both services and provides better process management and cleanup.
 
 5. **Access Dashboard**
 - Open [http://localhost:3000](http://localhost:3000) in browser

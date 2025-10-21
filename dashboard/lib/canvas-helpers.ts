@@ -25,8 +25,8 @@ const PROPERTY_CONFIG: Record<
   CanvasPropertyType,
   { placeholder: string; width: number; height: number }
 > = {
-  player: { placeholder: 'Player Name', width: 150, height: 40 },
-  score: { placeholder: 'Score', width: 100, height: 40 },
+  players: { placeholder: 'Player Name', width: 150, height: 40 },
+  scores: { placeholder: 'Score', width: 100, height: 40 },
   placement: { placeholder: 'Placement', width: 120, height: 40 },
 };
 
@@ -234,9 +234,9 @@ export function createPropertyElement(
     dataBinding: {
       source: 'api',
       field:
-        type === 'player'
+        type === 'players'
           ? 'player_name'
-          : type === 'score'
+          : type === 'scores'
           ? 'player_score'
           : 'player_placement',
       apiEndpoint: null,
@@ -433,9 +433,9 @@ export function calculateSnapAgainstElements(options: {
 function normalizeElementSeries(series: any): ElementSeries {
   return {
     id: typeof series?.id === 'string' ? series.id : generateElementId(),
-    type: series?.type === 'player' || series?.type === 'score' || series?.type === 'placement' 
+    type: series?.type === 'players' || series?.type === 'scores' || series?.type === 'placement' 
       ? series.type 
-      : 'player',
+      : 'players',
     baseElement: normalizeCanvasElement(series?.baseElement),
     spacing: normalizeElementSpacing(series?.spacing),
     autoGenerate: Boolean(series?.autoGenerate),
@@ -524,7 +524,7 @@ export function generateElementsFromSeries(
         source: 'series' as const,
         field: getBindingFieldForElementType(series.type),
         seriesId: series.id,
-        manualValue: getElementValueForPlayer(player, series.type),
+        manualValue: getElementValueForPlayer(player, series.type, series.roundId),
       },
       isPlaceholder: false,
     };
@@ -547,9 +547,9 @@ function calculateElementPosition(basePosition: number, spacing: number, index: 
 
 function getBindingFieldForElementType(type: CanvasPropertyType): CanvasDataBinding['field'] {
   switch (type) {
-    case 'player':
+    case 'players':
       return 'player_name';
-    case 'score':
+    case 'scores':
       return 'player_score';
     case 'placement':
       return 'player_placement';
@@ -558,11 +558,14 @@ function getBindingFieldForElementType(type: CanvasPropertyType): CanvasDataBind
   }
 }
 
-function getElementValueForPlayer(player: PlayerData, type: CanvasPropertyType): string {
+function getElementValueForPlayer(player: PlayerData, type: CanvasPropertyType, roundId?: string): string {
   switch (type) {
-    case 'player':
+    case 'players':
       return player.player_name;
-    case 'score':
+    case 'scores':
+      if (roundId && player.round_scores && player.round_scores[roundId]) {
+        return player.round_scores[roundId].toString();
+      }
       return player.total_points.toString();
     case 'placement':
       return player.standing_rank.toString();

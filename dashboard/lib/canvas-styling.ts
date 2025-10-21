@@ -61,8 +61,8 @@ export const STYLE_PRESETS: StylePreset[] = [
       textShadow: '1px 1px 2px rgba(0,0,0,0.3)',
       padding: { top: 8, right: 16, bottom: 8, left: 16 },
     },
-    applicableTo: ['player'],
-    category: 'player',
+    applicableTo: ['players'],
+    category: 'players',
   },
   {
     id: 'score-bold',
@@ -84,8 +84,8 @@ export const STYLE_PRESETS: StylePreset[] = [
       textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
       padding: { top: 12, right: 20, bottom: 12, left: 20 },
     },
-    applicableTo: ['score'],
-    category: 'score',
+    applicableTo: ['scores'],
+    category: 'scores',
   },
   {
     id: 'placement-medal',

@@ -35,7 +35,6 @@ import {
   CanvasPropertyType,
   SnapLine,
   CanvasDataBinding,
-  CanvasDatasetBinding,
   CanvasBindingSource,
   CanvasBindingField,
   ElementSeries,
@@ -112,50 +111,23 @@ import {
   generateMockPlayerData,
 } from '@/lib/canvas-styling';
 
-const DEFAULT_ROW_SPACING = 56;
 
-function createDefaultDatasetBinding(): CanvasDatasetBinding {
-  return {
-    id: 'scoreboard',
-    snapshotId: 'latest',
-    rowMode: 'static',
-    row: 1,
-    rowSpacing: DEFAULT_ROW_SPACING,
-    maxRows: null,
-    gridId: null,
-    slot: null,
-    roundId: null,
-  };
-}
 
 function getDefaultFieldForElement(element: CanvasElement): CanvasBindingField {
-  if (element.type === 'player') return 'player_name';
-  if (element.type === 'score') return 'player_score';
+  if (element.type === 'players') return 'player_name';
+  if (element.type === 'scores') return 'player_score';
   if (element.type === 'placement') return 'player_placement';
   return 'player_name';
 }
 
 function createDefaultBinding(element: CanvasElement): CanvasDataBinding {
   return {
-    source: 'dataset',
+    source: 'series',
     field: getDefaultFieldForElement(element),
     apiEndpoint: null,
     manualValue: element.content ?? '',
     fallbackText: element.placeholderText ?? element.content ?? '',
-    dataset: createDefaultDatasetBinding(),
   };
-}
-
-interface BindingElementSummary {
-  element: CanvasElement;
-  binding: CanvasDataBinding;
-  dataset: CanvasDatasetBinding;
-}
-
-interface BindingGridSummary {
-  id: string;
-  elements: BindingElementSummary[];
-  dataset: CanvasDatasetBinding;
 }
 
 function ensureBinding(element: CanvasElement): CanvasDataBinding {
@@ -166,18 +138,9 @@ function ensureBinding(element: CanvasElement): CanvasDataBinding {
     return defaultBinding;
   }
 
-  const normalizedDataset =
-    existing.dataset && existing.dataset.id === 'scoreboard'
-      ? {
-          ...createDefaultDatasetBinding(),
-          ...existing.dataset,
-        }
-      : existing.dataset ?? createDefaultDatasetBinding();
-
   return {
     ...defaultBinding,
     ...existing,
-    dataset: normalizedDataset,
   };
 }
 
@@ -271,6 +234,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [elements, setElements] = useState<CanvasElement[]>(initialCanvasState.elements);
   const [elementSeries, setElementSeries] = useState<ElementSeries[]>(initialCanvasState.elementSeries || []);
   const [selectedElement, setSelectedElement] = useState<CanvasElement | null>(null);
+  const [selectedRound, setSelectedRound] = useState<string>('round_1');
   const [activeTab, setActiveTab] = useState('design');
   const canvasSettings = canvasData?.settings ?? DEFAULT_CANVAS_SETTINGS;
   
@@ -327,47 +291,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const bindingElements = useMemo<BindingElementSummary[]>(() => {
-    return elements
-      .filter(
-        (element) =>
-          element.type === 'text' || ['player', 'score', 'placement'].includes(element.type),
-      )
-      .map((element) => {
-        const binding = ensureBinding(element);
-        const dataset = binding.dataset ?? createDefaultDatasetBinding();
-        return { element, binding, dataset };
-      });
-  }, [elements]);
-
-  const bindingGrids = useMemo<BindingGridSummary[]>(() => {
-    const map = new Map<string, BindingGridSummary>();
-
-    bindingElements.forEach((item) => {
-      const gridId = item.dataset.gridId;
-      if (!gridId) return;
-
-      if (!map.has(gridId)) {
-        map.set(gridId, {
-          id: gridId,
-          elements: [],
-          dataset: { ...item.dataset },
-        });
-      }
-
-      const summary = map.get(gridId)!;
-      summary.elements.push(item);
-    });
-
-    return Array.from(map.values());
-  }, [bindingElements]);
-
-  const representativeDataset = useMemo<CanvasDatasetBinding | null>(() => {
-    const found = bindingElements.find(
-      (item) => item.binding.source !== 'manual' && item.dataset?.id === 'scoreboard',
-    );
-    return found?.dataset ?? null;
-  }, [bindingElements]);
+  
 
   const snapshotInputRef = useRef<HTMLInputElement>(null);
 
@@ -519,6 +443,25 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     addToHistory(HistoryManager.createActionTypes.addElement(newElement));
   }, [snapToGrid, addToHistory]);
 
+  const addScoresElementWithRound = useCallback(() => {
+    const newElement = createPropertyElement('scores', snapToGrid);
+    // Add round ID to the element series or data binding
+    if (newElement.dataBinding) {
+      newElement.dataBinding.fallbackText = `Round ${selectedRound}`;
+    }
+    setElements((previous) => {
+      const nextElements = [...previous, newElement];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elements: nextElements,
+      }));
+      return nextElements;
+    });
+    setSelectedElement(newElement);
+
+    addToHistory(HistoryManager.createActionTypes.addElement(newElement));
+  }, [snapToGrid, addToHistory, selectedRound]);
+
   const addElementSeries = useCallback((propertyType: CanvasPropertyType) => {
     const baseElement = createPropertyElement(propertyType, snapToGrid);
     const newSeries = createElementSeries(propertyType, baseElement, DEFAULT_ELEMENT_SPACING);
@@ -563,50 +506,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     [elements, gridSize, gridSnapEnabled, addToHistory],
   );
 
-  const updateElementBinding = useCallback(
-    (
-      elementId: string,
-      patch: Partial<CanvasDataBinding>,
-      datasetPatch?: Partial<CanvasDatasetBinding> | null,
-    ) => {
-      const element = elements.find((item) => item.id === elementId);
-      if (!element) return;
-
-      const currentBinding = ensureBinding(element);
-      const nextDataset =
-        datasetPatch === undefined
-          ? currentBinding.dataset ?? null
-          : datasetPatch === null
-          ? null
-          : {
-              ...(currentBinding.dataset ?? createDefaultDatasetBinding()),
-              ...datasetPatch,
-            };
-
-      const nextBinding: CanvasDataBinding = {
-        ...currentBinding,
-        ...patch,
-        dataset: nextDataset,
-      };
-
-      updateElement(elementId, { dataBinding: nextBinding });
-    },
-    [elements, updateElement],
-  );
-
-  const updateGridElements = useCallback(
-    (gridId: string, datasetPatch: Partial<CanvasDatasetBinding>) => {
-      bindingElements
-        .filter(
-          (item) =>
-            item.dataset.gridId === gridId && item.binding.source !== 'manual',
-        )
-        .forEach((item) => {
-          updateElementBinding(item.element.id, { source: 'dataset' }, datasetPatch);
-        });
-    },
-    [bindingElements, updateElementBinding],
-  );
+  
 
   // Styling system handlers
   const applyUniversalStyling = useCallback((elementType: CanvasPropertyType) => {
@@ -770,47 +670,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     return previewElements;
   }, [elements, elementSeries, previewConfig, realPlayerData]);
 
-  const applySnapshotToBindings = useCallback(() => {
-    if (!snapshotInputRef.current) return;
-    const raw = snapshotInputRef.current.value.trim();
-    let snapshotId: CanvasDatasetBinding['snapshotId'];
-
-    if (raw === '' || raw.toLowerCase() === 'latest') {
-      snapshotId = 'latest';
-    } else {
-      const parsed = Number(raw);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        toast({
-          title: 'Invalid snapshot id',
-          description: 'Enter a positive integer id or `latest`.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      snapshotId = Math.floor(parsed);
-    }
-
-    let updated = 0;
-    bindingElements.forEach((item) => {
-      if (item.binding.source === 'manual') return;
-      updateElementBinding(item.element.id, { source: 'dataset' }, { snapshotId });
-      updated += 1;
-    });
-
-    toast({
-      title: 'Snapshot applied',
-      description:
-        updated > 0
-          ? `Updated ${updated} binding${updated === 1 ? '' : 's'} to ${
-              snapshotId === 'latest' ? 'use the latest snapshot' : `snapshot #${snapshotId}`
-            }.`
-          : 'No dataset-bound elements were updated.',
-    });
-    if (snapshotInputRef.current) {
-      snapshotInputRef.current.value =
-        snapshotId === 'latest' ? 'latest' : String(snapshotId);
-    }
-  }, [bindingElements, updateElementBinding, toast]);
+  
 
   const deleteElement = useCallback(
     (elementId: string) => {
@@ -1455,10 +1315,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           {!sidebarCollapsed && (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col overflow-hidden">
               <div className="border-b bg-card px-2 flex-shrink-0">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Design</TabsTrigger>
                   <TabsTrigger value="elements" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Elements</TabsTrigger>
-                  <TabsTrigger value="data" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Data</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -1499,19 +1358,19 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           variant="outline"
                           size="sm"
                           className="w-full justify-start"
-                          onClick={() => addPropertyElement('player')}
+                          onClick={() => addPropertyElement('players')}
                         >
                           <User className="h-4 w-4 mr-2" />
-                          Player Property
+                          Players Element
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           className="w-full justify-start"
-                          onClick={() => addPropertyElement('score')}
+                          onClick={addScoresElementWithRound}
                         >
                           <Trophy className="h-4 w-4 mr-2" />
-                          Score Property
+                          Scores Element ({selectedRound})
                         </Button>
                         <Button
                           variant="outline"
@@ -1520,33 +1379,59 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           onClick={() => addPropertyElement('placement')}
                         >
                           <Medal className="h-4 w-4 mr-2" />
-                          Placement Property
+                          Placement Element
                         </Button>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Round Selection</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <div>
+                          <label className="text-xs text-muted-foreground">Select Round for Scores</label>
+                          <Select
+                            value={selectedRound}
+                            onValueChange={setSelectedRound}
+                          >
+                            <SelectTrigger className="h-10">
+                              <SelectValue placeholder="Select round..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="round_1">Round 1</SelectItem>
+                              <SelectItem value="round_2">Round 2</SelectItem>
+                              <SelectItem value="round_3">Round 3</SelectItem>
+                              <SelectItem value="round_4">Round 4</SelectItem>
+                              <SelectItem value="round_5">Round 5</SelectItem>
+                              <SelectItem value="total_points">Total Points</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </CardContent>
                     </Card>
 
                     <Card>
                       <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Simplified Elements (Auto-Fill)</CardTitle>
+                        <CardTitle className="text-sm">Auto-Generate Elements</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2">
                         <Button
                           variant="outline"
                           size="sm"
                           className="w-full justify-start"
-                          onClick={() => addElementSeries('player')}
+                          onClick={() => addElementSeries('players')}
                         >
                           <User className="h-4 w-4 mr-2" />
-                          Player Series (Auto-Fill All)
+                          Players (Auto-Fill)
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           className="w-full justify-start"
-                          onClick={() => addElementSeries('score')}
+                          onClick={() => addElementSeries('scores')}
                         >
                           <Trophy className="h-4 w-4 mr-2" />
-                          Score Series (Auto-Fill All)
+                          Scores (Auto-Fill)
                         </Button>
                         <Button
                           variant="outline"
@@ -1555,7 +1440,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           onClick={() => addElementSeries('placement')}
                         >
                           <Medal className="h-4 w-4 mr-2" />
-                          Placement Series (Auto-Fill All)
+                          Placement (Auto-Fill)
                         </Button>
                       </CardContent>
                     </Card>
@@ -1739,7 +1624,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => applyUniversalStyling('player')}
+                              onClick={() => applyUniversalStyling('players')}
                               className="text-xs h-8"
                             >
                               <User className="h-3 w-3 mr-1" />
@@ -1748,7 +1633,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => applyUniversalStyling('score')}
+                              onClick={() => applyUniversalStyling('scores')}
                               className="text-xs h-8"
                             >
                               <Trophy className="h-3 w-3 mr-1" />
@@ -1796,172 +1681,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       </CardContent>
                     </Card>
 
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Preview Mode</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Button
-                          variant={previewConfig.enabled ? "default" : "outline"}
-                          size="sm"
-                          onClick={togglePreviewMode}
-                          className="w-full justify-start"
-                        >
-                          <Settings className="h-4 w-4 mr-2" />
-                          {previewConfig.enabled ? 'Preview Mode ON' : 'Preview Mode OFF'}
-                        </Button>
-                        
-                        {previewConfig.enabled && (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="text-xs text-muted-foreground">Data Source</label>
-                              <Select
-                                value={previewConfig.mockData ? 'mock' : 'real'}
-                                onValueChange={(value) =>
-                                  updatePreviewConfig({ mockData: value === 'mock' })
-                                }
-                              >
-                                <SelectTrigger className="h-10">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="mock">Mock Data</SelectItem>
-                                  <SelectItem value="real">Real Player Data</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            {!previewConfig.mockData && (
-                              <div className="space-y-2">
-                                {playerDataLoading && (
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <RefreshCw className="h-3 w-3 animate-spin" />
-                                    Loading real player data...
-                                  </div>
-                                )}
-                                
-                                {playerDataError && (
-                                  <div className="flex items-center gap-2 text-xs text-red-600">
-                                    <span>{playerDataError}</span>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={fetchRealPlayerData}
-                                      className="h-6 text-xs"
-                                    >
-                                      Retry
-                                    </Button>
-                                  </div>
-                                )}
-                                
-                                {!playerDataLoading && !playerDataError && realPlayerData.length > 0 && (
-                                  <div className="text-xs text-green-600">
-                                    ✓ {realPlayerData.length} players loaded
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-xs text-muted-foreground">Player Count</label>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={50}
-                                  value={previewConfig.playerCount ?? 10}
-                                  onChange={(e) =>
-                                    updatePreviewConfig({ playerCount: Number(e.target.value) || 10 })
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">Sort By</label>
-                                <Select
-                                  value={previewConfig.sortBy || 'total_points'}
-                                  onValueChange={(value) =>
-                                    updatePreviewConfig({ sortBy: value as any })
-                                  }
-                                >
-                                  <SelectTrigger className="h-10">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="total_points">Total Points</SelectItem>
-                                    <SelectItem value="player_name">Player Name</SelectItem>
-                                    <SelectItem value="standing_rank">Standing Rank</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-xs text-muted-foreground">Sort Order</label>
-                                <Select
-                                  value={previewConfig.sortOrder || 'desc'}
-                                  onValueChange={(value) =>
-                                    updatePreviewConfig({ sortOrder: value as any })
-                                  }
-                                >
-                                  <SelectTrigger className="h-10">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="desc">Descending</SelectItem>
-                                    <SelectItem value="asc">Ascending</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">Show Positions</label>
-                                <Select
-                                  value={previewConfig.showPlacementPositions ? 'true' : 'false'}
-                                  onValueChange={(value) =>
-                                    updatePreviewConfig({ showPlacementPositions: value === 'true' })
-                                  }
-                                >
-                                  <SelectTrigger className="h-10">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="true">Show</SelectItem>
-                                    <SelectItem value="false">Hide</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id="live-updates"
-                                checked={previewConfig.liveUpdates}
-                                onChange={(e) =>
-                                  updatePreviewConfig({ liveUpdates: e.target.checked })
-                                }
-                              />
-                              <label htmlFor="live-updates" className="text-xs text-muted-foreground">
-                                Live updates when styling changes
-                              </label>
-                            </div>
-
-                            {!previewConfig.mockData && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={fetchRealPlayerData}
-                                disabled={playerDataLoading}
-                                className="w-full h-8 text-xs"
-                              >
-                                <RefreshCw className={`h-3 w-3 mr-1 ${playerDataLoading ? 'animate-spin' : ''}`} />
-                                Refresh Player Data
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+  
 
                     <Card>
                       <CardHeader className="pb-2">
@@ -1975,7 +1695,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               <div className="text-sm font-medium capitalize">{selectedElement.type}</div>
                             </div>
 
-                            {(selectedElement.type === 'text' || ['player', 'score', 'placement'].includes(selectedElement.type)) && (
+                            {(selectedElement.type === 'text' || ['players', 'scores', 'placement'].includes(selectedElement.type)) && (
                               <>
                                 <div>
                                   <label className="text-xs text-muted-foreground">Content</label>
@@ -2033,7 +1753,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               </>
                             )}
 
-                            {['player', 'score', 'placement'].includes(selectedElement.type) &&
+                            {['players', 'scores', 'placement'].includes(selectedElement.type) &&
                               (() => {
                                 const binding = ensureBinding(selectedElement);
                                 const dataset = binding.dataset ?? createDefaultDatasetBinding();
@@ -2046,8 +1766,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                     <div>
                                       <label className="text-xs text-muted-foreground">Type</label>
                                       <div className="text-sm font-medium capitalize flex items-center gap-2">
-                                        {selectedElement.type === 'player' && <User className="h-4 w-4" />}
-                                        {selectedElement.type === 'score' && <Trophy className="h-4 w-4" />}
+                                        {selectedElement.type === 'players' && <User className="h-4 w-4" />}
+                                        {selectedElement.type === 'scores' && <Trophy className="h-4 w-4" />}
                                         {selectedElement.type === 'placement' && <Medal className="h-4 w-4" />}
                                         {selectedElement.type} Property
                                       </div>
@@ -2817,7 +2537,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   }
                 }}
               >
-                {(element.type === 'text' || ['player', 'score', 'placement'].includes(element.type)) && (
+                {(element.type === 'text' || ['players', 'scores', 'placement'].includes(element.type)) && (
                   <div
                     style={{
                       ...elementStyleToCss(element),
@@ -2876,6 +2596,19 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
               >
                 <Settings className="h-4 w-4 mr-1" />
                 Snap Elements
+              </Button>
+            </div>
+
+            {/* Center - Preview toggle */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={previewConfig.enabled ? "default" : "outline"}
+                size="sm"
+                onClick={togglePreviewMode}
+                className="flex items-center gap-1"
+              >
+                <Settings className="h-4 w-4" />
+                {previewConfig.enabled ? 'Preview ON' : 'Preview OFF'}
               </Button>
             </div>
 

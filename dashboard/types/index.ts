@@ -52,11 +52,11 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-export type CanvasElementType = 'text' | 'player' | 'score' | 'placement';
+export type CanvasElementType = 'text' | 'players' | 'scores' | 'placement';
 
-export type CanvasPropertyType = Extract<CanvasElementType, 'player' | 'score' | 'placement'>;
+export type CanvasPropertyType = Extract<CanvasElementType, 'players' | 'scores' | 'placement'>;
 
-// Simplified element system types
+// Simplified element series for auto-generation
 export interface ElementSeries {
   id: string;
   type: CanvasPropertyType;
@@ -66,6 +66,7 @@ export interface ElementSeries {
   maxElements?: number;
   sortBy: 'total_points' | 'player_name' | 'standing_rank';
   sortOrder: 'asc' | 'desc';
+  roundId?: string; // For round-specific scoring
 }
 
 export interface ElementSpacing {
@@ -74,27 +75,14 @@ export interface ElementSpacing {
   direction: 'horizontal' | 'vertical' | 'grid';
 }
 
+// Simplified data binding
 export interface CanvasDataBinding {
-  source: 'api' | 'manual' | 'series' | 'dataset';
+  source: 'api' | 'manual' | 'series';
   field: 'player_name' | 'player_score' | 'player_placement' | 'player_rank' | 'team_name' | 'round_score';
   apiEndpoint?: string | null;
   manualValue?: string | null;
   seriesId?: string | null; // Reference to element series for auto-generation
-  fallbackText?: string | null; // Fallback text for dataset bindings
-  dataset?: CanvasDatasetBinding | null; // For backward compatibility
-}
-
-// Legacy types for backward compatibility
-export interface CanvasDatasetBinding {
-  id: string;
-  snapshotId: string | number;
-  rowMode: 'static' | 'template';
-  row: number;
-  rowSpacing: number;
-  maxRows: number | null;
-  gridId: string | null;
-  slot: string | null;
-  roundId: string | null;
+  fallbackText?: string | null;
 }
 
 export type CanvasBindingSource = CanvasDataBinding['source'];
@@ -172,17 +160,17 @@ export interface PlayerData {
   round_scores?: Record<string, number>;
 }
 
-// Style presets for common use cases
+// Simplified style presets for element types
 export interface StylePreset {
   id: string;
   name: string;
   description: string;
   style: CanvasElementStyle;
   applicableTo: CanvasPropertyType[];
-  category: 'text' | 'player' | 'score' | 'placement' | 'universal';
+  category: 'text' | 'players' | 'scores' | 'placement' | 'universal';
 }
 
-// Universal styling controls
+// Simplified universal styling controls
 export interface UniversalStyleControls {
   fontSize: number;
   fontFamily: string;
@@ -210,14 +198,6 @@ export interface UniversalStyleControls {
     bottom: number;
     left: number;
   };
-}
-
-// Element type styling configuration
-export interface ElementTypeStyling {
-  elementType: CanvasPropertyType;
-  universalStyle: Partial<UniversalStyleControls>;
-  overrides: CanvasElementStyle;
-  presetId?: string;
 }
 
 // Preview mode configuration

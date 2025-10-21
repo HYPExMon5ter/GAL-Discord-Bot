@@ -56,12 +56,49 @@ export type CanvasElementType = 'text' | 'player' | 'score' | 'placement';
 
 export type CanvasPropertyType = Extract<CanvasElementType, 'player' | 'score' | 'placement'>;
 
+// Simplified element system types
+export interface ElementSeries {
+  id: string;
+  type: CanvasPropertyType;
+  baseElement: CanvasElement; // The first placed element
+  spacing: ElementSpacing;
+  autoGenerate: boolean;
+  maxElements?: number;
+  sortBy: 'total_points' | 'player_name' | 'standing_rank';
+  sortOrder: 'asc' | 'desc';
+}
+
+export interface ElementSpacing {
+  horizontal: number;
+  vertical: number;
+  direction: 'horizontal' | 'vertical' | 'grid';
+}
+
 export interface CanvasDataBinding {
-  source: 'api' | 'manual';
-  field: 'player_name' | 'player_score' | 'player_placement' | 'player_rank' | 'team_name';
+  source: 'api' | 'manual' | 'series' | 'dataset';
+  field: 'player_name' | 'player_score' | 'player_placement' | 'player_rank' | 'team_name' | 'round_score';
   apiEndpoint?: string | null;
   manualValue?: string | null;
+  seriesId?: string | null; // Reference to element series for auto-generation
+  fallbackText?: string | null; // Fallback text for dataset bindings
+  dataset?: CanvasDatasetBinding | null; // For backward compatibility
 }
+
+// Legacy types for backward compatibility
+export interface CanvasDatasetBinding {
+  id: string;
+  snapshotId: string | number;
+  rowMode: 'static' | 'template';
+  row: number;
+  rowSpacing: number;
+  maxRows: number | null;
+  gridId: string | null;
+  slot: string | null;
+  roundId: string | null;
+}
+
+export type CanvasBindingSource = CanvasDataBinding['source'];
+export type CanvasBindingField = CanvasDataBinding['field'];
 
 export interface CanvasElementStyle {
   fontSize?: number;
@@ -94,6 +131,7 @@ export interface CanvasSettings {
 
 export interface CanvasState {
   elements: CanvasElement[];
+  elementSeries: ElementSeries[]; // New simplified element system
   settings: CanvasSettings;
   backgroundImage?: string | null;
 }
@@ -101,4 +139,15 @@ export interface CanvasState {
 export interface SnapLine {
   x?: number;
   y?: number;
+}
+
+// Player data for auto-ranking
+export interface PlayerData {
+  player_name: string;
+  total_points: number;
+  standing_rank: number;
+  player_id?: string;
+  discord_id?: string;
+  riot_id?: string;
+  round_scores?: Record<string, number>;
 }

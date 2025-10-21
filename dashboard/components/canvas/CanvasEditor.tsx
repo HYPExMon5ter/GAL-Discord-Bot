@@ -38,6 +38,9 @@ import {
   CanvasDatasetBinding,
   CanvasBindingSource,
   CanvasBindingField,
+  ElementSeries,
+  ElementSpacing,
+  PlayerData,
 } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useLocks } from '@/hooks/use-locks';
@@ -81,6 +84,11 @@ import {
   updateCanvasBackground,
   updateCanvasSettings,
   DEFAULT_CANVAS_SETTINGS,
+  createElementSeries,
+  generateElementsFromSeries,
+  updateElementSeries,
+  deleteElementSeries,
+  DEFAULT_ELEMENT_SPACING,
 } from '@/lib/canvas-helpers';
 
 const DEFAULT_ROW_SPACING = 56;
@@ -240,6 +248,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     initialCanvasState.backgroundImage ?? null,
   );
   const [elements, setElements] = useState<CanvasElement[]>(initialCanvasState.elements);
+  const [elementSeries, setElementSeries] = useState<ElementSeries[]>(initialCanvasState.elementSeries || []);
   const [selectedElement, setSelectedElement] = useState<CanvasElement | null>(null);
   const [activeTab, setActiveTab] = useState('design');
   const canvasSettings = canvasData?.settings ?? DEFAULT_CANVAS_SETTINGS;
@@ -334,6 +343,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     const parsed = deserializeCanvasState(graphic.data_json);
     setCanvasData(parsed);
     setElements(parsed.elements);
+    setElementSeries(parsed.elementSeries || []);
     setBackgroundImage(parsed.backgroundImage ?? null);
   }, [graphic.data_json]);
 
@@ -342,7 +352,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     const historyManager = historyManagerRef.current;
     setCanUndo(historyManager.canUndo());
     setCanRedo(historyManager.canRedo());
-  }, [elements, canvasData, backgroundImage, zoom, gridVisible, gridSnapEnabled]);
+  }, [elements, elementSeries, canvasData, backgroundImage, zoom, gridVisible, gridSnapEnabled]);
   
   const addToHistory = useCallback((action: any) => {
     historyManagerRef.current.addAction(action);
@@ -474,6 +484,23 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     setSelectedElement(newElement);
 
     addToHistory(HistoryManager.createActionTypes.addElement(newElement));
+  }, [snapToGrid, addToHistory]);
+
+  const addElementSeries = useCallback((propertyType: CanvasPropertyType) => {
+    const baseElement = createPropertyElement(propertyType, snapToGrid);
+    const newSeries = createElementSeries(propertyType, baseElement, DEFAULT_ELEMENT_SPACING);
+    
+    setElementSeries((previous) => {
+      const nextSeries = [...previous, newSeries];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elementSeries: nextSeries,
+      }));
+      return nextSeries;
+    });
+    
+    setSelectedElement(baseElement);
+    addToHistory(HistoryManager.createActionTypes.addElement(newSeries));
   }, [snapToGrid, addToHistory]);
 
   const updateElement = useCallback(
@@ -996,6 +1023,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       const payload: CanvasState = {
         ...canvasData,
         elements,
+        elementSeries,
         backgroundImage,
       };
 
@@ -1297,6 +1325,41 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                         >
                           <Medal className="h-4 w-4 mr-2" />
                           Placement Property
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Simplified Elements (Auto-Fill)</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={() => addElementSeries('player')}
+                        >
+                          <User className="h-4 w-4 mr-2" />
+                          Player Series (Auto-Fill All)
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={() => addElementSeries('score')}
+                        >
+                          <Trophy className="h-4 w-4 mr-2" />
+                          Score Series (Auto-Fill All)
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={() => addElementSeries('placement')}
+                        >
+                          <Medal className="h-4 w-4 mr-2" />
+                          Placement Series (Auto-Fill All)
                         </Button>
                       </CardContent>
                     </Card>

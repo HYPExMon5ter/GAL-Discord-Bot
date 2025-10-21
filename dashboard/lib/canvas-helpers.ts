@@ -4,6 +4,10 @@ import type {
   CanvasSettings,
   CanvasState,
   SnapLine,
+  ElementSeries,
+  ElementSpacing,
+  PlayerData,
+  CanvasDataBinding,
 } from '@/types';
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -22,6 +26,12 @@ const PROPERTY_CONFIG: Record<
   player: { placeholder: 'Player Name', width: 150, height: 40 },
   score: { placeholder: 'Score', width: 100, height: 40 },
   placement: { placeholder: 'Placement', width: 120, height: 40 },
+};
+
+export const DEFAULT_ELEMENT_SPACING: ElementSpacing = {
+  horizontal: 20,
+  vertical: 60,
+  direction: 'vertical',
 };
 
 export function generateElementId(): string {
@@ -69,11 +79,14 @@ function normalizeDataBinding(binding: any): CanvasElement['dataBinding'] {
     field !== 'player_score' &&
     field !== 'player_placement' &&
     field !== 'player_rank' &&
-    field !== 'team_name'
+    field !== 'team_name' &&
+    field !== 'round_score'
   ) {
     return null;
   }
-  const source = binding.source === 'manual' ? 'manual' : 'api';
+  const source = (binding.source === 'manual' || binding.source === 'series' || binding.source === 'dataset') 
+    ? binding.source 
+    : 'api';
   return {
     source,
     field,
@@ -85,6 +98,15 @@ function normalizeDataBinding(binding: any): CanvasElement['dataBinding'] {
       typeof binding.manualValue === 'string' || binding.manualValue === null
         ? binding.manualValue
         : undefined,
+    seriesId:
+      typeof binding.seriesId === 'string' || binding.seriesId === null
+        ? binding.seriesId
+        : undefined,
+    fallbackText:
+      typeof binding.fallbackText === 'string' || binding.fallbackText === null
+        ? binding.fallbackText
+        : undefined,
+    dataset: binding.dataset || undefined,
   };
 }
 
@@ -112,9 +134,14 @@ function normalizeCanvasState(value: any): CanvasState {
     ? value.elements.map(normalizeCanvasElement)
     : [];
 
+  const elementSeries: ElementSeries[] = Array.isArray(value?.elementSeries)
+    ? value.elementSeries.map(normalizeElementSeries)
+    : [];
+
   const settings = value?.settings ?? {};
   return {
     elements,
+    elementSeries,
     settings: {
       width: toNumberWithDefault(settings.width, DEFAULT_CANVAS_SETTINGS.width),
       height: toNumberWithDefault(settings.height, DEFAULT_CANVAS_SETTINGS.height),
@@ -366,9 +393,178 @@ export function calculateSnapAgainstElements(options: {
   return { position: { x: snappedX, y: snappedY }, lines };
 }
 
+// Element Series Functions for Simplified Canvas System
+
+function normalizeElementSeries(series: any): ElementSeries {
+  return {
+    id: typeof series?.id === 'string' ? series.id : generateElementId(),
+    type: series?.type === 'player' || series?.type === 'score' || series?.type === 'placement' 
+      ? series.type 
+      : 'player',
+    baseElement: normalizeCanvasElement(series?.baseElement),
+    spacing: normalizeElementSpacing(series?.spacing),
+    autoGenerate: Boolean(series?.autoGenerate),
+    maxElements: series?.maxElements != null ? toOptionalNumber(series.maxElements) : undefined,
+    sortBy: series?.sortBy === 'total_points' || series?.sortBy === 'player_name' || series?.sortBy === 'standing_rank'
+      ? series.sortBy 
+      : 'total_points',
+    sortOrder: series?.sortOrder === 'asc' || series?.sortOrder === 'desc' 
+      ? series.sortOrder 
+      : 'desc',
+  };
+}
+
+function normalizeElementSpacing(spacing: any): ElementSpacing {
+  return {
+    horizontal: toNumberWithDefault(spacing?.horizontal, DEFAULT_ELEMENT_SPACING.horizontal),
+    vertical: toNumberWithDefault(spacing?.vertical, DEFAULT_ELEMENT_SPACING.vertical),
+    direction: spacing?.direction === 'horizontal' || spacing?.direction === 'vertical' || spacing?.direction === 'grid'
+      ? spacing.direction
+      : DEFAULT_ELEMENT_SPACING.direction,
+  };
+}
+
+export function generateElementSeriesId(): string {
+  return `series-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+export function createElementSeries(
+  type: CanvasPropertyType,
+  baseElement: CanvasElement,
+  spacing: ElementSpacing = DEFAULT_ELEMENT_SPACING,
+): ElementSeries {
+  return {
+    id: generateElementSeriesId(),
+    type,
+    baseElement,
+    spacing,
+    autoGenerate: true,
+    sortBy: 'total_points',
+    sortOrder: 'desc',
+  };
+}
+
+export function generateElementsFromSeries(
+  series: ElementSeries,
+  playerData: PlayerData[],
+): CanvasElement[] {
+  if (!series.autoGenerate || !playerData.length) {
+    return [series.baseElement];
+  }
+
+  // Sort player data based on series configuration
+  const sortedData = [...playerData].sort((a, b) => {
+    let comparison = 0;
+    
+    switch (series.sortBy) {
+      case 'total_points':
+        comparison = a.total_points - b.total_points;
+        break;
+      case 'player_name':
+        comparison = a.player_name.localeCompare(b.player_name);
+        break;
+      case 'standing_rank':
+        comparison = a.standing_rank - b.standing_rank;
+        break;
+    }
+    
+    return series.sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  // Apply max elements limit if specified
+  const limitedData = series.maxElements 
+    ? sortedData.slice(0, series.maxElements)
+    : sortedData;
+
+  // Generate elements based on spacing configuration
+  const elements: CanvasElement[] = [];
+  
+  limitedData.forEach((player, index) => {
+    const element = {
+      ...series.baseElement,
+      id: `${series.id}-element-${index}`,
+      x: calculateElementPosition(series.baseElement.x, series.spacing.horizontal, index, series.spacing.direction === 'horizontal'),
+      y: calculateElementPosition(series.baseElement.y, series.spacing.vertical, index, series.spacing.direction === 'vertical'),
+      dataBinding: {
+        source: 'series' as const,
+        field: getBindingFieldForElementType(series.type),
+        seriesId: series.id,
+        manualValue: getElementValueForPlayer(player, series.type),
+      },
+      isPlaceholder: false,
+    };
+    
+    elements.push(element);
+  });
+
+  return elements;
+}
+
+function calculateElementPosition(basePosition: number, spacing: number, index: number, isPrimaryDirection: boolean): number {
+  if (!isPrimaryDirection && index > 0) {
+    // For grid layout, secondary direction uses a different calculation
+    const gridColumns = 5; // Default grid columns
+    const row = Math.floor(index / gridColumns);
+    return basePosition + (row * spacing);
+  }
+  return basePosition + (index * spacing);
+}
+
+function getBindingFieldForElementType(type: CanvasPropertyType): CanvasDataBinding['field'] {
+  switch (type) {
+    case 'player':
+      return 'player_name';
+    case 'score':
+      return 'player_score';
+    case 'placement':
+      return 'player_placement';
+    default:
+      return 'player_name';
+  }
+}
+
+function getElementValueForPlayer(player: PlayerData, type: CanvasPropertyType): string {
+  switch (type) {
+    case 'player':
+      return player.player_name;
+    case 'score':
+      return player.total_points.toString();
+    case 'placement':
+      return player.standing_rank.toString();
+    default:
+      return player.player_name;
+  }
+}
+
+export function updateElementSeries(
+  elementSeries: ElementSeries[],
+  seriesId: string,
+  updates: Partial<ElementSeries>,
+): ElementSeries[] {
+  return elementSeries.map(series => 
+    series.id === seriesId 
+      ? { ...series, ...updates }
+      : series
+  );
+}
+
+export function deleteElementSeries(
+  elementSeries: ElementSeries[],
+  seriesId: string,
+): { updatedSeries: ElementSeries[]; removed: ElementSeries | null } {
+  const index = elementSeries.findIndex(series => series.id === seriesId);
+  if (index === -1) {
+    return { updatedSeries: elementSeries, removed: null };
+  }
+
+  const updatedSeries = elementSeries.slice(0, index).concat(elementSeries.slice(index + 1));
+  return { updatedSeries, removed: elementSeries[index] };
+}
+
 export function serializeCanvasState(state: CanvasState): string {
   const normalized = normalizeCanvasState({
     elements: state.elements,
+    elementSeries: state.elementSeries,
     settings: state.settings,
     backgroundImage: state.backgroundImage ?? null,
   });
@@ -383,6 +579,7 @@ export function updateCanvasBackground(
 ): CanvasState {
   return {
     elements: state.elements,
+    elementSeries: state.elementSeries,
     backgroundImage,
     settings: {
       width: dimensions?.width ?? state.settings.width,
@@ -398,6 +595,7 @@ export function updateCanvasSettings(
 ): CanvasState {
   return {
     ...state,
+    elementSeries: state.elementSeries,
     settings: {
       width: settings.width ?? state.settings.width,
       height: settings.height ?? state.settings.height,

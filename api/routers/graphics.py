@@ -253,6 +253,29 @@ async def cleanup_expired_locks(
 
 
 # --------------------------------------------------------------------------- #
+# Player data for simplified elements
+# --------------------------------------------------------------------------- #
+@router.get("/players/ranked")
+async def get_ranked_players(
+    tournament_id: Optional[str] = Query(None, description="Tournament ID to filter by"),
+    guild_id: Optional[str] = Query(None, description="Guild ID to filter by"),
+    sort_by: str = Query("total_points", description="Sort field: total_points, player_name, standing_rank"),
+    sort_order: str = Query("desc", description="Sort order: asc, desc"),
+    limit: int = Query(50, description="Maximum number of players to return"),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> dict:
+    """Get ranked player data for simplified element system."""
+    return await execute_service(
+        service.get_ranked_players,
+        tournament_id=tournament_id,
+        guild_id=guild_id,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        limit=limit
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Public view
 # --------------------------------------------------------------------------- #
 @router.get("/graphics/{graphic_id}/view")

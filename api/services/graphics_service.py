@@ -374,6 +374,81 @@ class GraphicsService:
         self.db.commit()
 
     # --------------------------------------------------------------------- #
+    # Simplified Element System Support
+    # --------------------------------------------------------------------- #
+    def get_ranked_players(
+        self,
+        *,
+        tournament_id: Optional[str] = None,
+        guild_id: Optional[str] = None,
+        sort_by: str = "total_points",
+        sort_order: str = "desc",
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        """
+        Get ranked player data for simplified element system.
+        
+        This method pulls from the latest scoreboard snapshot and returns
+        player data sorted by the specified criteria.
+        """
+        from api.services import StandingsService
+        standings_service = StandingsService(self.db)
+        
+        # Get the latest snapshot
+        if tournament_id:
+            snapshot = standings_service.get_latest_snapshot(tournament_id=tournament_id)
+        elif guild_id:
+            snapshot = standings_service.get_latest_snapshot(guild_id=guild_id)
+        else:
+            # If no filters specified, get the most recent snapshot
+            snapshot = standings_service.get_latest_snapshot()
+        
+        if not snapshot:
+            return {
+                "players": [],
+                "total": 0,
+                "snapshot_id": None,
+                "message": "No player data available"
+            }
+        
+        # Convert entries to player data format
+        players = []
+        for entry in snapshot.entries:
+            players.append({
+                "player_name": entry.player_name,
+                "total_points": entry.total_points,
+                "standing_rank": entry.standing_rank or 0,
+                "player_id": entry.player_id,
+                "discord_id": entry.discord_id,
+                "riot_id": entry.riot_id,
+                "round_scores": entry.round_scores or {},
+            })
+        
+        # Sort players based on criteria
+        valid_sort_fields = {"total_points", "player_name", "standing_rank"}
+        if sort_by not in valid_sort_fields:
+            sort_by = "total_points"
+        
+        reverse_order = sort_order.lower() == "desc"
+        
+        if sort_by == "player_name":
+            players.sort(key=lambda x: x["player_name"].lower(), reverse=reverse_order)
+        else:
+            players.sort(key=lambda x: x[sort_by], reverse=reverse_order)
+        
+        # Apply limit
+        limited_players = players[:limit] if limit > 0 else players
+        
+        return {
+            "players": limited_players,
+            "total": len(limited_players),
+            "snapshot_id": snapshot.id,
+            "snapshot_created_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
+            "tournament_id": snapshot.tournament_id,
+            "tournament_name": snapshot.tournament_name,
+        }
+
+    # --------------------------------------------------------------------- #
     # Public helpers
     # --------------------------------------------------------------------- #
     def public_view(self, graphic_id: int) -> Dict[str, Any]:

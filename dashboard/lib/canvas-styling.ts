@@ -130,7 +130,7 @@ export const STYLE_PRESETS: StylePreset[] = [
       textShadow: 'none',
       padding: { top: 6, right: 12, bottom: 6, left: 12 },
     },
-    applicableTo: ['player', 'score', 'placement'],
+    applicableTo: ['players', 'scores', 'placement'],
     category: 'universal',
   },
   {
@@ -153,7 +153,7 @@ export const STYLE_PRESETS: StylePreset[] = [
       textShadow: '0 0 10px rgba(0,255,0,0.8)',
       padding: { top: 10, right: 18, bottom: 10, left: 18 },
     },
-    applicableTo: ['player', 'score', 'placement'],
+    applicableTo: ['players', 'scores', 'placement'],
     category: 'universal',
   },
   {
@@ -177,7 +177,7 @@ export const STYLE_PRESETS: StylePreset[] = [
       padding: { top: 12, right: 20, bottom: 12, left: 20 },
       boxShadow: '0 4px 15px rgba(255,215,0,0.4)',
     },
-    applicableTo: ['player', 'score', 'placement'],
+    applicableTo: ['players', 'scores', 'placement'],
     category: 'universal',
   },
 ];

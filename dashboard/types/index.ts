@@ -92,13 +92,7 @@ export interface CanvasElementStyle {
   fontSize?: number;
   fontFamily?: string;
   color?: string;
-  backgroundColor?: string;
-  borderColor?: string;
-  borderWidth?: number;
-  borderRadius?: number;
-  fontWeight?: string;
-  textAlign?: 'left' | 'center' | 'right';
-  letterSpacing?: number;
+  spacing?: number; // For dynamic elements (players, scores, placement)
   lineHeight?: number;
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   textShadow?: string;
@@ -209,4 +203,12 @@ export interface PreviewModeConfig {
   playerCount?: number;
   sortBy: 'total_points' | 'player_name' | 'standing_rank';
   sortOrder: 'asc' | 'desc';
+}
+
+// Element type styling configuration
+export interface ElementTypeStyling {
+  elementType: CanvasPropertyType;
+  universalStyle: Partial<UniversalStyleControls>;
+  overrides: CanvasElementStyle;
+  presetId?: string;
 }

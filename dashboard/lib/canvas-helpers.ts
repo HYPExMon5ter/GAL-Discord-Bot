@@ -110,7 +110,7 @@ function normalizeDataBinding(binding: any): CanvasElement['dataBinding'] {
   ) {
     return null;
   }
-  const source = (binding.source === 'manual' || binding.source === 'series' || binding.source === 'dataset') 
+  const source = (binding.source === 'manual' || binding.source === 'series') 
     ? binding.source 
     : 'api';
   return {
@@ -132,7 +132,7 @@ function normalizeDataBinding(binding: any): CanvasElement['dataBinding'] {
       typeof binding.fallbackText === 'string' || binding.fallbackText === null
         ? binding.fallbackText
         : undefined,
-    dataset: binding.dataset || undefined,
+  
   };
 }
 

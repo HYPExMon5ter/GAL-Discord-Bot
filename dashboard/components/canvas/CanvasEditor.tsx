@@ -1505,8 +1505,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               </>
                             )}
 
-  
-                              <div>
+                            <div>
                                 <label className="text-xs text-muted-foreground">Width</label>
                                 <Input
                                   type="number"

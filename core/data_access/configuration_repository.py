@@ -31,7 +31,7 @@ class LegacyConfig:
     current_mode: str = "normal"
 
 
-class ConfigurationRepository(BaseRepository):
+class ConfigurationRepository:
     """
     Repository for configuration management with migration support.
     
@@ -41,8 +41,9 @@ class ConfigurationRepository(BaseRepository):
     """
     
     def __init__(self, cache_manager: CacheManager, event_bus: EventBus):
-        super().__init__("configuration", cache_manager, event_bus)
         self.logger = logging.getLogger(__name__)
+        self.cache_manager = cache_manager
+        self.event_bus = event_bus
         
         # Legacy config references
         self._legacy_config = None
@@ -103,7 +104,8 @@ class ConfigurationRepository(BaseRepository):
         }
         
         # Cache the unified configuration
-        await self.cache_manager.set("unified_config", unified_config, ttl=3600)  # 1 hour
+        from datetime import timedelta
+        await self.cache_manager.set("unified_config", unified_config, ttl=timedelta(hours=1))
         
         self.logger.info("Legacy configuration loaded into unified system")
     
@@ -169,7 +171,8 @@ class ConfigurationRepository(BaseRepository):
         try:
             # Update cache
             cache_key = f"config:{guild_id or 'global'}:{key}"
-            await self.cache_manager.set(cache_key, value, ttl=3600)
+            from datetime import timedelta
+            await self.cache_manager.set(cache_key, value, ttl=timedelta(hours=1))
             
             # For now, only update cache - legacy config file updates
             # would require file system access and careful YAML handling
@@ -218,7 +221,7 @@ class ConfigurationRepository(BaseRepository):
             config = self._legacy_sheet_config[mode].copy()
             
             # Cache the result
-            await self.cache_manager.set(cache_key, config, ttl=1800)  # 30 minutes
+            await self.cache_manager.set(cache_key, config, ttl=timedelta(minutes=30))
             
             return config
         
@@ -290,7 +293,7 @@ class ConfigurationRepository(BaseRepository):
             data = self._legacy_persisted.get(str(guild_id), {}).copy()
             
             # Cache the result
-            await self.cache_manager.set(cache_key, data, ttl=600)  # 10 minutes
+            await self.cache_manager.set(cache_key, data, ttl=timedelta(minutes=10))
             
             return data
         
@@ -318,7 +321,7 @@ class ConfigurationRepository(BaseRepository):
         try:
             # Update cache
             cache_key = f"guild_data:{guild_id}"
-            await self.cache_manager.set(cache_key, data, ttl=600)
+            await self.cache_manager.set(cache_key, data, ttl=timedelta(minutes=10))
             
             # For now, only update cache - legacy persistence updates
             # can be implemented in Phase 3 when we fully migrate
@@ -432,7 +435,7 @@ class ConfigurationRepository(BaseRepository):
             await self.cache_manager.set(cache_key, {
                 "channel_id": result[0],
                 "message_id": result[1]
-            }, ttl=1800)  # 30 minutes
+            }, ttl=timedelta(minutes=30))
             
             return result
         
@@ -467,7 +470,7 @@ class ConfigurationRepository(BaseRepository):
             await self.cache_manager.set(cache_key, {
                 "channel_id": channel_id,
                 "message_id": message_id
-            }, ttl=1800)  # 30 minutes
+            }, ttl=timedelta(minutes=30))
             
             # For now, only update cache - legacy persistence updates
             # can be implemented in Phase 3 when we fully migrate

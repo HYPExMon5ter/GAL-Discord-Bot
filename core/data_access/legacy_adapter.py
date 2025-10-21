@@ -50,11 +50,6 @@ class LegacyAdapter:
             return
             
         try:
-            # Initialize core components
-            await self.cache_manager.initialize()
-            await self.connection_manager.initialize()
-            await self.event_bus.initialize()
-            
             # Initialize repositories
             await self.sheets_repo.initialize()
             await self.config_repo.initialize()

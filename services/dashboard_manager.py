@@ -460,7 +460,8 @@ class DashboardManager:
         env["PYTHONPATH"] = str(self.project_root)
 
         try:
-            # Use uvicorn to start the API
+            # Use uvicorn to start the API from project root directory
+            # This ensures relative imports work correctly
             cmd = [
                 sys.executable, "-m", "uvicorn", 
                 "api.main:app",
@@ -469,22 +470,13 @@ class DashboardManager:
                 "--reload"
             ]
 
-            # For Windows, use shell=True with proper quoting
-            if sys.platform == "win32":
-                cmd_str = f'"{sys.executable}" -m uvicorn api.main:app --host 0.0.0.0 --port {self.api_port} --reload'
-                self.api_process = subprocess.Popen(
-                    cmd_str, 
-                    shell=True, 
-                    env=env,
-                    cwd=str(api_dir),
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                )
-            else:
-                self.api_process = subprocess.Popen(
-                    cmd,
-                    env=env,
-                    cwd=str(api_dir)
-                )
+            # Start from project root directory, not api directory
+            # This ensures utils module can be found during import
+            self.api_process = subprocess.Popen(
+                cmd,
+                env=env,
+                cwd=str(self.project_root)  # Changed from api_dir to project_root
+            )
 
             # Try to find the actual Python process (not cmd.exe on Windows)
             actual_pid = self._find_actual_service_pid(self.api_process.pid, "python.exe")

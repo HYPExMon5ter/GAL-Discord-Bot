@@ -32,7 +32,7 @@ class SheetUser:
     row: int = 0
 
 
-class SheetsRepository(BaseRepository):
+class SheetsRepository:
     """
     Repository for Google Sheets operations with migration support.
     
@@ -41,9 +41,10 @@ class SheetsRepository(BaseRepository):
     while introducing event-driven updates and caching.
     """
     
-    def __init__(self, cache_manager: CacheManager, event_bus: EventBus):
-        super().__init__("sheets", cache_manager, event_bus)
+    def __init__(self, cache_manager: CacheManager = None, event_bus: EventBus = None):
         self.logger = logging.getLogger(__name__)
+        self.cache_manager = cache_manager
+        self.event_bus = event_bus
         
         # Legacy sheet cache for backward compatibility
         self._legacy_cache = {"users": {}, "last_refresh": 0}
@@ -322,14 +323,13 @@ class SheetsRepository(BaseRepository):
         await self.initialize()
         
         try:
-            from integrations.sheets import (
-                mark_checked_in_async if checked_in else unmark_checked_in_async
-            )
+            from integrations.sheets import mark_checked_in_async, unmark_checked_in_async
             
             # Use legacy method
-            success = await (mark_checked_in_async if checked_in else unmark_checked_in_async)(
-                discord_tag, guild_id
-            )
+            if checked_in:
+                success = await mark_checked_in_async(discord_tag, guild_id)
+            else:
+                success = await unmark_checked_in_async(discord_tag, guild_id)
             
             if success:
                 # Emit check-in event

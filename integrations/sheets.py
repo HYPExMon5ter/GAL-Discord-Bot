@@ -138,10 +138,25 @@ async def apply_sheet_updates(sheet, updates: List[Tuple[str, Any]]) -> bool:
 def initialize_credentials():
     """Initialize Google Sheets credentials with proper error handling."""
     try:
-        if os.path.exists("./google-creds.json"):
-            creds = ServiceAccountCredentials.from_json_keyfile_name("./google-creds.json", SCOPE)
-            logger.info("Loaded Google credentials from file")
+        # Try multiple possible locations for the credentials file
+        creds_file_paths = [
+            "./google-creds.json",  # Current directory
+            os.path.join(os.getcwd(), "google-creds.json"),  # Absolute path from current working directory
+            os.path.join(os.path.dirname(__file__), "..", "google-creds.json"),  # Relative to this file's location
+        ]
+        
+        creds_file = None
+        for path in creds_file_paths:
+            if os.path.exists(path):
+                creds_file = path
+                logger.debug(f"Found credentials file at: {path}")
+                break
+        
+        if creds_file:
+            creds = ServiceAccountCredentials.from_json_keyfile_name(creds_file, SCOPE)
+            logger.info(f"Loaded Google credentials from file: {creds_file}")
         else:
+            logger.debug(f"Credentials file not found in any of these locations: {creds_file_paths}")
             creds_json = os.environ.get("GOOGLE_CREDS_JSON")
             if not creds_json:
                 raise AuthenticationError(

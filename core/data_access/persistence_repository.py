@@ -35,7 +35,7 @@ class GuildSchedule:
     scheduled_time: Optional[str]
 
 
-class PersistenceRepository(BaseRepository):
+class PersistenceRepository:
     """
     Repository for data persistence with migration support.
     
@@ -45,8 +45,9 @@ class PersistenceRepository(BaseRepository):
     """
     
     def __init__(self, cache_manager: CacheManager, event_bus: EventBus):
-        super().__init__("persistence", cache_manager, event_bus)
         self.logger = logging.getLogger(__name__)
+        self.cache_manager = cache_manager
+        self.event_bus = event_bus
         
         # Legacy persistence references
         self._legacy_persisted = None
@@ -86,7 +87,8 @@ class PersistenceRepository(BaseRepository):
         for guild_id, guild_data in self._legacy_persisted.items():
             if guild_id != "default":  # Skip default key
                 cache_key = f"guild_data:{guild_id}"
-                await self.cache_manager.set(cache_key, guild_data.copy(), ttl=600)  # 10 minutes
+                from datetime import timedelta
+                await self.cache_manager.set(cache_key, guild_data.copy(), ttl=timedelta(minutes=10))
         
         self.logger.info(f"Loaded persistence data for {len(self._legacy_persisted)} guilds")
     
@@ -113,7 +115,7 @@ class PersistenceRepository(BaseRepository):
             data = self._legacy_persisted.get(str(guild_id), {}).copy()
             
             # Cache the result
-            await self.cache_manager.set(cache_key, data, ttl=600)  # 10 minutes
+            await self.cache_manager.set(cache_key, data, ttl=timedelta(minutes=10))
             
             return data
         
@@ -143,7 +145,7 @@ class PersistenceRepository(BaseRepository):
             
             # Update cache
             cache_key = f"guild_data:{gid}"
-            await self.cache_manager.set(cache_key, data, ttl=600)
+            await self.cache_manager.set(cache_key, data, ttl=timedelta(minutes=10))
             
             # Update legacy persistence
             if self._legacy_persisted:
@@ -264,7 +266,7 @@ class PersistenceRepository(BaseRepository):
             await self.cache_manager.set(cache_key, {
                 "channel_id": result[0],
                 "message_id": result[1]
-            }, ttl=1800)  # 30 minutes
+            }, ttl=timedelta(minutes=30))
         
         return result
     
@@ -412,7 +414,7 @@ class PersistenceRepository(BaseRepository):
         
         # Cache the result
         if scheduled_time:
-            await self.cache_manager.set(cache_key, scheduled_time, ttl=3600)  # 1 hour
+            await self.cache_manager.set(cache_key, scheduled_time, ttl=timedelta(hours=1))
         
         return scheduled_time
     
@@ -487,7 +489,7 @@ class PersistenceRepository(BaseRepository):
                     
                     # Update cache
                     cache_key = f"schedule:{gid}:{key}"
-                    await self.cache_manager.set(cache_key, dtstr, ttl=3600)  # 1 hour
+                    await self.cache_manager.set(cache_key, dtstr, ttl=timedelta(hours=1))
                     
                     if emit_event:
                         await self._emit_event(

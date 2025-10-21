@@ -11,17 +11,28 @@ import os
 def start_api():
     """Start the FastAPI backend"""
     print("Starting FastAPI backend...")
-    api_dir = os.path.join(os.path.dirname(__file__), "api")
-    os.chdir(api_dir)
-
+    project_root = os.path.dirname(__file__)
+    
+    # Stay in project root directory, not api directory
+    # This ensures relative imports work correctly
+    
     # Use uvicorn directly with proper path setup
     env = os.environ.copy()
-    env["PYTHONPATH"] = os.path.dirname(__file__)
+    
+    # Ensure PYTHONPATH includes project root
+    current_path = env.get("PYTHONPATH", "")
+    if current_path:
+        env["PYTHONPATH"] = f"{project_root};{current_path}" if os.name == 'nt' else f"{project_root}:{current_path}"
+    else:
+        env["PYTHONPATH"] = project_root
+    
+    print(f"Setting PYTHONPATH to: {env['PYTHONPATH']}")
+    print(f"Starting from directory: {os.getcwd()}")
 
     try:
-        # Use shell=True for Windows compatibility
-        cmd = f'{sys.executable} -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload'
-        process = subprocess.Popen(cmd, shell=True, env=env)
+        # Use list command instead of shell=True for better environment handling
+        cmd = [sys.executable, '-m', 'uvicorn', 'api.main:app', '--host', '0.0.0.0', '--port', '8000', '--reload']
+        process = subprocess.Popen(cmd, env=env, text=True)
         return process
     except Exception as e:
         print(f"Failed to start API: {e}")

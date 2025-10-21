@@ -5,6 +5,8 @@ This module sets up the FastAPI application with master password authentication,
 CORS middleware, and includes all API routers.
 """
 
+import os
+import sys
 from datetime import UTC, datetime, timedelta
 
 import logging
@@ -12,6 +14,11 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Add project root to Python path to ensure imports work correctly
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 logger = logging.getLogger(__name__)
 

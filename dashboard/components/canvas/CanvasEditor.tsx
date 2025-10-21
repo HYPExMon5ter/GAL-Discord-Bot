@@ -1756,10 +1756,10 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             {['players', 'scores', 'placement'].includes(selectedElement.type) &&
                               (() => {
                                 const binding = ensureBinding(selectedElement);
-                                const dataset = binding.dataset ?? createDefaultDatasetBinding();
+                                const dataset = null;
                                 const effectiveSource: CanvasBindingSource =
                                   binding.source === 'manual' ? 'manual' : 'dataset';
-                                const rowMode = dataset.rowMode ?? 'static';
+                                const rowMode = 'static';
 
                                 return (
                                   <>

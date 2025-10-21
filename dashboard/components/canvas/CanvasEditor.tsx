@@ -1370,7 +1370,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           onClick={addScoresElementWithRound}
                         >
                           <Trophy className="h-4 w-4 mr-2" />
-                          Scores Element ({selectedRound})
+                          Scores Element
                         </Button>
                         <Button
                           variant="outline"
@@ -1463,15 +1463,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
                             {['players', 'scores', 'placement'].includes(selectedElement.type) && (
                               <>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Type</label>
-                                  <div className="text-sm font-medium capitalize flex items-center gap-2">
-                                    {selectedElement.type === 'players' && <User className="h-4 w-4" />}
-                                    {selectedElement.type === 'scores' && <Trophy className="h-4 w-4" />}
-                                    {selectedElement.type === 'placement' && <Medal className="h-4 w-4" />}
-                                    {selectedElement.type} Property
-                                  </div>
-                                </div>
+                                {/* Divider Line */}
+                                <div className="border-t border-gray-200 my-4"></div>
 
                                 {selectedElement.type === 'scores' && (
                                   <div>
@@ -1495,42 +1488,24 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   </div>
                                 )}
 
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Element Spacing (px)</label>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    value={selectedElement.spacing ?? 20}
-                                    onChange={(e) =>
-                                      updateElement(selectedElement.id, { spacing: Number(e.target.value) || 20 })
-                                    }
-                                    placeholder="Space between items"
-                                  />
-                                </div>
+                                {['players', 'scores', 'placement'].includes(selectedElement.type) && (
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Element Spacing (px)</label>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      value={selectedElement.spacing ?? 20}
+                                      onChange={(e) =>
+                                        updateElement(selectedElement.id, { spacing: Number(e.target.value) || 20 })
+                                      }
+                                      placeholder="Space between items"
+                                    />
+                                  </div>
+                                )}
                               </>
                             )}
 
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-xs text-muted-foreground">X</label>
-                                <Input
-                                  type="number"
-                                  value={selectedElement.x ?? 0}
-                                  onChange={(e) =>
-                                    updateElement(selectedElement.id, { x: Number(e.target.value) || 0 })
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">Y</label>
-                                <Input
-                                  type="number"
-                                  value={selectedElement.y ?? 0}
-                                  onChange={(e) =>
-                                    updateElement(selectedElement.id, { y: Number(e.target.value) || 0 })
-                                  }
-                                />
-                              </div>
+  
                               <div>
                                 <label className="text-xs text-muted-foreground">Width</label>
                                 <Input
@@ -1720,14 +1695,13 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 {(element.type === 'text' || ['players', 'scores', 'placement'].includes(element.type)) && (
                   <div
                     style={{
-                      ...elementStyleToCss(element),
                       fontSize: `${(element.fontSize || 16) * zoom}px`,
+                      color: element.color || '#000000',
+                      fontFamily: element.fontFamily || 'Arial',
                       whiteSpace: 'nowrap',
                       padding: element.padding 
                         ? `${(element.padding.top || 4) * zoom}px ${(element.padding.right || 8) * zoom}px ${(element.padding.bottom || 4) * zoom}px ${(element.padding.left || 8) * zoom}px`
                         : `${4 * zoom}px ${8 * zoom}px`,
-                      borderRadius: element.borderRadius ? `${element.borderRadius * zoom}px` : `${4 * zoom}px`,
-                      borderWidth: element.borderWidth ? `${element.borderWidth * zoom}px` : '1px',
                       letterSpacing: element.letterSpacing ? `${element.letterSpacing * zoom}px` : undefined,
                     }}
                   >

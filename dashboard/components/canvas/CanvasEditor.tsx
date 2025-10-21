@@ -1757,8 +1757,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               (() => {
                                 const binding = ensureBinding(selectedElement);
                                 const dataset = null;
-                                const effectiveSource: CanvasBindingSource =
-                                  binding.source === 'manual' ? 'manual' : 'dataset';
+                                const effectiveSource = binding.source || 'series';
                                 const rowMode = 'static';
 
                                 return (

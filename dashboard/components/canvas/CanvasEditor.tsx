@@ -1508,7 +1508,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   />
                                 </div>
                               </>
-                              </div>
                             )}
 
                             <div className="grid grid-cols-2 gap-2">

@@ -8,6 +8,8 @@ import type {
   ElementSpacing,
   PlayerData,
   CanvasDataBinding,
+  PreviewModeConfig,
+  UniversalStyleControls,
 } from '@/types';
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -65,6 +67,30 @@ export function normalizeCanvasElement(element: any): CanvasElement {
       element?.borderWidth != null ? toOptionalNumber(element.borderWidth) : undefined,
     borderRadius:
       element?.borderRadius != null ? toOptionalNumber(element.borderRadius) : undefined,
+    fontWeight: typeof element?.fontWeight === 'string' ? element.fontWeight : undefined,
+    textAlign: (element?.textAlign === 'left' || element?.textAlign === 'center' || element?.textAlign === 'right')
+      ? element.textAlign
+      : undefined,
+    letterSpacing: element?.letterSpacing != null ? toOptionalNumber(element.letterSpacing) : undefined,
+    lineHeight: element?.lineHeight != null ? toOptionalNumber(element.lineHeight) : undefined,
+    textTransform: (element?.textTransform === 'none' || element?.textTransform === 'uppercase' || 
+                    element?.textTransform === 'lowercase' || element?.textTransform === 'capitalize')
+      ? element.textTransform
+      : undefined,
+    textShadow: typeof element?.textShadow === 'string' ? element.textShadow : undefined,
+    boxShadow: typeof element?.boxShadow === 'string' ? element.boxShadow : undefined,
+    padding: element?.padding && typeof element.padding === 'object' ? {
+      top: element.padding.top != null ? toOptionalNumber(element.padding.top) : undefined,
+      right: element.padding.right != null ? toOptionalNumber(element.padding.right) : undefined,
+      bottom: element.padding.bottom != null ? toOptionalNumber(element.padding.bottom) : undefined,
+      left: element.padding.left != null ? toOptionalNumber(element.padding.left) : undefined,
+    } : undefined,
+    margin: element?.margin && typeof element.margin === 'object' ? {
+      top: element.margin.top != null ? toOptionalNumber(element.margin.top) : undefined,
+      right: element.margin.right != null ? toOptionalNumber(element.margin.right) : undefined,
+      bottom: element.margin.bottom != null ? toOptionalNumber(element.margin.bottom) : undefined,
+      left: element.margin.left != null ? toOptionalNumber(element.margin.left) : undefined,
+    } : undefined,
     dataBinding: normalizeDataBinding(element?.dataBinding),
     isPlaceholder: Boolean(element?.isPlaceholder),
   };
@@ -152,6 +178,15 @@ function normalizeCanvasState(value: any): CanvasState {
     },
     backgroundImage:
       typeof value?.backgroundImage === 'string' ? value.backgroundImage : null,
+    previewConfig: value?.previewConfig || {
+      enabled: false,
+      mockData: true,
+      showPlacementPositions: true,
+      liveUpdates: true,
+      playerCount: 10,
+      sortBy: 'total_points',
+      sortOrder: 'desc',
+    },
   };
 }
 
@@ -567,6 +602,7 @@ export function serializeCanvasState(state: CanvasState): string {
     elementSeries: state.elementSeries,
     settings: state.settings,
     backgroundImage: state.backgroundImage ?? null,
+    previewConfig: state.previewConfig,
   });
 
   return JSON.stringify(normalized);
@@ -602,4 +638,111 @@ export function updateCanvasSettings(
       backgroundColor: settings.backgroundColor ?? state.settings.backgroundColor,
     },
   };
+}
+
+// Styling system functions
+
+/**
+ * Apply universal styling to all elements of a specific type
+ */
+export function applyUniversalStylingToElements(
+  elements: CanvasElement[],
+  elementType: CanvasPropertyType,
+  styling: Partial<UniversalStyleControls>,
+): CanvasElement[] {
+  return elements.map(element => {
+    if (element.type === elementType) {
+      return {
+        ...element,
+        ...styling,
+      };
+    }
+    return element;
+  });
+}
+
+/**
+ * Update preview mode configuration in canvas state
+ */
+export function updatePreviewModeConfig(
+  state: CanvasState,
+  previewConfig: Partial<PreviewModeConfig>,
+): CanvasState {
+  return {
+    ...state,
+    previewConfig: {
+      enabled: previewConfig.enabled ?? false,
+      mockData: previewConfig.mockData ?? true,
+      showPlacementPositions: previewConfig.showPlacementPositions ?? true,
+      liveUpdates: previewConfig.liveUpdates ?? true,
+      playerCount: previewConfig.playerCount ?? 10,
+      sortBy: previewConfig.sortBy ?? 'total_points',
+      sortOrder: previewConfig.sortOrder ?? 'desc',
+    },
+  };
+}
+
+/**
+ * Get elements with preview data applied
+ */
+export function getElementsWithPreviewData(
+  elements: CanvasElement[],
+  elementSeries: ElementSeries[],
+  previewConfig: PreviewModeConfig,
+): CanvasElement[] {
+  if (!previewConfig.enabled) {
+    return elements;
+  }
+
+  // If preview is enabled, generate elements from series with mock data
+  const previewElements: CanvasElement[] = [];
+  
+  // Add non-series elements first
+  elements.forEach(element => {
+    if (!element.dataBinding?.seriesId) {
+      previewElements.push(element);
+    }
+  });
+
+  // Add elements from series with mock data
+  elementSeries.forEach(series => {
+    const mockData = generateMockPlayerData(previewConfig.playerCount || 10);
+    const seriesElements = generateElementsFromSeries(series, mockData);
+    previewElements.push(...seriesElements);
+  });
+
+  return previewElements;
+}
+
+/**
+ * Generate mock player data for preview
+ */
+function generateMockPlayerData(count: number = 10): PlayerData[] {
+  const firstNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Jamie', 'Avery', 'Quinn', 'Sage'];
+  const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez'];
+  const teams = ['Thunder', 'Lightning', 'Phoenix', 'Dragons', 'Titans', 'Vikings', 'Rangers', 'Warriors'];
+
+  const mockData: PlayerData[] = [];
+  
+  for (let i = 0; i < count; i++) {
+    const firstName = firstNames[i % firstNames.length];
+    const lastName = lastNames[Math.floor(i / firstNames.length) % lastNames.length];
+    const team = teams[i % teams.length];
+    
+    mockData.push({
+      player_name: `${firstName} "${team}" ${lastName}`,
+      total_points: Math.max(0, 1000 - (i * 85) + Math.floor(Math.random() * 50)),
+      standing_rank: i + 1,
+      player_id: `player_${i + 1}`,
+      discord_id: `discord_${i + 1}`,
+      riot_id: `riot_${i + 1}`,
+      round_scores: {
+        round_1: Math.floor(Math.random() * 300),
+        round_2: Math.floor(Math.random() * 300),
+        round_3: Math.floor(Math.random() * 300),
+      },
+    });
+  }
+
+  return mockData;
 }

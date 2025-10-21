@@ -142,4 +142,41 @@ export const lockApi = {
   },
 };
 
+export const playerApi = {
+  getRankedPlayers: async (options?: {
+    tournamentId?: string;
+    guildId?: string;
+    sortBy?: string;
+    sortOrder?: string;
+    limit?: number;
+  }) => {
+    const params = new URLSearchParams();
+    
+    if (options?.tournamentId) params.append('tournament_id', options.tournamentId);
+    if (options?.guildId) params.append('guild_id', options.guildId);
+    if (options?.sortBy) params.append('sort_by', options.sortBy);
+    if (options?.sortOrder) params.append('sort_order', options.sortOrder);
+    if (options?.limit) params.append('limit', options.limit.toString());
+    
+    const response: AxiosResponse<{
+      players: Array<{
+        player_name: string;
+        total_points: number;
+        standing_rank: number;
+        player_id?: string;
+        discord_id?: string;
+        riot_id?: string;
+        round_scores?: Record<string, number>;
+      }>;
+      total: number;
+      snapshot_id?: number;
+      snapshot_created_at?: string;
+      tournament_id?: string;
+      tournament_name?: string;
+    }> = await api.get(`/players/ranked?${params.toString()}`);
+    
+    return response.data;
+  },
+};
+
 export default api;

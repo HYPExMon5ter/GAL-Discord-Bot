@@ -41,6 +41,9 @@ import {
   ElementSeries,
   ElementSpacing,
   PlayerData,
+  PreviewModeConfig,
+  UniversalStyleControls,
+  StylePreset,
 } from '@/types';
 import { useAuth } from '@/hooks/use-auth';
 import { useLocks } from '@/hooks/use-locks';
@@ -71,6 +74,7 @@ import {
 } from 'lucide-react';
 import { HistoryManager } from '@/lib/history-manager';
 import { useToast } from '@/components/ui/use-toast';
+import { playerApi } from '@/lib/api';
 import {
   createPropertyElement,
   createTextElement,
@@ -89,7 +93,24 @@ import {
   updateElementSeries,
   deleteElementSeries,
   DEFAULT_ELEMENT_SPACING,
+  applyUniversalStylingToElements,
+  updatePreviewModeConfig,
+  getElementsWithPreviewData,
 } from '@/lib/canvas-helpers';
+import {
+  STYLE_PRESETS,
+  FONT_OPTIONS,
+  FONT_WEIGHT_OPTIONS,
+  TEXT_TRANSFORM_OPTIONS,
+  TEXT_ALIGN_OPTIONS,
+  getApplicablePresets,
+  getPresetById,
+  elementStyleToCss,
+  validateAndCleanStyle,
+  DEFAULT_UNIVERSAL_STYLING,
+  getDefaultPreviewModeConfig,
+  generateMockPlayerData,
+} from '@/lib/canvas-styling';
 
 const DEFAULT_ROW_SPACING = 56;
 
@@ -252,6 +273,18 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [selectedElement, setSelectedElement] = useState<CanvasElement | null>(null);
   const [activeTab, setActiveTab] = useState('design');
   const canvasSettings = canvasData?.settings ?? DEFAULT_CANVAS_SETTINGS;
+  
+  // Styling system state
+  const [universalStyling, setUniversalStyling] = useState<Partial<UniversalStyleControls>>(DEFAULT_UNIVERSAL_STYLING);
+  const [previewConfig, setPreviewConfig] = useState<PreviewModeConfig>(
+    initialCanvasState.previewConfig || getDefaultPreviewModeConfig()
+  );
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+  
+  // Real player data state
+  const [realPlayerData, setRealPlayerData] = useState<PlayerData[]>([]);
+  const [playerDataLoading, setPlayerDataLoading] = useState(false);
+  const [playerDataError, setPlayerDataError] = useState<string | null>(null);
   
   // Canvas state
   const [zoom, setZoom] = useState(1);
@@ -574,6 +607,168 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     },
     [bindingElements, updateElementBinding],
   );
+
+  // Styling system handlers
+  const applyUniversalStyling = useCallback((elementType: CanvasPropertyType) => {
+    const updatedElements = applyUniversalStylingToElements(elements, elementType, universalStyling);
+    setElements(updatedElements);
+    setCanvasData(prevData => ({ ...prevData, elements: updatedElements }));
+    
+    addToHistory({
+      type: 'update_elements',
+      data: {
+        elementType,
+        styling: universalStyling,
+        before: elements,
+        after: updatedElements
+      }
+    });
+
+    toast({
+      title: 'Styling Applied',
+      description: `Universal styling applied to all ${elementType} elements.`,
+    });
+  }, [elements, universalStyling, addToHistory, toast]);
+
+  const applyStylePreset = useCallback((presetId: string) => {
+    const preset = getPresetById(presetId);
+    if (!preset) return;
+
+    const updatedElements = elements.map(element => {
+      if (preset.applicableTo.includes(element.type as CanvasPropertyType)) {
+        return {
+          ...element,
+          ...preset.style,
+        };
+      }
+      return element;
+    });
+
+    setElements(updatedElements);
+    setCanvasData(prevData => ({ ...prevData, elements: updatedElements }));
+    setSelectedPreset(presetId);
+    
+    addToHistory({
+      type: 'apply_preset',
+      data: {
+        presetId,
+        preset,
+        before: elements,
+        after: updatedElements
+      }
+    });
+
+    toast({
+      title: 'Preset Applied',
+      description: `"${preset.name}" preset applied to applicable elements.`,
+    });
+  }, [elements, addToHistory, toast]);
+
+  const updateUniversalStyling = useCallback((updates: Partial<UniversalStyleControls>) => {
+    const cleanedStyling = validateAndCleanStyle(updates);
+    setUniversalStyling(prev => ({ 
+      ...prev, 
+      ...cleanedStyling 
+    } as Partial<UniversalStyleControls>));
+  }, []);
+
+  const togglePreviewMode = useCallback(() => {
+    const newPreviewConfig = {
+      ...previewConfig,
+      enabled: !previewConfig.enabled,
+    };
+    
+    setPreviewConfig(newPreviewConfig);
+    setCanvasData(prevData => updatePreviewModeConfig(prevData, newPreviewConfig));
+    
+    addToHistory({
+      type: 'toggle_preview',
+      data: {
+        before: previewConfig,
+        after: newPreviewConfig
+      }
+    });
+
+    toast({
+      title: newPreviewConfig.enabled ? 'Preview Mode Enabled' : 'Preview Mode Disabled',
+      description: newPreviewConfig.enabled 
+        ? 'Viewing canvas with mock data and auto-generated elements.'
+        : 'Returned to design mode.',
+    });
+  }, [previewConfig, addToHistory, toast]);
+
+  const updatePreviewConfig = useCallback((updates: Partial<PreviewModeConfig>) => {
+    const newPreviewConfig = { ...previewConfig, ...updates };
+    setPreviewConfig(newPreviewConfig);
+    setCanvasData(prevData => updatePreviewModeConfig(prevData, newPreviewConfig));
+  }, [previewConfig]);
+
+  // Real player data fetching
+  const fetchRealPlayerData = useCallback(async () => {
+    setPlayerDataLoading(true);
+    setPlayerDataError(null);
+    
+    try {
+      const response = await playerApi.getRankedPlayers({
+        sortBy: previewConfig.sortBy,
+        sortOrder: previewConfig.sortOrder,
+        limit: previewConfig.playerCount || 50,
+      });
+      
+      const playerData: PlayerData[] = response.players.map(player => ({
+        player_name: player.player_name,
+        total_points: player.total_points,
+        standing_rank: player.standing_rank,
+        player_id: player.player_id,
+        discord_id: player.discord_id,
+        riot_id: player.riot_id,
+        round_scores: player.round_scores || {},
+      }));
+      
+      setRealPlayerData(playerData);
+    } catch (error) {
+      console.error('Error fetching player data:', error);
+      setPlayerDataError('Failed to load real player data');
+      setRealPlayerData([]);
+    } finally {
+      setPlayerDataLoading(false);
+    }
+  }, [previewConfig.sortBy, previewConfig.sortOrder, previewConfig.playerCount]);
+
+  // Fetch real player data when preview mode is enabled and config changes
+  useEffect(() => {
+    if (previewConfig.enabled && !previewConfig.mockData) {
+      fetchRealPlayerData();
+    }
+  }, [previewConfig.enabled, previewConfig.mockData, previewConfig.sortBy, previewConfig.sortOrder, previewConfig.playerCount, fetchRealPlayerData]);
+
+  // Get elements to display (with preview data if preview mode is enabled)
+  const displayElements = useMemo(() => {
+    if (!previewConfig.enabled) {
+      return elements;
+    }
+
+    // Use real data if available and not using mock data
+    const useRealData = !previewConfig.mockData && realPlayerData.length > 0;
+    const dataSource = useRealData ? realPlayerData : generateMockPlayerData(previewConfig.playerCount || 10);
+    
+    const previewElements: CanvasElement[] = [];
+    
+    // Add non-series elements first
+    elements.forEach(element => {
+      if (!element.dataBinding?.seriesId) {
+        previewElements.push(element);
+      }
+    });
+
+    // Add elements from series with data
+    elementSeries.forEach(series => {
+      const seriesElements = generateElementsFromSeries(series, dataSource);
+      previewElements.push(...seriesElements);
+    });
+
+    return previewElements;
+  }, [elements, elementSeries, previewConfig, realPlayerData]);
 
   const applySnapshotToBindings = useCallback(() => {
     if (!snapshotInputRef.current) return;
@@ -1025,6 +1220,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         elements,
         elementSeries,
         backgroundImage,
+        previewConfig,
       };
 
       const success = await onSave({
@@ -1361,6 +1557,409 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           <Medal className="h-4 w-4 mr-2" />
                           Placement Series (Auto-Fill All)
                         </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Universal Styling</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Font Size</label>
+                            <Input
+                              type="number"
+                              min={8}
+                              value={universalStyling.fontSize ?? 24}
+                              onChange={(e) =>
+                                updateUniversalStyling({ fontSize: Number(e.target.value) || 24 })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Font</label>
+                            <Select
+                              value={universalStyling.fontFamily || 'Arial'}
+                              onValueChange={(value) =>
+                                updateUniversalStyling({ fontFamily: value })
+                              }
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue placeholder="Select font..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FONT_OPTIONS.map((font) => (
+                                  <SelectItem key={font.value} value={font.value}>
+                                    {font.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Text Color</label>
+                            <Input
+                              type="color"
+                              value={universalStyling.color ?? '#000000'}
+                              onChange={(e) =>
+                                updateUniversalStyling({ color: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Background</label>
+                            <Input
+                              type="color"
+                              value={universalStyling.backgroundColor ?? '#3B82F6'}
+                              onChange={(e) =>
+                                updateUniversalStyling({ backgroundColor: e.target.value })
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Border Color</label>
+                            <Input
+                              type="color"
+                              value={universalStyling.borderColor ?? '#1E40AF'}
+                              onChange={(e) =>
+                                updateUniversalStyling({ borderColor: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Border Width</label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={universalStyling.borderWidth ?? 2}
+                              onChange={(e) =>
+                                updateUniversalStyling({ borderWidth: Number(e.target.value) || 0 })
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Border Radius</label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={universalStyling.borderRadius ?? 8}
+                              onChange={(e) =>
+                                updateUniversalStyling({ borderRadius: Number(e.target.value) || 0 })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Font Weight</label>
+                            <Select
+                              value={universalStyling.fontWeight || 'normal'}
+                              onValueChange={(value) =>
+                                updateUniversalStyling({ fontWeight: value })
+                              }
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue placeholder="Select weight..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {FONT_WEIGHT_OPTIONS.map((weight) => (
+                                  <SelectItem key={weight.value} value={weight.value}>
+                                    {weight.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Text Align</label>
+                            <Select
+                              value={universalStyling.textAlign || 'center'}
+                              onValueChange={(value) =>
+                                updateUniversalStyling({ textAlign: value as any })
+                              }
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue placeholder="Align..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TEXT_ALIGN_OPTIONS.map((align) => (
+                                  <SelectItem key={align.value} value={align.value}>
+                                    {align.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Transform</label>
+                            <Select
+                              value={universalStyling.textTransform || 'none'}
+                              onValueChange={(value) =>
+                                updateUniversalStyling({ textTransform: value as any })
+                              }
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue placeholder="Transform..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TEXT_TRANSFORM_OPTIONS.map((transform) => (
+                                  <SelectItem key={transform.value} value={transform.value}>
+                                    {transform.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Letter Spacing</label>
+                            <Input
+                              type="number"
+                              value={universalStyling.letterSpacing ?? 0}
+                              onChange={(e) =>
+                                updateUniversalStyling({ letterSpacing: Number(e.target.value) || 0 })
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="text-xs text-muted-foreground">Apply to Element Type</label>
+                          <div className="grid grid-cols-3 gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => applyUniversalStyling('player')}
+                              className="text-xs h-8"
+                            >
+                              <User className="h-3 w-3 mr-1" />
+                              Players
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => applyUniversalStyling('score')}
+                              className="text-xs h-8"
+                            >
+                              <Trophy className="h-3 w-3 mr-1" />
+                              Scores
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => applyUniversalStyling('placement')}
+                              className="text-xs h-8"
+                            >
+                              <Medal className="h-3 w-3 mr-1" />
+                              Places
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Style Presets</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <div className="grid gap-2">
+                          {STYLE_PRESETS.filter(preset => 
+                            preset.category === 'universal' || 
+                            (selectedElement && preset.applicableTo.includes(selectedElement.type as CanvasPropertyType))
+                          ).map((preset) => (
+                            <Button
+                              key={preset.id}
+                              variant={selectedPreset === preset.id ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => applyStylePreset(preset.id)}
+                              className="w-full justify-start text-xs h-8"
+                            >
+                              <div className="w-3 h-3 rounded mr-2" style={{
+                                backgroundColor: preset.style.backgroundColor || '#3B82F6',
+                                border: preset.style.borderWidth ? `${preset.style.borderWidth}px solid ${preset.style.borderColor}` : 'none'
+                              }} />
+                              {preset.name}
+                            </Button>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm">Preview Mode</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <Button
+                          variant={previewConfig.enabled ? "default" : "outline"}
+                          size="sm"
+                          onClick={togglePreviewMode}
+                          className="w-full justify-start"
+                        >
+                          <Settings className="h-4 w-4 mr-2" />
+                          {previewConfig.enabled ? 'Preview Mode ON' : 'Preview Mode OFF'}
+                        </Button>
+                        
+                        {previewConfig.enabled && (
+                          <div className="space-y-2">
+                            <div>
+                              <label className="text-xs text-muted-foreground">Data Source</label>
+                              <Select
+                                value={previewConfig.mockData ? 'mock' : 'real'}
+                                onValueChange={(value) =>
+                                  updatePreviewConfig({ mockData: value === 'mock' })
+                                }
+                              >
+                                <SelectTrigger className="h-10">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="mock">Mock Data</SelectItem>
+                                  <SelectItem value="real">Real Player Data</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {!previewConfig.mockData && (
+                              <div className="space-y-2">
+                                {playerDataLoading && (
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <RefreshCw className="h-3 w-3 animate-spin" />
+                                    Loading real player data...
+                                  </div>
+                                )}
+                                
+                                {playerDataError && (
+                                  <div className="flex items-center gap-2 text-xs text-red-600">
+                                    <span>{playerDataError}</span>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={fetchRealPlayerData}
+                                      className="h-6 text-xs"
+                                    >
+                                      Retry
+                                    </Button>
+                                  </div>
+                                )}
+                                
+                                {!playerDataLoading && !playerDataError && realPlayerData.length > 0 && (
+                                  <div className="text-xs text-green-600">
+                                    ✓ {realPlayerData.length} players loaded
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground">Player Count</label>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={50}
+                                  value={previewConfig.playerCount ?? 10}
+                                  onChange={(e) =>
+                                    updatePreviewConfig({ playerCount: Number(e.target.value) || 10 })
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground">Sort By</label>
+                                <Select
+                                  value={previewConfig.sortBy || 'total_points'}
+                                  onValueChange={(value) =>
+                                    updatePreviewConfig({ sortBy: value as any })
+                                  }
+                                >
+                                  <SelectTrigger className="h-10">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="total_points">Total Points</SelectItem>
+                                    <SelectItem value="player_name">Player Name</SelectItem>
+                                    <SelectItem value="standing_rank">Standing Rank</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs text-muted-foreground">Sort Order</label>
+                                <Select
+                                  value={previewConfig.sortOrder || 'desc'}
+                                  onValueChange={(value) =>
+                                    updatePreviewConfig({ sortOrder: value as any })
+                                  }
+                                >
+                                  <SelectTrigger className="h-10">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="desc">Descending</SelectItem>
+                                    <SelectItem value="asc">Ascending</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground">Show Positions</label>
+                                <Select
+                                  value={previewConfig.showPlacementPositions ? 'true' : 'false'}
+                                  onValueChange={(value) =>
+                                    updatePreviewConfig({ showPlacementPositions: value === 'true' })
+                                  }
+                                >
+                                  <SelectTrigger className="h-10">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="true">Show</SelectItem>
+                                    <SelectItem value="false">Hide</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                id="live-updates"
+                                checked={previewConfig.liveUpdates}
+                                onChange={(e) =>
+                                  updatePreviewConfig({ liveUpdates: e.target.checked })
+                                }
+                              />
+                              <label htmlFor="live-updates" className="text-xs text-muted-foreground">
+                                Live updates when styling changes
+                              </label>
+                            </div>
+
+                            {!previewConfig.mockData && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={fetchRealPlayerData}
+                                disabled={playerDataLoading}
+                                className="w-full h-8 text-xs"
+                              >
+                                <RefreshCw className={`h-3 w-3 mr-1 ${playerDataLoading ? 'animate-spin' : ''}`} />
+                                Refresh Player Data
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
 
@@ -2199,11 +2798,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
               </div>
             ))}
 
-            {elements.map((element) => (
+            {displayElements.map((element) => (
               <div
                 key={element.id}
                 data-element-id={element.id}
-                className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''}`}
+                className={`absolute cursor-move ${selectedElement?.id === element.id ? 'ring-2 ring-blue-500' : ''} ${previewConfig.enabled ? 'pointer-events-none' : ''}`}
                 style={{
                   left: `${element.x * zoom}px`,
                   top: `${element.y * zoom}px`,
@@ -2212,20 +2811,24 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   zIndex: 1
                 }}
                 onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedElement(element);
+                  if (!previewConfig.enabled) {
+                    e.stopPropagation();
+                    setSelectedElement(element);
+                  }
                 }}
               >
                 {(element.type === 'text' || ['player', 'score', 'placement'].includes(element.type)) && (
                   <div
                     style={{
+                      ...elementStyleToCss(element),
                       fontSize: `${(element.fontSize || 16) * zoom}px`,
-                      color: element.color || '#000000',
-                      fontFamily: element.fontFamily || 'Arial',
                       whiteSpace: 'nowrap',
-                      backgroundColor: element.backgroundColor || '#3B82F6',
-                      padding: `${4 * zoom}px ${8 * zoom}px`,
-                      borderRadius: `${4 * zoom}px`
+                      padding: element.padding 
+                        ? `${(element.padding.top || 4) * zoom}px ${(element.padding.right || 8) * zoom}px ${(element.padding.bottom || 4) * zoom}px ${(element.padding.left || 8) * zoom}px`
+                        : `${4 * zoom}px ${8 * zoom}px`,
+                      borderRadius: element.borderRadius ? `${element.borderRadius * zoom}px` : `${4 * zoom}px`,
+                      borderWidth: element.borderWidth ? `${element.borderWidth * zoom}px` : '1px',
+                      letterSpacing: element.letterSpacing ? `${element.letterSpacing * zoom}px` : undefined,
                     }}
                   >
                     {element.content || (element.type === 'text' ? 'Text' : element.placeholderText)}

@@ -108,6 +108,25 @@ export interface CanvasElementStyle {
   borderColor?: string;
   borderWidth?: number;
   borderRadius?: number;
+  fontWeight?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  letterSpacing?: number;
+  lineHeight?: number;
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  textShadow?: string;
+  boxShadow?: string;
+  padding?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
+  margin?: {
+    top?: number;
+    right?: number;
+    bottom?: number;
+    left?: number;
+  };
 }
 
 export interface CanvasElement extends CanvasElementStyle {
@@ -134,6 +153,7 @@ export interface CanvasState {
   elementSeries: ElementSeries[]; // New simplified element system
   settings: CanvasSettings;
   backgroundImage?: string | null;
+  previewConfig?: PreviewModeConfig;
 }
 
 export interface SnapLine {
@@ -150,4 +170,63 @@ export interface PlayerData {
   discord_id?: string;
   riot_id?: string;
   round_scores?: Record<string, number>;
+}
+
+// Style presets for common use cases
+export interface StylePreset {
+  id: string;
+  name: string;
+  description: string;
+  style: CanvasElementStyle;
+  applicableTo: CanvasPropertyType[];
+  category: 'text' | 'player' | 'score' | 'placement' | 'universal';
+}
+
+// Universal styling controls
+export interface UniversalStyleControls {
+  fontSize: number;
+  fontFamily: string;
+  color: string;
+  backgroundColor: string;
+  borderColor: string;
+  borderWidth: number;
+  borderRadius: number;
+  fontWeight: string;
+  textAlign: 'left' | 'center' | 'right';
+  letterSpacing: number;
+  lineHeight: number;
+  textTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  textShadow: string;
+  boxShadow: string;
+  padding: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+  margin: {
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+  };
+}
+
+// Element type styling configuration
+export interface ElementTypeStyling {
+  elementType: CanvasPropertyType;
+  universalStyle: Partial<UniversalStyleControls>;
+  overrides: CanvasElementStyle;
+  presetId?: string;
+}
+
+// Preview mode configuration
+export interface PreviewModeConfig {
+  enabled: boolean;
+  mockData: boolean;
+  showPlacementPositions: boolean;
+  liveUpdates: boolean;
+  playerCount?: number;
+  sortBy: 'total_points' | 'player_name' | 'standing_rank';
+  sortOrder: 'asc' | 'desc';
 }

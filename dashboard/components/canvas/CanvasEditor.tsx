@@ -1446,172 +1446,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   
 
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Preview Mode</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Button
-                          variant={previewConfig.enabled ? "default" : "outline"}
-                          size="sm"
-                          onClick={togglePreviewMode}
-                          className="w-full justify-start"
-                        >
-                          <Settings className="h-4 w-4 mr-2" />
-                          {previewConfig.enabled ? 'Preview Mode ON' : 'Preview Mode OFF'}
-                        </Button>
-                        
-                        {previewConfig.enabled && (
-                          <div className="space-y-2">
-                            <div>
-                              <label className="text-xs text-muted-foreground">Data Source</label>
-                              <Select
-                                value={previewConfig.mockData ? 'mock' : 'real'}
-                                onValueChange={(value) =>
-                                  updatePreviewConfig({ mockData: value === 'mock' })
-                                }
-                              >
-                                <SelectTrigger className="h-10">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="mock">Mock Data</SelectItem>
-                                  <SelectItem value="real">Real Player Data</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-
-                            {!previewConfig.mockData && (
-                              <div className="space-y-2">
-                                {playerDataLoading && (
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <RefreshCw className="h-3 w-3 animate-spin" />
-                                    Loading real player data...
-                                  </div>
-                                )}
-                                
-                                {playerDataError && (
-                                  <div className="flex items-center gap-2 text-xs text-red-600">
-                                    <span>{playerDataError}</span>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={fetchRealPlayerData}
-                                      className="h-6 text-xs"
-                                    >
-                                      Retry
-                                    </Button>
-                                  </div>
-                                )}
-                                
-                                {!playerDataLoading && !playerDataError && realPlayerData.length > 0 && (
-                                  <div className="text-xs text-green-600">
-                                    ✓ {realPlayerData.length} players loaded
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-xs text-muted-foreground">Player Count</label>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  max={50}
-                                  value={previewConfig.playerCount ?? 10}
-                                  onChange={(e) =>
-                                    updatePreviewConfig({ playerCount: Number(e.target.value) || 10 })
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">Sort By</label>
-                                <Select
-                                  value={previewConfig.sortBy || 'total_points'}
-                                  onValueChange={(value) =>
-                                    updatePreviewConfig({ sortBy: value as any })
-                                  }
-                                >
-                                  <SelectTrigger className="h-10">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="total_points">Total Points</SelectItem>
-                                    <SelectItem value="player_name">Player Name</SelectItem>
-                                    <SelectItem value="standing_rank">Standing Rank</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-xs text-muted-foreground">Sort Order</label>
-                                <Select
-                                  value={previewConfig.sortOrder || 'desc'}
-                                  onValueChange={(value) =>
-                                    updatePreviewConfig({ sortOrder: value as any })
-                                  }
-                                >
-                                  <SelectTrigger className="h-10">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="desc">Descending</SelectItem>
-                                    <SelectItem value="asc">Ascending</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div>
-                                <label className="text-xs text-muted-foreground">Show Positions</label>
-                                <Select
-                                  value={previewConfig.showPlacementPositions ? 'true' : 'false'}
-                                  onValueChange={(value) =>
-                                    updatePreviewConfig({ showPlacementPositions: value === 'true' })
-                                  }
-                                >
-                                  <SelectTrigger className="h-10">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="true">Show</SelectItem>
-                                    <SelectItem value="false">Hide</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id="live-updates"
-                                checked={previewConfig.liveUpdates}
-                                onChange={(e) =>
-                                  updatePreviewConfig({ liveUpdates: e.target.checked })
-                                }
-                              />
-                              <label htmlFor="live-updates" className="text-xs text-muted-foreground">
-                                Live updates when styling changes
-                              </label>
-                            </div>
-
-                            {!previewConfig.mockData && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={fetchRealPlayerData}
-                                disabled={playerDataLoading}
-                                className="w-full h-8 text-xs"
-                              >
-                                <RefreshCw className={`h-3 w-3 mr-1 ${playerDataLoading ? 'animate-spin' : ''}`} />
-                                Refresh Player Data
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                    
 
   
                   </div>
@@ -2085,22 +1920,45 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 <Move className="h-4 w-4 mr-1" />
                 Snap
               </Button>
+            </div>
+
+            {/* Center - Enhanced Preview controls */}
+            <div className="flex items-center gap-2">
               <Button
-                variant={snapToElements ? "default" : "outline"}
+                variant={previewConfig.enabled ? "default" : "outline"}
                 size="sm"
-                onClick={() => {
-                  const newSnapToElements = !snapToElements;
-                  setSnapToElements(newSnapToElements);
-                  addToHistory(HistoryManager.createActionTypes.updateSettings(
-                    { snapToElements }, 
-                    { snapToElements: newSnapToElements },
-                    newSnapToElements ? 'Enable snap to elements' : 'Disable snap to elements'
-                  ));
-                }}
+                onClick={togglePreviewMode}
+                className="min-w-[140px]"
               >
-                <Settings className="h-4 w-4 mr-1" />
-                Snap Elements
+                <Settings className="h-4 w-4 mr-2" />
+                {previewConfig.enabled ? 'Preview ON' : 'Preview OFF'}
               </Button>
+              
+              {previewConfig.enabled && (
+                <div className="flex items-center gap-2 border-l pl-2">
+                  <span className="text-xs text-muted-foreground">
+                    {realPlayerData.length > 0 
+                      ? `${realPlayerData.length} players` 
+                      : playerDataLoading 
+                      ? 'Loading...' 
+                      : playerDataError 
+                      ? 'Error' 
+                      : 'No data'}
+                  </span>
+                  {!previewConfig.mockData && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchRealPlayerData}
+                      disabled={playerDataLoading}
+                      className="h-7 text-xs"
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${playerDataLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right side - Zoom controls */}

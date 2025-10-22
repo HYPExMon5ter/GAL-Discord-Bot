@@ -459,8 +459,13 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     });
     setSelectedElement(elementWithBinding);
 
+    // Automatically fetch real player data for placement elements to ensure latest standings
+    if (propertyType === 'player_placement') {
+      fetchRealPlayerData();
+    }
+
     addToHistory(HistoryManager.createActionTypes.addElement(elementWithBinding));
-  }, [snapToGrid, addToHistory]);
+  }, [snapToGrid, addToHistory, fetchRealPlayerData]);
 
   const addElementSeries = useCallback((propertyType: CanvasPropertyType) => {
     const baseElement = createPropertyElement(propertyType, snapToGrid);
@@ -507,11 +512,14 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     setSelectedElement(baseElement);
     addToHistory(HistoryManager.createActionTypes.addElement(enhancedSeries));
     
+    // Automatically fetch real player data to ensure auto-population has latest data
+    fetchRealPlayerData();
+    
     toast({
       title: 'Auto-populated Players Added',
       description: `Added players series sorted by ${sortBy} (${sortOrder})`,
     });
-  }, [snapToGrid, addToHistory, toast]);
+  }, [snapToGrid, addToHistory, toast, fetchRealPlayerData]);
 
   // Add round-specific score elements
   const addRoundScores = useCallback((roundId: string) => {

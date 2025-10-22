@@ -1328,8 +1328,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           {!sidebarCollapsed && (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col overflow-hidden">
               <div className="border-b bg-card px-2 flex-shrink-0">
-                <TabsList className="grid w-full grid-cols-1">
-                  <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Canvas Tools</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Design</TabsTrigger>
+                  <TabsTrigger value="elements" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Elements</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -1360,16 +1361,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                         
                         {/* Core Elements */}
                         <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground px-2">Elements</p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            Background Upload
-                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -1561,7 +1552,50 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   </div>
                 </TabsContent>
 
-                
+                <TabsContent value="elements" className="m-0 h-full overflow-auto p-2">
+                  <div className="p-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Element Layers</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {elements.length === 0 ? (
+                            <p className="text-sm text-gray-500">No elements yet. Add some from the Design tab.</p>
+                          ) : (
+                            elements.map((element, index) => (
+                              <div
+                                key={element.id}
+                                className={`flex items-center justify-between p-3 border rounded cursor-pointer ${
+                                  selectedElement?.id === element.id ? 'bg-blue-900/30 border-blue-400' : 'hover:bg-muted/80'
+                                }`}
+                                onClick={() => setSelectedElement(element)}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="text-sm font-medium">Layer {index + 1}</div>
+                                  <div className="text-sm text-gray-500 capitalize truncate max-w-[140px]">
+                                    {element.type === 'text' ? element.content : element.type}
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    deleteElement(element.id);
+                                  }}
+                                  className="h-6 w-6 p-0"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
 
   
               </div>

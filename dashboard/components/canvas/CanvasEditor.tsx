@@ -53,7 +53,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Save,
   ArrowLeft,
@@ -215,7 +215,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [elements, setElements] = useState<CanvasElement[]>(initialCanvasState.elements);
   const [elementSeries, setElementSeries] = useState<ElementSeries[]>(initialCanvasState.elementSeries || []);
   const [selectedElement, setSelectedElement] = useState<CanvasElement | null>(null);
-  
+  const [activeTab, setActiveTab] = useState('design');
   const canvasSettings = canvasData?.settings ?? DEFAULT_CANVAS_SETTINGS;
   
   // Styling system state
@@ -1326,66 +1326,87 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           </div>
 
           {!sidebarCollapsed && (
-            <div className="flex h-full flex-col overflow-hidden">
-              <div className="flex-1 overflow-hidden p-2">
-              <div className="p-4 space-y-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm text-center">Canvas Tools</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      Background Upload
-                    </Button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleBackgroundUpload}
-                      className="hidden"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => addTextElement()}
-                    >
-                      <Type className="h-4 w-4 mr-2" />
-                      Add Text
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => addAutoPopulatedPlayers('total_points', 'desc')}
-                    >
-                      <Users className="h-4 w-4 mr-2" />
-                      Players
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => addPropertyElement('player_score')}
-                    >
-                      <Trophy className="h-4 w-4 mr-2" />
-                      Scores
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full justify-start"
-                      onClick={() => addPropertyElement('player_placement')}
-                    >
-                      <Medal className="h-4 w-4 mr-2" />
-                      Placements
-                    </Button>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col overflow-hidden">
+              <div className="border-b bg-card px-2 flex-shrink-0">
+                <TabsList className="grid w-full grid-cols-1">
+                  <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Canvas Tools</TabsTrigger>
+                </TabsList>
+              </div>
+
+              <div className="flex-1 overflow-hidden">
+                <TabsContent value="design" className="m-0 h-full overflow-auto p-2">
+                  <div className="p-4 space-y-4">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm text-center">Canvas Tools</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Upload className="h-4 w-4 mr-2" />
+                          Background Upload
+                        </Button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleBackgroundUpload}
+                          className="hidden"
+                        />
+                        
+                        {/* Core Elements */}
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground px-2">Elements</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Background Upload
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => addTextElement()}
+                          >
+                            <Type className="h-4 w-4 mr-2" />
+                            Add Text
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => addAutoPopulatedPlayers('total_points', 'desc')}
+                          >
+                            <Users className="h-4 w-4 mr-2" />
+                            Players
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => addPropertyElement('player_score')}
+                          >
+                            <Trophy className="h-4 w-4 mr-2" />
+                            Scores
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => addPropertyElement('player_placement')}
+                          >
+                            <Medal className="h-4 w-4 mr-2" />
+                            Placements
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
 
@@ -1540,8 +1561,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   </div>
                 </TabsContent>
 
+                
+
+  
               </div>
-            </div>
+            </Tabs>
           )}
         </div>
 

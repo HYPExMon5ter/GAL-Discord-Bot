@@ -1310,10 +1310,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           {!sidebarCollapsed && (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col overflow-hidden">
               <div className="border-b bg-card px-2 flex-shrink-0">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Design</TabsTrigger>
                   <TabsTrigger value="elements" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Elements</TabsTrigger>
-                  <TabsTrigger value="data" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Data</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -1342,9 +1341,18 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           className="hidden"
                         />
                         
-                        {/* Static Elements */}
+                        {/* Core Elements */}
                         <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground px-2">Static Elements</p>
+                          <p className="text-xs text-muted-foreground px-2">Elements</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Background Upload
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -1354,19 +1362,14 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             <Type className="h-4 w-4 mr-2" />
                             Add Text
                           </Button>
-                        </div>
-
-                        {/* Dynamic Elements */}
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground px-2">Tournament Data</p>
                           <Button
                             variant="outline"
                             size="sm"
                             className="w-full justify-start"
-                            onClick={() => addPropertyElement('player_name')}
+                            onClick={() => addAutoPopulatedPlayers('total_points', 'desc')}
                           >
-                            <User className="h-4 w-4 mr-2" />
-                            Player Name
+                            <Users className="h-4 w-4 mr-2" />
+                            Players
                           </Button>
                           <Button
                             variant="outline"
@@ -1375,7 +1378,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             onClick={() => addPropertyElement('player_score')}
                           >
                             <Trophy className="h-4 w-4 mr-2" />
-                            Player Score
+                            Scores
                           </Button>
                           <Button
                             variant="outline"
@@ -1384,48 +1387,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             onClick={() => addPropertyElement('player_placement')}
                           >
                             <Medal className="h-4 w-4 mr-2" />
-                            Player Placement
+                            Placements
                           </Button>
-                        </div>
-
-                        {/* Enhanced Dynamic Features */}
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground px-2">Smart Elements</p>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => addAutoPopulatedPlayers('total_points', 'desc')}
-                          >
-                            <Users className="h-4 w-4 mr-2" />
-                            Auto-Players (Ranking)
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => addAutoPopulatedPlayers('player_name', 'asc')}
-                          >
-                            <Users className="h-4 w-4 mr-2" />
-                            Auto-Players (Alphabetical)
-                          </Button>
-                        </div>
-
-                        {/* Round Scores */}
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground px-2">Round Scores</p>
-                          {['round_1', 'round_2', 'round_3', 'round_4', 'round_5', 'round_6'].map((roundId) => (
-                            <Button
-                              key={roundId}
-                              variant="outline"
-                              size="sm"
-                              className="w-full justify-start"
-                              onClick={() => addRoundScores(roundId)}
-                            >
-                              <Target className="h-4 w-4 mr-2" />
-                              {roundId.replace('_', ' ').toUpperCase()}
-                            </Button>
-                          ))}
                         </div>
                       </CardContent>
                     </Card>
@@ -1594,97 +1557,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="data" className="m-0 h-full overflow-auto p-2">
-                  <div className="p-4 space-y-4">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Data Source</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <p className="text-sm text-muted-foreground">
-                          Bindings resolve against persisted scoreboard snapshots. Refresh snapshots with the
-                          Discord `/gal standings` command before going live.
-                        </p>
-                        <div className="space-y-2">
-                          <label className="text-xs text-muted-foreground">Snapshot Id</label>
-                          <div className="space-y-2">
-                          <label className="text-xs text-muted-foreground">Snapshot Controls</label>
-                          <p className="text-xs text-muted-foreground">
-                            Simplified binding automatically uses the latest tournament data.
-                          </p>
-                        </div>
-                          <p className="text-xs text-muted-foreground">
-                            Use `latest` to always use the newest snapshot or enter a specific snapshot id to freeze
-                            standings.
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Bound Elements</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        {elements.filter(el => ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(el.type)).length === 0 ? (
-                          <p className="text-sm text-muted-foreground">
-                            No bindable elements yet. Add player/score/placement elements from the Design tab.
-                          </p>
-                        ) : (
-                          <div className="space-y-3">
-                            {elements.filter(el => ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(el.type)).map((element) => {
-                              const elementConfig = ELEMENT_CONFIGS[element.type];
-                              const displayLabel = element.content || elementConfig?.label || `Element ${element.id.slice(0, 6)}`;
-                              const binding = element.dataBinding;
-                              const isDynamic = binding?.source === 'dynamic';
-
-                              return (
-                                <div
-                                  key={element.id}
-                                  className="space-y-3 rounded border border-border/60 bg-card/40 p-3"
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="text-sm font-medium truncate">{displayLabel}</div>
-                                    <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                      {isDynamic ? 'Dynamic' : 'Static'}
-                                    </div>
-                                  </div>
-
-                                  <div>
-                                    <label className="text-xs text-muted-foreground">Data Source</label>
-                                    <div className="text-sm p-2 bg-muted rounded">
-                                      {isDynamic ? `Uses tournament data (${element.type})` : 'Static text'}
-                                    </div>
-                                  </div>
-
-                                  {isDynamic && (
-                                    <div>
-                                      <label className="text-xs text-muted-foreground">Fallback Text</label>
-                                      <Input
-                                        value={binding?.fallbackText || ''}
-                                        onChange={(e) =>
-                                          updateElement(element.id, {
-                                            dataBinding: {
-                                              ...binding!,
-                                              fallbackText: e.target.value,
-                                            }
-                                          })
-                                        }
-                                        placeholder="Shown when data is unavailable..."
-                                      />
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
+  
               </div>
             </Tabs>
           )}

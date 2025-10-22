@@ -1680,105 +1680,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               );
                             })}
                           </div>
-                                      <Input
-  
-
-                                        <Select
-                                          value={binding.field}
-                                          onValueChange={(value) =>
-                                            updateElementBinding(element.id, {
-                                              source: 'dataset',
-                                              field: value as CanvasBindingField,
-                                            })
-                                          }
-                                        >
-                                          <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Select field..." />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value="player_name">Player Name</SelectItem>
-                                            <SelectItem value="player_score">Total Points</SelectItem>
-                                            <SelectItem value="total_points">Total Points (Raw)</SelectItem>
-                                            <SelectItem value="player_placement">Placement</SelectItem>
-                                            <SelectItem value="standing_rank">Standing Rank</SelectItem>
-                                            <SelectItem value="player_rank">Podium Rank (Legacy)</SelectItem>
-                                            <SelectItem value="round_score">Round Score</SelectItem>
-                                            <SelectItem value="team_name">Team Name</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-
-                                      {binding.field === 'round_score' && (
-                                        <div>
-                                          <label className="text-xs text-muted-foreground">Round Identifier</label>
-                                          <Input
-                                            value={dataset.roundId ?? ''}
-                                            onChange={(e) =>
-                                              updateElementBinding(
-                                                element.id,
-                                                { source: 'dataset' },
-                                                { roundId: e.target.value.trim() || null },
-                                              )
-                                            }
-                                            placeholder="round_1"
-                                          />
-                                        </div>
-                                      )}
-
-                                      {dataset.rowMode === 'static' && (
-                                        <div>
-                                          <label className="text-xs text-muted-foreground">Row</label>
-                                          <Input
-                                            type="number"
-                                            min={1}
-                                            value={dataset.row ?? 1}
-                                            onChange={(e) => {
-                                              const parsed = Number(e.target.value);
-                                              updateElementBinding(
-                                                element.id,
-                                                { source: 'dataset' },
-                                                { row: Number.isFinite(parsed) && parsed > 0 ? parsed : 1 },
-                                              );
-                                            }}
-                                          />
-                                        </div>
-                                      )}
-
-                                      <div>
-                                        <label className="text-xs text-muted-foreground">Slot</label>
-                                        <Input
-                                          value={dataset.slot ?? ''}
-                                          placeholder="player_name / total / round_1"
-                                          onChange={(e) =>
-                                            updateElementBinding(
-                                              element.id,
-                                              { source: 'dataset' },
-                                              {
-                                                slot: e.target.value.trim() ? e.target.value.trim() : null,
-                                              },
-                                            )
-                                          }
-                                        />
-                                      </div>
-                                    </>
-                                  )}
-
-                                  <div>
-                                    <label className="text-xs text-muted-foreground">Fallback Text</label>
-                                    <Input
-                                      value={binding.fallbackText ?? ''}
-                                      onChange={(e) =>
-                                        updateElementBinding(element.id, {
-                                          fallbackText: e.target.value,
-                                        })
-                                      }
-                                      placeholder="Shown when data missing..."
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
                         )}
                       </CardContent>
                     </Card>
@@ -1900,12 +1801,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                 )}
               </div>
             ))}
+            </div>
           </div>
-          </div>
-      </div>
-    </div>
+        </div>
 
-      <div className="border-t bg-card p-4 relative z-20">
+        <div className="border-t bg-card p-4 relative z-20">
           <div className="flex items-center justify-between">
             {/* Left side - Grid and Snap controls */}
             <div className="flex items-center gap-2">
@@ -2008,5 +1908,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         </div>
       </div>
     </div>
+  </div>
   );
 }

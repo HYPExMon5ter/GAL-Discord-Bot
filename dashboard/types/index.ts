@@ -86,6 +86,7 @@ export interface ElementDataBinding {
   snapshotId?: string | number; // For dynamic elements, which snapshot to use
   roundId?: string; // For round-specific data
   fallbackText?: string; // Shown when data is unavailable
+  seriesId?: string | null; // For series-generated elements
 }
 
 // For backward compatibility

@@ -273,6 +273,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const snapshotInputRef = useRef<HTMLInputElement>(null);
 
   // Simplified element binding update function
   function updateElementBinding(elementId: string, updates: Partial<ElementDataBinding>) {
@@ -1409,48 +1410,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             Auto-Players (Alphabetical)
                           </Button>
                         </div>
-                        {/* Spacing Controls */}
-                        <div className="space-y-1">
-                          <p className="text-xs text-muted-foreground px-2">Element Spacing</p>
-                          <div className="grid grid-cols-2 gap-2 px-2">
-                            <div>
-                              <label className="text-xs text-muted-foreground">Vertical</label>
-                              <Input
-                                type="number"
-                                min="0"
-                                value={56}
-                                onChange={(e) => {
-                                  const spacing = Number(e.target.value) || 56;
-                                  // Update series spacing
-                                  elementSeries.forEach(series => {
-                                    updateElementSeries(series.id, {
-                                      spacing: { ...series.spacing, vertical: spacing }
-                                    });
-                                  });
-                                }}
-                                className="h-8"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-muted-foreground">Horizontal</label>
-                              <Input
-                                type="number"
-                                min="0"
-                                value={20}
-                                onChange={(e) => {
-                                  const spacing = Number(e.target.value) || 20;
-                                  // Update series spacing
-                                  elementSeries.forEach(series => {
-                                    updateElementSeries(series.id, {
-                                      spacing: { ...series.spacing, horizontal: spacing }
-                                    });
-                                  });
-                                }}
-                                className="h-8"
-                              />
-                            </div>
-                          </div>
-                        </div>
 
                         {/* Round Scores */}
                         <div className="space-y-1">
@@ -1648,26 +1607,12 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                         </p>
                         <div className="space-y-2">
                           <label className="text-xs text-muted-foreground">Snapshot Id</label>
-                          <div className="flex gap-2">
-                            <Input
-                              ref={snapshotInputRef}
-                              defaultValue={
-                                representativeDataset?.snapshotId === 'latest' ||
-                                representativeDataset?.snapshotId == null
-                                  ? 'latest'
-                                  : String(representativeDataset.snapshotId)
-                              }
-                              placeholder="latest"
-                            />
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={applySnapshotToBindings}
-                            >
-                              Apply
-                            </Button>
-                          </div>
+                          <div className="space-y-2">
+                          <label className="text-xs text-muted-foreground">Snapshot Controls</label>
+                          <p className="text-xs text-muted-foreground">
+                            Simplified binding automatically uses the latest tournament data.
+                          </p>
+                        </div>
                           <p className="text-xs text-muted-foreground">
                             Use `latest` to always use the newest snapshot or enter a specific snapshot id to freeze
                             standings.
@@ -1676,116 +1621,24 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       </CardContent>
                     </Card>
 
-                    {bindingGrids.length > 0 && (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>Binding Grids</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          {bindingGrids.map((grid) => (
-                            <div
-                              key={grid.id}
-                              className="space-y-3 rounded border border-border/60 p-3"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="text-sm font-medium">{grid.id}</div>
-                                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                  {grid.elements.length} element{grid.elements.length === 1 ? '' : 's'}
-                                </div>
-                              </div>
-                              <div className="grid gap-3 md:grid-cols-2">
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Row Mode</label>
-                                  <Select
-                                    value={grid.dataset.rowMode ?? 'template'}
-                                    onValueChange={(value) =>
-                                      updateGridElements(grid.id, {
-                                        rowMode: value as CanvasDatasetBinding['rowMode'],
-                                      })
-                                    }
-                                  >
-                                    <SelectTrigger className="h-10">
-                                      <SelectValue placeholder="Select mode..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="template">Repeat for dataset</SelectItem>
-                                      <SelectItem value="static">Single row</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Row Spacing (px)</label>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    value={grid.dataset.rowSpacing ?? DEFAULT_ROW_SPACING}
-                                    onChange={(e) => {
-                                      const parsed = Number(e.target.value);
-                                      updateGridElements(grid.id, {
-                                        rowSpacing: Number.isFinite(parsed) ? parsed : DEFAULT_ROW_SPACING,
-                                      });
-                                    }}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Max Rows</label>
-                                  <Input
-                                    type="number"
-                                    min={1}
-                                    value={grid.dataset.maxRows ?? ''}
-                                    onChange={(e) => {
-                                      const raw = e.target.value.trim();
-                                      const parsed = Number(raw);
-                                      updateGridElements(grid.id, {
-                                        maxRows:
-                                          raw === ''
-                                            ? null
-                                            : Number.isFinite(parsed)
-                                            ? Math.max(1, parsed)
-                                            : null,
-                                      });
-                                    }}
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Template Guidance</label>
-                                  <p className="text-xs text-muted-foreground">
-                                    Draw a single prototype row. The runtime duplicates it for each dataset entry using
-                                    the spacing above.
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </CardContent>
-                      </Card>
-                    )}
+                    
 
                     <Card>
                       <CardHeader>
                         <CardTitle>Bound Elements</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        {bindingElements.length === 0 ? (
+                        {elements.filter(el => ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(el.type)).length === 0 ? (
                           <p className="text-sm text-muted-foreground">
                             No bindable elements yet. Add player/score/placement elements from the Design tab.
                           </p>
                         ) : (
                           <div className="space-y-3">
-                            {bindingElements.map(({ element, binding, dataset }) => {
-                              const effectiveSource: CanvasBindingSource =
-                                binding.source === 'manual' ? 'manual' : 'dataset';
-                              const displayLabel =
-                                element.content ||
-                                binding.fallbackText ||
-                                element.placeholderText ||
-                                `Element ${element.id.slice(0, 6)}`;
-                              const rowLabel =
-                                effectiveSource === 'manual'
-                                  ? 'Manual'
-                                  : dataset.rowMode === 'template'
-                                  ? 'Repeats'
-                                  : `Row ${dataset.row ?? 1}`;
+                            {elements.filter(el => ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(el.type)).map((element) => {
+                              const elementConfig = ELEMENT_CONFIGS[element.type];
+                              const displayLabel = element.content || elementConfig?.label || `Element ${element.id.slice(0, 6)}`;
+                              const binding = element.dataBinding;
+                              const isDynamic = binding?.source === 'dynamic';
 
                               return (
                                 <div
@@ -1795,27 +1648,41 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="text-sm font-medium truncate">{displayLabel}</div>
                                     <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                                      {rowLabel}
+                                      {isDynamic ? 'Dynamic' : 'Static'}
                                     </div>
                                   </div>
 
-                                  {effectiveSource === 'manual' ? (
+                                  <div>
+                                    <label className="text-xs text-muted-foreground">Data Source</label>
+                                    <div className="text-sm p-2 bg-muted rounded">
+                                      {isDynamic ? `Uses tournament data (${element.type})` : 'Static text'}
+                                    </div>
+                                  </div>
+
+                                  {isDynamic && (
                                     <div>
-                                      <label className="text-xs text-muted-foreground">Manual Value</label>
+                                      <label className="text-xs text-muted-foreground">Fallback Text</label>
                                       <Input
-                                        value={binding.manualValue ?? ''}
+                                        value={binding?.fallbackText || ''}
                                         onChange={(e) =>
-                                          updateElementBinding(element.id, {
-                                            manualValue: e.target.value,
-                                            source: 'manual',
+                                          updateElement(element.id, {
+                                            dataBinding: {
+                                              ...binding!,
+                                              fallbackText: e.target.value,
+                                            }
                                           })
                                         }
+                                        placeholder="Shown when data is unavailable..."
                                       />
                                     </div>
-                                  ) : (
-                                    <>
-                                      <div>
-                                        <label className="text-xs text-muted-foreground">Field</label>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                                      <Input
+  
+
                                         <Select
                                           value={binding.field}
                                           onValueChange={(value) =>

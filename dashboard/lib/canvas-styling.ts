@@ -14,29 +14,6 @@ export const DEFAULT_UNIVERSAL_STYLING: UniversalStyleControls = {
   fontSize: 24,
   fontFamily: 'Arial',
   color: '#000000',
-  backgroundColor: '#3B82F6',
-  borderColor: '#1E40AF',
-  borderWidth: 2,
-  borderRadius: 8,
-  fontWeight: 'normal',
-  textAlign: 'center',
-  letterSpacing: 0,
-  lineHeight: 1.2,
-  textTransform: 'none',
-  textShadow: 'none',
-  boxShadow: 'none',
-  padding: {
-    top: 8,
-    right: 16,
-    bottom: 8,
-    left: 16,
-  },
-  margin: {
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-  },
 };
 
 // Style presets for common use cases
@@ -383,31 +360,6 @@ export function elementStyleToCss(style: CanvasElementStyle): React.CSSPropertie
   if (style.fontSize) css.fontSize = `${style.fontSize}px`;
   if (style.fontFamily) css.fontFamily = style.fontFamily;
   if (style.color) css.color = style.color;
-  if (style.backgroundColor) css.backgroundColor = style.backgroundColor;
-  if (style.borderColor) css.borderColor = style.borderColor;
-  if (style.borderWidth) css.borderWidth = `${style.borderWidth}px`;
-  if (style.borderRadius) css.borderRadius = `${style.borderRadius}px`;
-  if (style.fontWeight) css.fontWeight = style.fontWeight as any;
-  if (style.textAlign) css.textAlign = style.textAlign;
-  if (style.letterSpacing) css.letterSpacing = `${style.letterSpacing}px`;
-  if (style.lineHeight) css.lineHeight = style.lineHeight;
-  if (style.textTransform) css.textTransform = style.textTransform as any;
-  if (style.textShadow) css.textShadow = style.textShadow;
-  if (style.boxShadow) css.boxShadow = style.boxShadow;
-
-  if (style.padding) {
-    const { top, right, bottom, left } = style.padding;
-    if (top !== undefined && right !== undefined && bottom !== undefined && left !== undefined) {
-      css.padding = `${top}px ${right}px ${bottom}px ${left}px`;
-    }
-  }
-
-  if (style.margin) {
-    const { top, right, bottom, left } = style.margin;
-    if (top !== undefined && right !== undefined && bottom !== undefined && left !== undefined) {
-      css.margin = `${top}px ${right}px ${bottom}px ${left}px`;
-    }
-  }
 
   if (style.borderWidth) css.borderStyle = 'solid';
 

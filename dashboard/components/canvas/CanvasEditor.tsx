@@ -465,7 +465,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     }
 
     addToHistory(HistoryManager.createActionTypes.addElement(elementWithBinding));
-  }, [snapToGrid, addToHistory, fetchRealPlayerData]);
+  }, [snapToGrid, addToHistory]);
 
   const addElementSeries = useCallback((propertyType: CanvasPropertyType) => {
     const baseElement = createPropertyElement(propertyType, snapToGrid);
@@ -519,7 +519,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       title: 'Auto-populated Players Added',
       description: `Added players series sorted by ${sortBy} (${sortOrder})`,
     });
-  }, [snapToGrid, addToHistory, toast, fetchRealPlayerData]);
+  }, [snapToGrid, addToHistory, toast]);
 
   // Add round-specific score elements
   const addRoundScores = useCallback((roundId: string) => {
@@ -1711,12 +1711,6 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       ...elementStyleToCss(element),
                       fontSize: `${(element.fontSize || 16) * zoom}px`,
                       whiteSpace: 'nowrap',
-                      padding: element.padding 
-                        ? `${(element.padding.top || 4) * zoom}px ${(element.padding.right || 8) * zoom}px ${(element.padding.bottom || 4) * zoom}px ${(element.padding.left || 8) * zoom}px`
-                        : `${4 * zoom}px ${8 * zoom}px`,
-                      borderRadius: element.borderRadius ? `${element.borderRadius * zoom}px` : `${4 * zoom}px`,
-                      borderWidth: element.borderWidth ? `${element.borderWidth * zoom}px` : '1px',
-                      letterSpacing: element.letterSpacing ? `${element.letterSpacing * zoom}px` : undefined,
                     }}
                   >
                     {element.content || (element.type === 'text' ? 'Text' : element.placeholderText)}

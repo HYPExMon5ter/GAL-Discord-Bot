@@ -111,23 +111,6 @@ export interface CanvasElementStyle {
   fontSize?: number;
   fontFamily?: string;
   color?: string;
-  spacing?: number; // For dynamic elements (players, scores, placement)
-  lineHeight?: number;
-  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
-  textShadow?: string;
-  boxShadow?: string;
-  padding?: {
-    top?: number;
-    right?: number;
-    bottom?: number;
-    left?: number;
-  };
-  margin?: {
-    top?: number;
-    right?: number;
-    bottom?: number;
-    left?: number;
-  };
 }
 
 // Unified element interface

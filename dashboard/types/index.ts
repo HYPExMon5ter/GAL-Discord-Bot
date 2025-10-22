@@ -252,7 +252,6 @@ export const ELEMENT_CONFIGS: Record<ElementType, ElementConfig> = {
       fontSize: 20,
       fontFamily: 'Arial',
       color: '#FFFFFF',
-      backgroundColor: '#3B82F6',
     }
   },
   player_score: {
@@ -265,7 +264,6 @@ export const ELEMENT_CONFIGS: Record<ElementType, ElementConfig> = {
       fontSize: 24,
       fontFamily: 'Arial',
       color: '#FFFFFF',
-      backgroundColor: '#EF4444',
     }
   },
   player_placement: {
@@ -278,7 +276,6 @@ export const ELEMENT_CONFIGS: Record<ElementType, ElementConfig> = {
       fontSize: 20,
       fontFamily: 'Arial',
       color: '#FFD700',
-      backgroundColor: '#1F2937',
     }
   },
   team_name: {
@@ -291,7 +288,6 @@ export const ELEMENT_CONFIGS: Record<ElementType, ElementConfig> = {
       fontSize: 18,
       fontFamily: 'Arial',
       color: '#FFFFFF',
-      backgroundColor: '#10B981',
     }
   },
   round_score: {
@@ -304,7 +300,6 @@ export const ELEMENT_CONFIGS: Record<ElementType, ElementConfig> = {
       fontSize: 16,
       fontFamily: 'Arial',
       color: '#FFFFFF',
-      backgroundColor: '#F59E0B',
     }
   }
 };

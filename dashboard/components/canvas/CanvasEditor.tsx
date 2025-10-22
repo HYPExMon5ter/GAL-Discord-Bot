@@ -100,32 +100,17 @@ import {
   DEFAULT_ELEMENT_SPACING,
   updatePreviewModeConfig,
   getElementsWithPreviewData,
+  createSimplifiedBinding,
+  createAutoPopulatedPlayersSeries,
+  createRoundScoreElement,
+  createSmartScoreElement,
+  createSmartPlacementElement,
 } from '@/lib/canvas-helpers';
 import {
   elementStyleToCss,
   getDefaultPreviewModeConfig,
   generateMockPlayerData,
 } from '@/lib/canvas-styling';
-
-// Simplified binding system - Static OR Dynamic tournament data only
-function createSimplifiedBinding(element: CanvasElement): ElementDataBinding {
-  const isDynamic = ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(element.type);
-  
-  if (isDynamic) {
-    return {
-      source: 'dynamic',
-      dataType: element.type as ElementType,
-      snapshotId: 'latest',
-      fallbackText: ELEMENT_CONFIGS[element.type]?.label || 'Loading...',
-    };
-  }
-  
-  return {
-    source: 'static',
-    staticValue: element.content || '',
-    fallbackText: element.content || '',
-  };
-}
 
 // Helper to get simplified binding for any element
 function getSimplifiedBinding(element: CanvasElement): ElementDataBinding {
@@ -1423,6 +1408,48 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             <Users className="h-4 w-4 mr-2" />
                             Auto-Players (Alphabetical)
                           </Button>
+                        </div>
+                        {/* Spacing Controls */}
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground px-2">Element Spacing</p>
+                          <div className="grid grid-cols-2 gap-2 px-2">
+                            <div>
+                              <label className="text-xs text-muted-foreground">Vertical</label>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={56}
+                                onChange={(e) => {
+                                  const spacing = Number(e.target.value) || 56;
+                                  // Update series spacing
+                                  elementSeries.forEach(series => {
+                                    updateElementSeries(series.id, {
+                                      spacing: { ...series.spacing, vertical: spacing }
+                                    });
+                                  });
+                                }}
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Horizontal</label>
+                              <Input
+                                type="number"
+                                min="0"
+                                value={20}
+                                onChange={(e) => {
+                                  const spacing = Number(e.target.value) || 20;
+                                  // Update series spacing
+                                  elementSeries.forEach(series => {
+                                    updateElementSeries(series.id, {
+                                      spacing: { ...series.spacing, horizontal: spacing }
+                                    });
+                                  });
+                                }}
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
                         </div>
 
                         {/* Round Scores */}

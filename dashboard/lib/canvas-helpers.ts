@@ -783,3 +783,99 @@ function generateMockPlayerData(count: number = 10): PlayerData[] {
 
   return mockData;
 }
+
+/**
+ * Create simplified data binding for elements
+ */
+export function createSimplifiedBinding(element: CanvasElement): ElementDataBinding {
+  const elementConfig = ELEMENT_CONFIGS[element.type];
+  
+  return {
+    source: 'dynamic',
+    dataType: element.type as ElementType,
+    snapshotId: 'latest',
+    fallbackText: elementConfig?.label || 'Data',
+  };
+}
+
+/**
+ * Create enhanced auto-populated players series
+ */
+export function createAutoPopulatedPlayersSeries(
+  snapToGrid: (value: number) => number,
+  sortBy: 'total_points' | 'player_name' | 'standing_rank' = 'total_points',
+  sortOrder: 'asc' | 'desc' = 'desc'
+): ElementSeries {
+  const baseElement = createPropertyElement('player_name', snapToGrid);
+  
+  return {
+    id: `auto-players-${Date.now()}`,
+    type: 'player_name',
+    baseElement: {
+      ...baseElement,
+      dataBinding: createSimplifiedBinding(baseElement),
+    },
+    spacing: { horizontal: 0, vertical: 56, direction: 'vertical' },
+    autoGenerate: true,
+    maxElements: 50,
+    sortBy,
+    sortOrder,
+  };
+}
+
+/**
+ * Create round-specific score element
+ */
+export function createRoundScoreElement(
+  snapToGrid: (value: number) => number,
+  roundId: string
+): CanvasElement {
+  const baseElement = createPropertyElement('round_score', snapToGrid);
+  
+  const roundBinding: ElementDataBinding = {
+    source: 'dynamic',
+    dataType: 'round_score',
+    snapshotId: 'latest',
+    roundId,
+    fallbackText: `Round ${roundId.replace('round_', '')} Score`,
+  };
+
+  return {
+    ...baseElement,
+    dataBinding: roundBinding,
+  };
+}
+
+/**
+ * Create smart score element that binds to nearest player
+ */
+export function createSmartScoreElement(
+  snapToGrid: (value: number) => number,
+  basePosition: { x: number; y: number }
+): CanvasElement {
+  const scoreElement = createPropertyElement('player_score', snapToGrid);
+  
+  return {
+    ...scoreElement,
+    x: basePosition.x + 160, // Position to the right of player
+    y: basePosition.y,
+    dataBinding: createSimplifiedBinding(scoreElement),
+  };
+}
+
+/**
+ * Create smart placement element that binds to nearest player
+ */
+export function createSmartPlacementElement(
+  snapToGrid: (value: number) => number,
+  basePosition: { x: number; y: number }
+): CanvasElement {
+  const placementElement = createPropertyElement('player_placement', snapToGrid);
+  
+  return {
+    ...placementElement,
+    x: basePosition.x - 80, // Position to the left of player
+    y: basePosition.y,
+    dataBinding: createSimplifiedBinding(placementElement),
+  };
+}

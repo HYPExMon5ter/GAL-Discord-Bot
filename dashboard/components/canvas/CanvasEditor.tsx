@@ -74,7 +74,7 @@ import {
   Redo,
   Settings
 } from 'lucide-react';
-import { SimplifiedPropertiesPanel } from './SimplifiedPropertiesPanel';
+
 import { HistoryManager } from '@/lib/history-manager';
 import { useToast } from '@/components/ui/use-toast';
 import { playerApi } from '@/lib/api';
@@ -105,73 +105,37 @@ import {
   generateMockPlayerData,
 } from '@/lib/canvas-styling';
 
-const DEFAULT_ROW_SPACING = 56;
-
-function createDefaultDatasetBinding(): CanvasDatasetBinding {
-  return {
-    id: 'scoreboard',
-    snapshotId: 'latest',
-    rowMode: 'static',
-    row: 1,
-    rowSpacing: DEFAULT_ROW_SPACING,
-    maxRows: null,
-    gridId: null,
-    slot: null,
-    roundId: null,
-  };
-}
-
-function getDefaultFieldForElement(element: CanvasElement): CanvasBindingField {
-  if (element.type === 'player') return 'player_name';
-  if (element.type === 'score') return 'player_score';
-  if (element.type === 'placement') return 'player_placement';
-  return 'player_name';
-}
-
-function createDefaultBinding(element: CanvasElement): CanvasDataBinding {
-  return {
-    source: 'dataset',
-    field: getDefaultFieldForElement(element),
-    apiEndpoint: null,
-    manualValue: element.content ?? '',
-    fallbackText: element.placeholderText ?? element.content ?? '',
-    dataset: createDefaultDatasetBinding(),
-  };
-}
-
-interface BindingElementSummary {
-  element: CanvasElement;
-  binding: CanvasDataBinding;
-  dataset: CanvasDatasetBinding;
-}
-
-interface BindingGridSummary {
-  id: string;
-  elements: BindingElementSummary[];
-  dataset: CanvasDatasetBinding;
-}
-
-function ensureBinding(element: CanvasElement): CanvasDataBinding {
-  const defaultBinding = createDefaultBinding(element);
-  const existing = element.dataBinding;
-
-  if (!existing) {
-    return defaultBinding;
+// Simplified binding system - Static OR Dynamic tournament data only
+function createSimplifiedBinding(element: CanvasElement): ElementDataBinding {
+  const isDynamic = ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(element.type);
+  
+  if (isDynamic) {
+    return {
+      source: 'dynamic',
+      dataType: element.type as ElementType,
+      snapshotId: 'latest',
+      fallbackText: ELEMENT_CONFIGS[element.type]?.label || 'Loading...',
+    };
   }
-
-  const normalizedDataset =
-    existing.dataset && existing.dataset.id === 'scoreboard'
-      ? {
-          ...createDefaultDatasetBinding(),
-          ...existing.dataset,
-        }
-      : existing.dataset ?? createDefaultDatasetBinding();
-
+  
   return {
-    ...defaultBinding,
-    ...existing,
-    dataset: normalizedDataset,
+    source: 'static',
+    staticValue: element.content || '',
+    fallbackText: element.content || '',
   };
+}
+
+// Helper to get simplified binding for any element
+function getSimplifiedBinding(element: CanvasElement): ElementDataBinding {
+  const existing = element.dataBinding;
+  
+  // Check if it's already in the new format
+  if (existing && (existing.source === 'static' || existing.source === 'dynamic')) {
+    return existing as ElementDataBinding;
+  }
+  
+  // Convert legacy binding or create new one
+  return createSimplifiedBinding(element);
 }
 
 /**
@@ -318,99 +282,29 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper functions for new binding system
-  function isElementDataBinding(binding: any): binding is ElementDataBinding {
-    return binding && (binding.source === 'static' || binding.source === 'dynamic');
-  }
-
-  function convertToNewBinding(element: CanvasElement): ElementDataBinding | null {
-    const legacyBinding = element.dataBinding;
-    if (!legacyBinding) return null;
-    
-    if (isElementDataBinding(legacyBinding)) {
-      return legacyBinding;
-    }
-
-    // Convert legacy binding to new format
-    const isManual = legacyBinding.source === 'manual';
-    const elementConfig = ELEMENT_CONFIGS[element.dataType || element.type];
-    
-    return {
-      source: isManual ? 'static' : 'dynamic',
-      dataType: element.dataType || element.type as ElementType,
-      staticValue: isManual ? (legacyBinding.manualValue || element.content) : undefined,
-      snapshotId: legacyBinding.dataset?.snapshotId || 'latest',
-      roundId: legacyBinding.dataset?.roundId,
-      fallbackText: legacyBinding.fallbackText || elementConfig?.label,
-    };
-  }
-
-  function updateElementBindingSimplified(
-    elementId: string,
-    updates: Partial<ElementDataBinding>
-  ) {
+  // Simplified element binding update function
+  function updateElementBinding(elementId: string, updates: Partial<ElementDataBinding>) {
     const element = elements.find(item => item.id === elementId);
     if (!element) return;
 
-    const currentBinding = convertToNewBinding(element);
-    const newBinding: ElementDataBinding = {
-      source: 'dynamic',
-      dataType: element.dataType || element.type as ElementType,
-      fallbackText: ELEMENT_CONFIGS[element.dataType || element.type]?.label,
-      ...currentBinding,
+    const currentBinding = getSimplifiedBinding(element);
+    const newBinding: ElementDataBinding = {      ...currentBinding,
       ...updates,
     };
 
     updateElement(elementId, { 
       dataBinding: newBinding,
-      dataSource: newBinding.source,
-      dataType: newBinding.dataType,
     });
   }
 
-  const bindingElements = useMemo<BindingElementSummary[]>(() => {
-    return elements
-      .filter(
-        (element) =>
-          element.type === 'text' || ['player', 'score', 'placement'].includes(element.type),
-      )
-      .map((element) => {
-        const binding = ensureBinding(element);
-        const dataset = binding.dataset ?? createDefaultDatasetBinding();
-        return { element, binding, dataset };
-      });
+  // Simplified dynamic elements tracking
+  const dynamicElements = useMemo(() => {
+    return elements.filter(element => 
+      ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(element.type)
+    );
   }, [elements]);
 
-  const bindingGrids = useMemo<BindingGridSummary[]>(() => {
-    const map = new Map<string, BindingGridSummary>();
-
-    bindingElements.forEach((item) => {
-      const gridId = item.dataset.gridId;
-      if (!gridId) return;
-
-      if (!map.has(gridId)) {
-        map.set(gridId, {
-          id: gridId,
-          elements: [],
-          dataset: { ...item.dataset },
-        });
-      }
-
-      const summary = map.get(gridId)!;
-      summary.elements.push(item);
-    });
-
-    return Array.from(map.values());
-  }, [bindingElements]);
-
-  const representativeDataset = useMemo<CanvasDatasetBinding | null>(() => {
-    const found = bindingElements.find(
-      (item) => item.binding.source !== 'manual' && item.dataset?.id === 'scoreboard',
-    );
-    return found?.dataset ?? null;
-  }, [bindingElements]);
-
-  const snapshotInputRef = useRef<HTMLInputElement>(null);
+  
 
   // Load canvas data
   useEffect(() => {
@@ -604,50 +498,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     [elements, gridSize, gridSnapEnabled, addToHistory],
   );
 
-  const updateElementBinding = useCallback(
-    (
-      elementId: string,
-      patch: Partial<CanvasDataBinding>,
-      datasetPatch?: Partial<CanvasDatasetBinding> | null,
-    ) => {
-      const element = elements.find((item) => item.id === elementId);
-      if (!element) return;
 
-      const currentBinding = ensureBinding(element);
-      const nextDataset =
-        datasetPatch === undefined
-          ? currentBinding.dataset ?? null
-          : datasetPatch === null
-          ? null
-          : {
-              ...(currentBinding.dataset ?? createDefaultDatasetBinding()),
-              ...datasetPatch,
-            };
-
-      const nextBinding: CanvasDataBinding = {
-        ...currentBinding,
-        ...patch,
-        dataset: nextDataset,
-      };
-
-      updateElement(elementId, { dataBinding: nextBinding });
-    },
-    [elements, updateElement],
-  );
-
-  const updateGridElements = useCallback(
-    (gridId: string, datasetPatch: Partial<CanvasDatasetBinding>) => {
-      bindingElements
-        .filter(
-          (item) =>
-            item.dataset.gridId === gridId && item.binding.source !== 'manual',
-        )
-        .forEach((item) => {
-          updateElementBinding(item.element.id, { source: 'dataset' }, datasetPatch);
-        });
-    },
-    [bindingElements, updateElementBinding],
-  );
 
   
 
@@ -749,47 +600,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     return previewElements;
   }, [elements, elementSeries, previewConfig, realPlayerData]);
 
-  const applySnapshotToBindings = useCallback(() => {
-    if (!snapshotInputRef.current) return;
-    const raw = snapshotInputRef.current.value.trim();
-    let snapshotId: CanvasDatasetBinding['snapshotId'];
 
-    if (raw === '' || raw.toLowerCase() === 'latest') {
-      snapshotId = 'latest';
-    } else {
-      const parsed = Number(raw);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        toast({
-          title: 'Invalid snapshot id',
-          description: 'Enter a positive integer id or `latest`.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      snapshotId = Math.floor(parsed);
-    }
-
-    let updated = 0;
-    bindingElements.forEach((item) => {
-      if (item.binding.source === 'manual') return;
-      updateElementBinding(item.element.id, { source: 'dataset' }, { snapshotId });
-      updated += 1;
-    });
-
-    toast({
-      title: 'Snapshot applied',
-      description:
-        updated > 0
-          ? `Updated ${updated} binding${updated === 1 ? '' : 's'} to ${
-              snapshotId === 'latest' ? 'use the latest snapshot' : `snapshot #${snapshotId}`
-            }.`
-          : 'No dataset-bound elements were updated.',
-    });
-    if (snapshotInputRef.current) {
-      snapshotInputRef.current.value =
-        snapshotId === 'latest' ? 'latest' : String(snapshotId);
-    }
-  }, [bindingElements, updateElementBinding, toast]);
 
   const deleteElement = useCallback(
     (elementId: string) => {
@@ -1683,12 +1494,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       </CardContent>
                     </Card>
 
-                    <SimplifiedPropertiesPanel
-                      selectedElement={selectedElement}
-                      onUpdateElement={updateElement}
-                      onUpdateBinding={updateElementBindingSimplified}
-                      fontOptions={fontOptions}
-                    />
+  
                   </div>
                 </TabsContent>
 
@@ -1741,7 +1547,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   <div className="p-4 space-y-4">
                     <Card>
                       <CardHeader>
-                        <CardTitle>Scoreboard Dataset</CardTitle>
+                        <CardTitle>Data Source</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         <p className="text-sm text-muted-foreground">

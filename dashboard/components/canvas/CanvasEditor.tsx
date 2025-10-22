@@ -68,8 +68,10 @@ import {
   Move,
   X,
   User,
+  Users,
   Trophy,
   Medal,
+  Target,
   Undo,
   Redo,
   Settings
@@ -270,6 +272,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [showNewEventInput, setShowNewEventInput] = useState(false);
   const [newEventName, setNewEventName] = useState('');
   
+  // Enhanced dynamic elements state
+  const [elementSpacing, setElementSpacing] = useState(56);
+  const [selectedSortBy, setSelectedSortBy] = useState<'total_points' | 'player_name' | 'standing_rank'>('total_points');
+  const [selectedSortOrder, setSelectedSortOrder] = useState<'asc' | 'desc'>('desc');
+  
   // Font options
   const fontOptions = [
     { value: 'Arial', label: 'Arial' },
@@ -441,17 +448,22 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   const addPropertyElement = useCallback((propertyType: CanvasPropertyType) => {
     const newElement = createPropertyElement(propertyType, snapToGrid);
+    
+    // Apply simplified dynamic binding
+    const simplifiedBinding = createSimplifiedBinding(newElement);
+    const elementWithBinding = { ...newElement, dataBinding: simplifiedBinding };
+    
     setElements((previous) => {
-      const nextElements = [...previous, newElement];
+      const nextElements = [...previous, elementWithBinding];
       setCanvasData((prevData) => ({
         ...prevData,
         elements: nextElements,
       }));
       return nextElements;
     });
-    setSelectedElement(newElement);
+    setSelectedElement(elementWithBinding);
 
-    addToHistory(HistoryManager.createActionTypes.addElement(newElement));
+    addToHistory(HistoryManager.createActionTypes.addElement(elementWithBinding));
   }, [snapToGrid, addToHistory]);
 
   const addElementSeries = useCallback((propertyType: CanvasPropertyType) => {
@@ -470,6 +482,73 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     setSelectedElement(baseElement);
     addToHistory(HistoryManager.createActionTypes.addElement(newSeries));
   }, [snapToGrid, addToHistory]);
+
+  // Enhanced dynamic element creation with auto-population and sorting
+  const addAutoPopulatedPlayers = useCallback((sortBy: 'total_points' | 'player_name' | 'standing_rank' = 'total_points', sortOrder: 'asc' | 'desc' = 'desc') => {
+    // This will create a series that auto-populates with all tournament players
+    const baseElement = createPropertyElement('player_name', snapToGrid);
+    
+    const enhancedSeries: ElementSeries = {
+      id: `auto-players-${Date.now()}`,
+      type: 'player_name',
+      baseElement,
+      spacing: { horizontal: 0, vertical: 56, direction: 'vertical' }, // Default vertical spacing
+      autoGenerate: true,
+      maxElements: 50, // Reasonable limit
+      sortBy,
+      sortOrder,
+    };
+    
+    setElementSeries((previous) => {
+      const nextSeries = [...previous, enhancedSeries];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elementSeries: nextSeries,
+      }));
+      return nextSeries;
+    });
+    
+    setSelectedElement(baseElement);
+    addToHistory(HistoryManager.createActionTypes.addElement(enhancedSeries));
+    
+    toast({
+      title: 'Auto-populated Players Added',
+      description: `Added players series sorted by ${sortBy} (${sortOrder})`,
+    });
+  }, [snapToGrid, addToHistory, toast]);
+
+  // Add round-specific score elements
+  const addRoundScores = useCallback((roundId: string) => {
+    const baseElement = createPropertyElement('round_score', snapToGrid);
+    
+    // Apply round-specific binding
+    const roundBinding: ElementDataBinding = {
+      source: 'dynamic',
+      dataType: 'round_score',
+      snapshotId: 'latest',
+      roundId,
+      fallbackText: 'Round Score',
+    };
+    
+    const elementWithBinding = { ...baseElement, dataBinding: roundBinding };
+    
+    setElements((previous) => {
+      const nextElements = [...previous, elementWithBinding];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elements: nextElements,
+      }));
+      return nextElements;
+    });
+    setSelectedElement(elementWithBinding);
+
+    addToHistory(HistoryManager.createActionTypes.addElement(elementWithBinding));
+    
+    toast({
+      title: 'Round Score Added',
+      description: `Added score element for ${roundId}`,
+    });
+  }, [snapToGrid, addToHistory, toast]);
 
   const updateElement = useCallback(
     (elementId: string, updates: Partial<CanvasElement>) => {
@@ -1298,29 +1377,69 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             variant="outline"
                             size="sm"
                             className="w-full justify-start"
-                            onClick={() => addPropertyElement('player')}
+                            onClick={() => addPropertyElement('player_name')}
                           >
                             <User className="h-4 w-4 mr-2" />
-                            Player Names
+                            Player Name
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             className="w-full justify-start"
-                            onClick={() => addPropertyElement('score')}
+                            onClick={() => addPropertyElement('player_score')}
                           >
                             <Trophy className="h-4 w-4 mr-2" />
-                            Player Scores
+                            Player Score
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             className="w-full justify-start"
-                            onClick={() => addPropertyElement('placement')}
+                            onClick={() => addPropertyElement('player_placement')}
                           >
                             <Medal className="h-4 w-4 mr-2" />
                             Player Placement
                           </Button>
+                        </div>
+
+                        {/* Enhanced Dynamic Features */}
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground px-2">Smart Elements</p>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => addAutoPopulatedPlayers('total_points', 'desc')}
+                          >
+                            <Users className="h-4 w-4 mr-2" />
+                            Auto-Players (Ranking)
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start"
+                            onClick={() => addAutoPopulatedPlayers('player_name', 'asc')}
+                          >
+                            <Users className="h-4 w-4 mr-2" />
+                            Auto-Players (Alphabetical)
+                          </Button>
+                        </div>
+
+                        {/* Round Scores */}
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground px-2">Round Scores</p>
+                          {['round_1', 'round_2', 'round_3', 'round_4', 'round_5', 'round_6'].map((roundId) => (
+                            <Button
+                              key={roundId}
+                              variant="outline"
+                              size="sm"
+                              className="w-full justify-start"
+                              onClick={() => addRoundScores(roundId)}
+                            >
+                              <Target className="h-4 w-4 mr-2" />
+                              {roundId.replace('_', ' ').toUpperCase()}
+                            </Button>
+                          ))}
                         </div>
                       </CardContent>
                     </Card>

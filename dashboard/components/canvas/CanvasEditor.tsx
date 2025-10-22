@@ -35,7 +35,6 @@ import {
   CanvasPropertyType,
   SnapLine,
   CanvasDataBinding,
-  CanvasDatasetBinding,
   CanvasBindingSource,
   CanvasBindingField,
   ElementSeries,
@@ -93,21 +92,11 @@ import {
   updateElementSeries,
   deleteElementSeries,
   DEFAULT_ELEMENT_SPACING,
-  applyUniversalStylingToElements,
   updatePreviewModeConfig,
   getElementsWithPreviewData,
 } from '@/lib/canvas-helpers';
 import {
-  STYLE_PRESETS,
-  FONT_OPTIONS,
-  FONT_WEIGHT_OPTIONS,
-  TEXT_TRANSFORM_OPTIONS,
-  TEXT_ALIGN_OPTIONS,
-  getApplicablePresets,
-  getPresetById,
   elementStyleToCss,
-  validateAndCleanStyle,
-  DEFAULT_UNIVERSAL_STYLING,
   getDefaultPreviewModeConfig,
   generateMockPlayerData,
 } from '@/lib/canvas-styling';
@@ -275,11 +264,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const canvasSettings = canvasData?.settings ?? DEFAULT_CANVAS_SETTINGS;
   
   // Styling system state
-  const [universalStyling, setUniversalStyling] = useState<Partial<UniversalStyleControls>>(DEFAULT_UNIVERSAL_STYLING);
   const [previewConfig, setPreviewConfig] = useState<PreviewModeConfig>(
     initialCanvasState.previewConfig || getDefaultPreviewModeConfig()
   );
-  const [selectedPreset, setSelectedPreset] = useState<string>('');
   
   // Real player data state
   const [realPlayerData, setRealPlayerData] = useState<PlayerData[]>([]);
@@ -608,69 +595,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     [bindingElements, updateElementBinding],
   );
 
-  // Styling system handlers
-  const applyUniversalStyling = useCallback((elementType: CanvasPropertyType) => {
-    const updatedElements = applyUniversalStylingToElements(elements, elementType, universalStyling);
-    setElements(updatedElements);
-    setCanvasData(prevData => ({ ...prevData, elements: updatedElements }));
-    
-    addToHistory({
-      type: 'update_elements',
-      data: {
-        elementType,
-        styling: universalStyling,
-        before: elements,
-        after: updatedElements
-      }
-    });
-
-    toast({
-      title: 'Styling Applied',
-      description: `Universal styling applied to all ${elementType} elements.`,
-    });
-  }, [elements, universalStyling, addToHistory, toast]);
-
-  const applyStylePreset = useCallback((presetId: string) => {
-    const preset = getPresetById(presetId);
-    if (!preset) return;
-
-    const updatedElements = elements.map(element => {
-      if (preset.applicableTo.includes(element.type as CanvasPropertyType)) {
-        return {
-          ...element,
-          ...preset.style,
-        };
-      }
-      return element;
-    });
-
-    setElements(updatedElements);
-    setCanvasData(prevData => ({ ...prevData, elements: updatedElements }));
-    setSelectedPreset(presetId);
-    
-    addToHistory({
-      type: 'apply_preset',
-      data: {
-        presetId,
-        preset,
-        before: elements,
-        after: updatedElements
-      }
-    });
-
-    toast({
-      title: 'Preset Applied',
-      description: `"${preset.name}" preset applied to applicable elements.`,
-    });
-  }, [elements, addToHistory, toast]);
-
-  const updateUniversalStyling = useCallback((updates: Partial<UniversalStyleControls>) => {
-    const cleanedStyling = validateAndCleanStyle(updates);
-    setUniversalStyling(prev => ({ 
-      ...prev, 
-      ...cleanedStyling 
-    } as Partial<UniversalStyleControls>));
-  }, []);
+  
 
   const togglePreviewMode = useCallback(() => {
     const newPreviewConfig = {
@@ -1525,243 +1450,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       </CardContent>
                     </Card>
 
-    
-
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Universal Styling</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-muted-foreground">Font Size</label>
-                            <Input
-                              type="number"
-                              min={8}
-                              value={universalStyling.fontSize ?? 24}
-                              onChange={(e) =>
-                                updateUniversalStyling({ fontSize: Number(e.target.value) || 24 })
-                              }
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Font</label>
-                            <Select
-                              value={universalStyling.fontFamily || 'Arial'}
-                              onValueChange={(value) =>
-                                updateUniversalStyling({ fontFamily: value })
-                              }
-                            >
-                              <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Select font..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {FONT_OPTIONS.map((font) => (
-                                  <SelectItem key={font.value} value={font.value}>
-                                    {font.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-muted-foreground">Text Color</label>
-                            <Input
-                              type="color"
-                              value={universalStyling.color ?? '#000000'}
-                              onChange={(e) =>
-                                updateUniversalStyling({ color: e.target.value })
-                              }
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Background</label>
-                            <Input
-                              type="color"
-                              value={universalStyling.backgroundColor ?? '#3B82F6'}
-                              onChange={(e) =>
-                                updateUniversalStyling({ backgroundColor: e.target.value })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-muted-foreground">Border Color</label>
-                            <Input
-                              type="color"
-                              value={universalStyling.borderColor ?? '#1E40AF'}
-                              onChange={(e) =>
-                                updateUniversalStyling({ borderColor: e.target.value })
-                              }
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Border Width</label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={universalStyling.borderWidth ?? 2}
-                              onChange={(e) =>
-                                updateUniversalStyling({ borderWidth: Number(e.target.value) || 0 })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-muted-foreground">Border Radius</label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={universalStyling.borderRadius ?? 8}
-                              onChange={(e) =>
-                                updateUniversalStyling({ borderRadius: Number(e.target.value) || 0 })
-                              }
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Font Weight</label>
-                            <Select
-                              value={universalStyling.fontWeight || 'normal'}
-                              onValueChange={(value) =>
-                                updateUniversalStyling({ fontWeight: value })
-                              }
-                            >
-                              <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Select weight..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {FONT_WEIGHT_OPTIONS.map((weight) => (
-                                  <SelectItem key={weight.value} value={weight.value}>
-                                    {weight.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="text-xs text-muted-foreground">Text Align</label>
-                            <Select
-                              value={universalStyling.textAlign || 'center'}
-                              onValueChange={(value) =>
-                                updateUniversalStyling({ textAlign: value as any })
-                              }
-                            >
-                              <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Align..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {TEXT_ALIGN_OPTIONS.map((align) => (
-                                  <SelectItem key={align.value} value={align.value}>
-                                    {align.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Transform</label>
-                            <Select
-                              value={universalStyling.textTransform || 'none'}
-                              onValueChange={(value) =>
-                                updateUniversalStyling({ textTransform: value as any })
-                              }
-                            >
-                              <SelectTrigger className="h-10">
-                                <SelectValue placeholder="Transform..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {TEXT_TRANSFORM_OPTIONS.map((transform) => (
-                                  <SelectItem key={transform.value} value={transform.value}>
-                                    {transform.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <label className="text-xs text-muted-foreground">Letter Spacing</label>
-                            <Input
-                              type="number"
-                              value={universalStyling.letterSpacing ?? 0}
-                              onChange={(e) =>
-                                updateUniversalStyling({ letterSpacing: Number(e.target.value) || 0 })
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <label className="text-xs text-muted-foreground">Apply to Element Type</label>
-                          <div className="grid grid-cols-3 gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => applyUniversalStyling('player')}
-                              className="text-xs h-8"
-                            >
-                              <User className="h-3 w-3 mr-1" />
-                              Players
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => applyUniversalStyling('score')}
-                              className="text-xs h-8"
-                            >
-                              <Trophy className="h-3 w-3 mr-1" />
-                              Scores
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => applyUniversalStyling('placement')}
-                              className="text-xs h-8"
-                            >
-                              <Medal className="h-3 w-3 mr-1" />
-                              Places
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Style Presets</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <div className="grid gap-2">
-                          {STYLE_PRESETS.filter(preset => 
-                            preset.category === 'universal' || 
-                            (selectedElement && preset.applicableTo.includes(selectedElement.type as CanvasPropertyType))
-                          ).map((preset) => (
-                            <Button
-                              key={preset.id}
-                              variant={selectedPreset === preset.id ? "default" : "outline"}
-                              size="sm"
-                              onClick={() => applyStylePreset(preset.id)}
-                              className="w-full justify-start text-xs h-8"
-                            >
-                              <div className="w-3 h-3 rounded mr-2" style={{
-                                backgroundColor: preset.style.backgroundColor || '#3B82F6',
-                                border: preset.style.borderWidth ? `${preset.style.borderWidth}px solid ${preset.style.borderColor}` : 'none'
-                              }} />
-                              {preset.name}
-                            </Button>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
+  
 
                     <Card>
                       <CardHeader className="pb-2">

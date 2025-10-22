@@ -25,8 +25,8 @@ const PROPERTY_CONFIG: Record<
   CanvasPropertyType,
   { placeholder: string; width: number; height: number }
 > = {
-  players: { placeholder: 'Player Name', width: 150, height: 40 },
-  scores: { placeholder: 'Score', width: 100, height: 40 },
+  player: { placeholder: 'Player Name', width: 150, height: 40 },
+  score: { placeholder: 'Score', width: 100, height: 40 },
   placement: { placeholder: 'Placement', width: 120, height: 40 },
 };
 
@@ -234,9 +234,9 @@ export function createPropertyElement(
     dataBinding: {
       source: 'api',
       field:
-        type === 'players'
+        type === 'player'
           ? 'player_name'
-          : type === 'scores'
+          : type === 'score'
           ? 'player_score'
           : 'player_placement',
       apiEndpoint: null,

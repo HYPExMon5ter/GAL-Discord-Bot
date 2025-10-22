@@ -1444,6 +1444,117 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       </CardContent>
                     </Card>
 
+                    {/* Simplified Properties Panel */}
+                    {selectedElement && (
+                      <Card>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm">
+                            Element Properties
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {/* Position */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-muted-foreground">X Position</label>
+                              <Input
+                                type="number"
+                                value={selectedElement.x ?? 0}
+                                onChange={(e) =>
+                                  updateElement(selectedElement.id, { x: Number(e.target.value) || 0 })
+                                }
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Y Position</label>
+                              <Input
+                                type="number"
+                                value={selectedElement.y ?? 0}
+                                onChange={(e) =>
+                                  updateElement(selectedElement.id, { y: Number(e.target.value) || 0 })
+                                }
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Content (only for static text elements) */}
+                          {selectedElement.type === 'text' && (
+                            <div>
+                              <label className="text-xs text-muted-foreground">Content</label>
+                              <Input
+                                value={selectedElement.content ?? ''}
+                                onChange={(e) =>
+                                  updateElement(selectedElement.id, { content: e.target.value })
+                                }
+                                placeholder="Enter text content..."
+                                className="h-8"
+                              />
+                            </div>
+                          )}
+
+                          {/* Font Properties */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-xs text-muted-foreground">Font Family</label>
+                              <Select
+                                value={selectedElement.fontFamily || 'Arial'}
+                                onValueChange={(value) =>
+                                  updateElement(selectedElement.id, { fontFamily: value })
+                                }
+                              >
+                                <SelectTrigger className="h-8">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {fontOptions.map((font) => (
+                                    <SelectItem key={font.value} value={font.value}>
+                                      {font.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground">Font Size</label>
+                              <Input
+                                type="number"
+                                min={8}
+                                value={selectedElement.fontSize ?? 16}
+                                onChange={(e) =>
+                                  updateElement(selectedElement.id, { fontSize: Number(e.target.value) || 0 })
+                                }
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Text Color */}
+                          <div>
+                            <label className="text-xs text-muted-foreground">Text Color</label>
+                            <Input
+                              type="color"
+                              value={selectedElement.color ?? '#000000'}
+                              onChange={(e) =>
+                                updateElement(selectedElement.id, { color: e.target.value })
+                              }
+                              className="h-8 w-full"
+                            />
+                          </div>
+
+                          {/* Element Type Info */}
+                          <div className="text-xs text-muted-foreground p-2 bg-muted rounded">
+                            <div>Type: {selectedElement.type}</div>
+                            <div>ID: {selectedElement.id.slice(0, 8)}...</div>
+                            {selectedElement.dataBinding?.source === 'dynamic' && (
+                              <div className="text-green-600">Uses tournament data</div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+  )}
+
   
 
                     

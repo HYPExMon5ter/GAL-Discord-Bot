@@ -2093,9 +2093,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                           </Select>
                                         </div>
 
-                                        {binding.field === 'round_score' && (
+                                        {selectedElement.type === 'score' && (
                                           <div>
-                                            <label className="text-xs text-muted-foreground">Round Identifier</label>
+                                            <label className="text-xs text-muted-foreground">Round Selection</label>
                                             <Input
                                               value={dataset.roundId ?? ''}
                                               onChange={(e) =>
@@ -2251,52 +2251,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                 );
                               })()}
                             
-                            {selectedElement.type !== 'text' && (
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Background</label>
-                                  <Input
-                                    type="color"
-                                    value={selectedElement.backgroundColor === 'rgba(0, 0, 0, 0)' || !selectedElement.backgroundColor ? '#3B82F6' : selectedElement.backgroundColor}
-                                    onChange={(e) =>
-                                      updateElement(selectedElement.id, { backgroundColor: e.target.value })
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Border Color</label>
-                                  <Input
-                                    type="color"
-                                    value={selectedElement.borderColor ?? '#1E40AF'}
-                                    onChange={(e) =>
-                                      updateElement(selectedElement.id, { borderColor: e.target.value })
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Border Width</label>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    value={selectedElement.borderWidth ?? 2}
-                                    onChange={(e) =>
-                                      updateElement(selectedElement.id, { borderWidth: Number(e.target.value) || 0 })
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-xs text-muted-foreground">Border Radius</label>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    value={selectedElement.borderRadius ?? 8}
-                                    onChange={(e) =>
-                                      updateElement(selectedElement.id, { borderRadius: Number(e.target.value) || 0 })
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            )}
+  
 
                             <div className="grid grid-cols-2 gap-2">
                               <div>

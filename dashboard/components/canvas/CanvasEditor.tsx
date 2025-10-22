@@ -243,6 +243,16 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   // Sidebar state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   
+  // Round options for Scores elements
+  const [roundOptions] = useState([
+    { value: 'round_1', label: 'Round 1' },
+    { value: 'round_2', label: 'Round 2' },
+    { value: 'round_3', label: 'Round 3' },
+    { value: 'round_4', label: 'Round 4' },
+    { value: 'round_5', label: 'Round 5' },
+    { value: 'round_6', label: 'Round 6' },
+  ]);
+  
   // History management
   const historyManagerRef = useRef(new HistoryManager());
   const [canUndo, setCanUndo] = useState(false);
@@ -1491,6 +1501,38 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               className="h-8 w-full"
                             />
                           </div>
+
+                          {/* Round Selector - Only for Scores elements */}
+                          {(selectedElement.type === 'player_score' || selectedElement.type === 'round_score') && (
+                            <div>
+                              <label className="text-xs text-muted-foreground">Round Selection</label>
+                              <Select
+                                value={selectedElement.dataBinding?.roundId || ''}
+                                onValueChange={(value) => {
+                                  if (selectedElement.dataBinding) {
+                                    updateElement(selectedElement.id, {
+                                      dataBinding: {
+                                        ...selectedElement.dataBinding,
+                                        roundId: value || undefined,
+                                      }
+                                    });
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-8">
+                                  <SelectValue placeholder="Select round..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="">Total Score</SelectItem>
+                                  {roundOptions.map((round) => (
+                                    <SelectItem key={round.value} value={round.value}>
+                                      {round.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
 
                           {/* Element Type Info */}
                           <div className="text-xs text-muted-foreground p-2 bg-muted rounded">

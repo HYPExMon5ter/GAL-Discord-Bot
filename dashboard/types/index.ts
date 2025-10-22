@@ -52,9 +52,12 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-export type CanvasElementType = 'text' | 'players' | 'scores' | 'placement';
+// Simplified element types - unified system
+export type ElementType = 'text' | 'player_name' | 'player_score' | 'player_placement' | 'team_name' | 'round_score';
 
-export type CanvasPropertyType = Extract<CanvasElementType, 'players' | 'scores' | 'placement'>;
+// For backward compatibility
+export type CanvasElementType = ElementType;
+export type CanvasPropertyType = Extract<ElementType, 'player_name' | 'player_score' | 'player_placement' | 'team_name' | 'round_score'>;
 
 // Simplified element series for auto-generation
 export interface ElementSeries {
@@ -75,14 +78,29 @@ export interface ElementSpacing {
   direction: 'horizontal' | 'vertical' | 'grid';
 }
 
-// Simplified data binding
+// Simplified data binding - just Static vs Dynamic
+export interface ElementDataBinding {
+  source: 'static' | 'dynamic';
+  dataType?: ElementType; // For dynamic elements, what data to bind
+  staticValue?: string; // For static elements, the text content
+  snapshotId?: string | number; // For dynamic elements, which snapshot to use
+  roundId?: string; // For round-specific data
+  fallbackText?: string; // Shown when data is unavailable
+}
+
+// For backward compatibility
 export interface CanvasDataBinding {
-  source: 'api' | 'manual' | 'series';
+  source: 'api' | 'manual' | 'series' | 'static' | 'dynamic';
   field: 'player_name' | 'player_score' | 'player_placement' | 'player_rank' | 'team_name' | 'round_score';
   apiEndpoint?: string | null;
   manualValue?: string | null;
-  seriesId?: string | null; // Reference to element series for auto-generation
+  seriesId?: string | null;
   fallbackText?: string | null;
+  // New simplified fields
+  dataType?: ElementType;
+  staticValue?: string;
+  snapshotId?: string | number;
+  roundId?: string;
 }
 
 export type CanvasBindingSource = CanvasDataBinding['source'];
@@ -111,17 +129,21 @@ export interface CanvasElementStyle {
   };
 }
 
+// Unified element interface
 export interface CanvasElement extends CanvasElementStyle {
   id: string;
   type: CanvasElementType;
-  content?: string;
+  content?: string; // For static elements
   placeholderText?: string;
   x: number;
   y: number;
   width?: number;
   height?: number;
-  dataBinding?: CanvasDataBinding | null;
+  dataBinding?: CanvasDataBinding | ElementDataBinding | null;
   isPlaceholder?: boolean;
+  // New simplified properties
+  dataSource?: 'static' | 'dynamic'; // Quick reference for binding source
+  dataType?: ElementType; // What type of data this element represents
 }
 
 export interface CanvasSettings {
@@ -212,3 +234,93 @@ export interface ElementTypeStyling {
   overrides: CanvasElementStyle;
   presetId?: string;
 }
+
+// Helper types for simplified system
+export interface ElementConfig {
+  type: ElementType;
+  label: string;
+  icon: string; // Icon name for UI
+  category: 'static' | 'dynamic';
+  description: string;
+  defaultStyle?: Partial<CanvasElementStyle>;
+}
+
+export const ELEMENT_CONFIGS: Record<ElementType, ElementConfig> = {
+  text: {
+    type: 'text',
+    label: 'Static Text',
+    icon: 'Type',
+    category: 'static',
+    description: 'Static text that doesn\'t change',
+    defaultStyle: {
+      fontSize: 24,
+      fontFamily: 'Arial',
+      color: '#000000',
+    }
+  },
+  player_name: {
+    type: 'player_name',
+    label: 'Player Name',
+    icon: 'User',
+    category: 'dynamic',
+    description: 'Player name from tournament data',
+    defaultStyle: {
+      fontSize: 20,
+      fontFamily: 'Arial',
+      color: '#FFFFFF',
+      backgroundColor: '#3B82F6',
+    }
+  },
+  player_score: {
+    type: 'player_score',
+    label: 'Player Score',
+    icon: 'Trophy',
+    category: 'dynamic',
+    description: 'Player total points from tournament data',
+    defaultStyle: {
+      fontSize: 24,
+      fontFamily: 'Arial',
+      color: '#FFFFFF',
+      backgroundColor: '#EF4444',
+    }
+  },
+  player_placement: {
+    type: 'player_placement',
+    label: 'Player Placement',
+    icon: 'Medal',
+    category: 'dynamic',
+    description: 'Player standing/rank from tournament data',
+    defaultStyle: {
+      fontSize: 20,
+      fontFamily: 'Arial',
+      color: '#FFD700',
+      backgroundColor: '#1F2937',
+    }
+  },
+  team_name: {
+    type: 'team_name',
+    label: 'Team Name',
+    icon: 'Users',
+    category: 'dynamic',
+    description: 'Team name from tournament data',
+    defaultStyle: {
+      fontSize: 18,
+      fontFamily: 'Arial',
+      color: '#FFFFFF',
+      backgroundColor: '#10B981',
+    }
+  },
+  round_score: {
+    type: 'round_score',
+    label: 'Round Score',
+    icon: 'Target',
+    category: 'dynamic',
+    description: 'Score from a specific round',
+    defaultStyle: {
+      fontSize: 16,
+      fontFamily: 'Arial',
+      color: '#FFFFFF',
+      backgroundColor: '#F59E0B',
+    }
+  }
+};

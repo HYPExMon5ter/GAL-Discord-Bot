@@ -1,6 +1,7 @@
 import type {
   CanvasElement,
   CanvasPropertyType,
+  ElementType,
   CanvasSettings,
   CanvasState,
   SnapLine,
@@ -8,8 +9,10 @@ import type {
   ElementSpacing,
   PlayerData,
   CanvasDataBinding,
+  ElementDataBinding,
   PreviewModeConfig,
   UniversalStyleControls,
+  ELEMENT_CONFIGS,
 } from '@/types';
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
@@ -21,13 +24,17 @@ export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
 const DEFAULT_TEXT_DIMENSIONS = { width: 100, height: 50 };
 const DEFAULT_BLOCK_DIMENSIONS = { width: 100, height: 50 };
 
-const PROPERTY_CONFIG: Record<
-  CanvasPropertyType,
-  { placeholder: string; width: number; height: number }
+// Updated PROPERTY_CONFIG for new element types - using ELEMENT_CONFIGS from types
+// Legacy support for old property types
+const LEGACY_PROPERTY_CONFIG: Record<
+  string,
+  { placeholder: string; width: number; height: number; newType: ElementType }
 > = {
-  player: { placeholder: 'Player Name', width: 150, height: 40 },
-  score: { placeholder: 'Score', width: 100, height: 40 },
-  placement: { placeholder: 'Placement', width: 120, height: 40 },
+  player: { placeholder: 'Player Name', width: 150, height: 40, newType: 'player_name' },
+  score: { placeholder: 'Score', width: 100, height: 40, newType: 'player_score' },
+  placement: { placeholder: 'Placement', width: 120, height: 40, newType: 'player_placement' },
+  players: { placeholder: 'Player Name', width: 150, height: 40, newType: 'player_name' },
+  scores: { placeholder: 'Score', width: 100, height: 40, newType: 'player_score' },
 };
 
 export const DEFAULT_ELEMENT_SPACING: ElementSpacing = {
@@ -201,15 +208,16 @@ function toOptionalNumber(value: any): number | undefined {
 }
 
 export function createTextElement(snap: (value: number) => number): CanvasElement {
+  const config = ELEMENT_CONFIGS.text;
   return {
     id: generateElementId(),
     type: 'text',
     content: 'Text',
     x: snap(100),
     y: snap(100),
-    fontSize: 48,
-    fontFamily: 'Arial',
-    color: '#000000',
+    dataSource: 'static',
+    dataType: 'text',
+    ...config.defaultStyle,
   };
 }
 
@@ -217,32 +225,58 @@ export function createPropertyElement(
   type: CanvasPropertyType,
   snap: (value: number) => number,
 ): CanvasElement {
-  const config = PROPERTY_CONFIG[type];
+  // Convert legacy types to new element types
+  const newType = LEGACY_PROPERTY_CONFIG[type]?.newType || type as ElementType;
+  const legacyConfig = LEGACY_PROPERTY_CONFIG[type];
+  const config = ELEMENT_CONFIGS[newType];
+  
   return {
     id: generateElementId(),
-    type,
-    content: config.placeholder,
-    placeholderText: config.placeholder,
+    type: newType,
+    content: legacyConfig?.placeholder || config.label,
+    placeholderText: legacyConfig?.placeholder || config.label,
     x: snap(100),
     y: snap(100),
-    width: snap(config.width),
-    height: snap(config.height),
-    fontSize: 24,
-    fontFamily: 'Arial',
-    color: '#000000',
-    backgroundColor: '#3B82F6',
+    width: snap(legacyConfig?.width || 150),
+    height: snap(legacyConfig?.height || 40),
+    dataSource: 'dynamic',
+    dataType: newType,
+    ...config.defaultStyle,
     dataBinding: {
-      source: 'api',
-      field:
-        type === 'player'
-          ? 'player_name'
-          : type === 'score'
-          ? 'player_score'
-          : 'player_placement',
-      apiEndpoint: null,
-      manualValue: null,
+      source: 'dynamic',
+      dataType: newType,
+      fallbackText: config.label,
     },
     isPlaceholder: true,
+  };
+}
+
+// New unified element creation function
+export function createElement(
+  elementType: ElementType,
+  snap: (value: number) => number,
+): CanvasElement {
+  const config = ELEMENT_CONFIGS[elementType];
+  const isStatic = config.category === 'static';
+  
+  return {
+    id: generateElementId(),
+    type: elementType,
+    content: isStatic ? config.label : '',
+    placeholderText: config.label,
+    x: snap(100),
+    y: snap(100),
+    width: isStatic ? undefined : snap(150),
+    height: isStatic ? undefined : snap(40),
+    dataSource: isStatic ? 'static' : 'dynamic',
+    dataType: elementType,
+    ...config.defaultStyle,
+    dataBinding: isStatic ? undefined : {
+      source: 'dynamic',
+      dataType: elementType,
+      fallbackText: config.label,
+    },
+    isPlaceholder: !isStatic,
   };
 }
 

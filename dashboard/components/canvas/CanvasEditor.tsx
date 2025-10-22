@@ -1525,40 +1525,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       </CardContent>
                     </Card>
 
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Simplified Elements (Auto-Fill)</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-start"
-                          onClick={() => addElementSeries('player')}
-                        >
-                          <User className="h-4 w-4 mr-2" />
-                          Player Series (Auto-Fill All)
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-start"
-                          onClick={() => addElementSeries('score')}
-                        >
-                          <Trophy className="h-4 w-4 mr-2" />
-                          Score Series (Auto-Fill All)
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-start"
-                          onClick={() => addElementSeries('placement')}
-                        >
-                          <Medal className="h-4 w-4 mr-2" />
-                          Placement Series (Auto-Fill All)
-                        </Button>
-                      </CardContent>
-                    </Card>
+    
 
                     <Card>
                       <CardHeader className="pb-2">

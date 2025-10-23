@@ -165,8 +165,8 @@ export interface StylePreset {
   id: string;
   name: string;
   description: string;
-  style: CanvasElementStyle;
-  applicableTo: CanvasPropertyType[];
+  style: UniversalStyleControls;
+  applicableTo: string[];
   category: 'text' | 'players' | 'scores' | 'placement' | 'universal';
 }
 

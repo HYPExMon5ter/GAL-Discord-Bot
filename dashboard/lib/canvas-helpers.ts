@@ -12,8 +12,8 @@ import type {
   ElementDataBinding,
   PreviewModeConfig,
   UniversalStyleControls,
-  ELEMENT_CONFIGS,
 } from '@/types';
+import { ELEMENT_CONFIGS } from '@/types';
 
 export const DEFAULT_CANVAS_SETTINGS: CanvasSettings = {
   width: 5000,
@@ -66,38 +66,7 @@ export function normalizeCanvasElement(element: any): CanvasElement {
     fontFamily:
       typeof element?.fontFamily === 'string' ? element.fontFamily : undefined,
     color: typeof element?.color === 'string' ? element.color : undefined,
-    backgroundColor:
-      typeof element?.backgroundColor === 'string' ? element.backgroundColor : undefined,
-    borderColor:
-      typeof element?.borderColor === 'string' ? element.borderColor : undefined,
-    borderWidth:
-      element?.borderWidth != null ? toOptionalNumber(element.borderWidth) : undefined,
-    borderRadius:
-      element?.borderRadius != null ? toOptionalNumber(element.borderRadius) : undefined,
-    fontWeight: typeof element?.fontWeight === 'string' ? element.fontWeight : undefined,
-    textAlign: (element?.textAlign === 'left' || element?.textAlign === 'center' || element?.textAlign === 'right')
-      ? element.textAlign
-      : undefined,
-    letterSpacing: element?.letterSpacing != null ? toOptionalNumber(element.letterSpacing) : undefined,
-    lineHeight: element?.lineHeight != null ? toOptionalNumber(element.lineHeight) : undefined,
-    textTransform: (element?.textTransform === 'none' || element?.textTransform === 'uppercase' || 
-                    element?.textTransform === 'lowercase' || element?.textTransform === 'capitalize')
-      ? element.textTransform
-      : undefined,
-    textShadow: typeof element?.textShadow === 'string' ? element.textShadow : undefined,
-    boxShadow: typeof element?.boxShadow === 'string' ? element.boxShadow : undefined,
-    padding: element?.padding && typeof element.padding === 'object' ? {
-      top: element.padding.top != null ? toOptionalNumber(element.padding.top) : undefined,
-      right: element.padding.right != null ? toOptionalNumber(element.padding.right) : undefined,
-      bottom: element.padding.bottom != null ? toOptionalNumber(element.padding.bottom) : undefined,
-      left: element.padding.left != null ? toOptionalNumber(element.padding.left) : undefined,
-    } : undefined,
-    margin: element?.margin && typeof element.margin === 'object' ? {
-      top: element.margin.top != null ? toOptionalNumber(element.margin.top) : undefined,
-      right: element.margin.right != null ? toOptionalNumber(element.margin.right) : undefined,
-      bottom: element.margin.bottom != null ? toOptionalNumber(element.margin.bottom) : undefined,
-      left: element.margin.left != null ? toOptionalNumber(element.margin.left) : undefined,
-    } : undefined,
+  
     dataBinding: normalizeDataBinding(element?.dataBinding),
     isPlaceholder: Boolean(element?.isPlaceholder),
   };
@@ -579,7 +548,7 @@ function calculateElementPosition(basePosition: number, spacing: number, index: 
   return basePosition + (index * spacing);
 }
 
-function getBindingFieldForElementType(type: CanvasPropertyType): CanvasDataBinding['field'] {
+function getBindingFieldForElementType(type: string): CanvasDataBinding['field'] {
   switch (type) {
     case 'players':
       return 'player_name';
@@ -587,22 +556,43 @@ function getBindingFieldForElementType(type: CanvasPropertyType): CanvasDataBind
       return 'player_score';
     case 'placement':
       return 'player_placement';
+    case 'placements':
+      return 'player_placement';
+    case 'player_name':
+      return 'player_name';
+    case 'player_score':
+      return 'player_score';
+    case 'player_placement':
+      return 'player_placement';
+    case 'team_name':
+      return 'team_name';
+    case 'round_score':
+      return 'round_score';
     default:
       return 'player_name';
   }
 }
 
-function getElementValueForPlayer(player: PlayerData, type: CanvasPropertyType, roundId?: string): string {
+function getElementValueForPlayer(player: PlayerData, type: string, roundId?: string): string {
   switch (type) {
     case 'players':
+    case 'player_name':
       return player.player_name;
     case 'scores':
+    case 'player_score':
       if (roundId && player.round_scores && player.round_scores[roundId]) {
         return player.round_scores[roundId].toString();
       }
       return player.total_points.toString();
     case 'placement':
+    case 'placements':
+    case 'player_placement':
       return player.standing_rank.toString();
+    case 'round_score':
+      if (roundId && player.round_scores && player.round_scores[roundId]) {
+        return player.round_scores[roundId].toString();
+      }
+      return player.total_points.toString();
     default:
       return player.player_name;
   }

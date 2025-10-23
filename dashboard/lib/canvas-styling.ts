@@ -14,6 +14,29 @@ export const DEFAULT_UNIVERSAL_STYLING: UniversalStyleControls = {
   fontSize: 24,
   fontFamily: 'Arial',
   color: '#000000',
+  backgroundColor: '#FFFFFF',
+  borderColor: '#000000',
+  borderWidth: 1,
+  borderRadius: 0,
+  fontWeight: 'normal',
+  textAlign: 'left',
+  letterSpacing: 0,
+  lineHeight: 1.2,
+  textTransform: 'none',
+  textShadow: 'none',
+  boxShadow: 'none',
+  padding: {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  margin: {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
 };
 
 // Style presets for common use cases
@@ -36,7 +59,9 @@ export const STYLE_PRESETS: StylePreset[] = [
       lineHeight: 1.2,
       textTransform: 'uppercase',
       textShadow: '1px 1px 2px rgba(0,0,0,0.3)',
+      boxShadow: 'none',
       padding: { top: 8, right: 16, bottom: 8, left: 16 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
     },
     applicableTo: ['players'],
     category: 'players',
@@ -59,7 +84,9 @@ export const STYLE_PRESETS: StylePreset[] = [
       lineHeight: 1.1,
       textTransform: 'none',
       textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+      boxShadow: 'none',
       padding: { top: 12, right: 20, bottom: 12, left: 20 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
     },
     applicableTo: ['scores'],
     category: 'scores',
@@ -82,7 +109,9 @@ export const STYLE_PRESETS: StylePreset[] = [
       lineHeight: 1.1,
       textTransform: 'uppercase',
       textShadow: '0 0 10px rgba(255,215,0,0.5)',
+      boxShadow: '0 0 20px rgba(255,215,0,0.3)',
       padding: { top: 16, right: 24, bottom: 16, left: 24 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
     },
     applicableTo: ['placement'],
     category: 'placement',
@@ -105,7 +134,9 @@ export const STYLE_PRESETS: StylePreset[] = [
       lineHeight: 1.4,
       textTransform: 'none',
       textShadow: 'none',
+      boxShadow: 'none',
       padding: { top: 6, right: 12, bottom: 6, left: 12 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
     },
     applicableTo: ['players', 'scores', 'placement'],
     category: 'universal',
@@ -128,7 +159,9 @@ export const STYLE_PRESETS: StylePreset[] = [
       lineHeight: 1.0,
       textTransform: 'uppercase',
       textShadow: '0 0 10px rgba(0,255,0,0.8)',
+      boxShadow: '0 0 15px rgba(0,255,0,0.5)',
       padding: { top: 10, right: 18, bottom: 10, left: 18 },
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
     },
     applicableTo: ['players', 'scores', 'placement'],
     category: 'universal',
@@ -153,6 +186,7 @@ export const STYLE_PRESETS: StylePreset[] = [
       textShadow: '1px 1px 3px rgba(0,0,0,0.3)',
       padding: { top: 12, right: 20, bottom: 12, left: 20 },
       boxShadow: '0 4px 15px rgba(255,215,0,0.4)',
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
     },
     applicableTo: ['players', 'scores', 'placement'],
     category: 'universal',
@@ -361,8 +395,6 @@ export function elementStyleToCss(style: CanvasElementStyle): React.CSSPropertie
   if (style.fontFamily) css.fontFamily = style.fontFamily;
   if (style.color) css.color = style.color;
 
-  if (style.borderWidth) css.borderStyle = 'solid';
-
   return css;
 }
 
@@ -377,61 +409,7 @@ export function validateAndCleanStyle(style: Partial<CanvasElementStyle>): Parti
     cleaned.fontSize = style.fontSize;
   }
 
-  if (style.borderWidth !== undefined && style.borderWidth >= 0 && style.borderWidth <= 50) {
-    cleaned.borderWidth = style.borderWidth;
-  }
-
-  if (style.borderRadius !== undefined && style.borderRadius >= 0 && style.borderRadius <= 1000) {
-    cleaned.borderRadius = style.borderRadius;
-  }
-
-  if (style.letterSpacing !== undefined && style.letterSpacing >= -20 && style.letterSpacing <= 100) {
-    cleaned.letterSpacing = style.letterSpacing;
-  }
-
-  if (style.lineHeight !== undefined && style.lineHeight > 0 && style.lineHeight <= 10) {
-    cleaned.lineHeight = style.lineHeight;
-  }
-
-  // Validate padding values
-  if (style.padding) {
-    const padding: CanvasElementStyle['padding'] = {};
-    if (style.padding.top !== undefined && style.padding.top >= 0 && style.padding.top <= 1000) {
-      padding.top = style.padding.top;
-    }
-    if (style.padding.right !== undefined && style.padding.right >= 0 && style.padding.right <= 1000) {
-      padding.right = style.padding.right;
-    }
-    if (style.padding.bottom !== undefined && style.padding.bottom >= 0 && style.padding.bottom <= 1000) {
-      padding.bottom = style.padding.bottom;
-    }
-    if (style.padding.left !== undefined && style.padding.left >= 0 && style.padding.left <= 1000) {
-      padding.left = style.padding.left;
-    }
-    if (Object.keys(padding).length > 0) {
-      cleaned.padding = padding;
-    }
-  }
-
-  // Validate margin values
-  if (style.margin) {
-    const margin: CanvasElementStyle['margin'] = {};
-    if (style.margin.top !== undefined && style.margin.top >= -1000 && style.margin.top <= 1000) {
-      margin.top = style.margin.top;
-    }
-    if (style.margin.right !== undefined && style.margin.right >= -1000 && style.margin.right <= 1000) {
-      margin.right = style.margin.right;
-    }
-    if (style.margin.bottom !== undefined && style.margin.bottom >= -1000 && style.margin.bottom <= 1000) {
-      margin.bottom = style.margin.bottom;
-    }
-    if (style.margin.left !== undefined && style.margin.left >= -1000 && style.margin.left <= 1000) {
-      margin.left = style.margin.left;
-    }
-    if (Object.keys(margin).length > 0) {
-      cleaned.margin = margin;
-    }
-  }
+  
 
   // Validate string values
   if (style.fontFamily && typeof style.fontFamily === 'string' && style.fontFamily.trim()) {
@@ -442,33 +420,9 @@ export function validateAndCleanStyle(style: Partial<CanvasElementStyle>): Parti
     cleaned.color = style.color;
   }
 
-  if (style.backgroundColor && typeof style.backgroundColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(style.backgroundColor)) {
-    cleaned.backgroundColor = style.backgroundColor;
-  }
+  
 
-  if (style.borderColor && typeof style.borderColor === 'string' && /^#[0-9A-Fa-f]{6}$/.test(style.borderColor)) {
-    cleaned.borderColor = style.borderColor;
-  }
-
-  if (style.fontWeight && typeof style.fontWeight === 'string' && FONT_WEIGHT_OPTIONS.some(opt => opt.value === style.fontWeight)) {
-    cleaned.fontWeight = style.fontWeight;
-  }
-
-  if (style.textAlign && typeof style.textAlign === 'string' && TEXT_ALIGN_OPTIONS.some(opt => opt.value === style.textAlign)) {
-    cleaned.textAlign = style.textAlign;
-  }
-
-  if (style.textTransform && typeof style.textTransform === 'string' && TEXT_TRANSFORM_OPTIONS.some(opt => opt.value === style.textTransform)) {
-    cleaned.textTransform = style.textTransform;
-  }
-
-  if (style.textShadow && typeof style.textShadow === 'string' && style.textShadow.trim()) {
-    cleaned.textShadow = style.textShadow.trim();
-  }
-
-  if (style.boxShadow && typeof style.boxShadow === 'string' && style.boxShadow.trim()) {
-    cleaned.boxShadow = style.boxShadow.trim();
-  }
+  
 
   return cleaned;
 }

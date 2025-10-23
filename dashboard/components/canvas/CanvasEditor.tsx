@@ -1164,6 +1164,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   };
 
   // Main render logic
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -1325,82 +1326,20 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
             </Button>
           </div>
 
+          {/* Tabs Section - Takes remaining space */}
           {!sidebarCollapsed && (
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col overflow-hidden">
               <div className="border-b bg-card px-2 flex-shrink-0">
                 <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Design</TabsTrigger>
-                  <TabsTrigger value="elements" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Elements</TabsTrigger>
+                  <TabsTrigger value="design" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Properties</TabsTrigger>
+                  <TabsTrigger value="elements" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Layers</TabsTrigger>
                 </TabsList>
               </div>
 
               <div className="flex-1 overflow-hidden">
                 <TabsContent value="design" className="m-0 h-full overflow-auto p-2">
                   <div className="p-4 space-y-4">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-center">Canvas Tools</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full justify-start"
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          Background Upload
-                        </Button>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleBackgroundUpload}
-                          className="hidden"
-                        />
-                        
-                        {/* Core Elements */}
-                        <div className="space-y-1">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => addTextElement()}
-                          >
-                            <Type className="h-4 w-4 mr-2" />
-                            Add Text
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => addAutoPopulatedPlayers('total_points', 'desc')}
-                          >
-                            <Users className="h-4 w-4 mr-2" />
-                            Players
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => addPropertyElement('player_score')}
-                          >
-                            <Trophy className="h-4 w-4 mr-2" />
-                            Scores
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => addPropertyElement('player_placement')}
-                          >
-                            <Medal className="h-4 w-4 mr-2" />
-                            Placements
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-
                     {/* Simplified Properties Panel */}
                     {selectedElement && (
                       <Card>
@@ -1542,13 +1481,80 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                           </div>
                         </CardContent>
                       </Card>
-  )}
+                    )}
 
-  
-
-                    
-
-  
+                    {/* Canvas Tools Section - Now positioned correctly below Properties */}
+                    <div className="space-y-4">
+                      <div className="p-2">
+                        <div className="space-y-2">
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider text-center">
+                            Canvas Tools
+                          </h3>
+                          
+                          {/* Background Upload Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start text-left h-auto py-2 px-4 min-w-[200px]"
+                            onClick={() => fileInputRef.current?.click()}
+                          >
+                            <Upload className="h-4 w-4 mr-2 flex-shrink-0" />
+                            <span className="text-sm">Background Upload</span>
+                          </Button>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleBackgroundUpload}
+                            className="hidden"
+                          />
+                          
+                          {/* Core Elements - with consistent spacing */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start text-left h-auto py-2 px-4 min-w-[200px]"
+                            onClick={() => addTextElement()}
+                          >
+                            <Type className="h-4 w-4 mr-2 flex-shrink-0" />
+                            <span className="text-sm">Add Text</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start text-left h-auto py-2 px-4 min-w-[200px]"
+                            onClick={() => addAutoPopulatedPlayers('total_points', 'desc')}
+                          >
+                            <Users className="h-4 w-4 mr-2 flex-shrink-0" />
+                            <span className="text-sm">Players</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start text-left h-auto py-2 px-4 min-w-[200px]"
+                            onClick={() => addPropertyElement('player_score')}
+                          >
+                            <Trophy className="h-4 w-4 mr-2 flex-shrink-0" />
+                            <span className="text-sm">Scores</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full justify-start text-left h-auto py-2 px-4 min-w-[200px]"
+                            onClick={() => addPropertyElement('player_placement')}
+                          >
+                            <Medal className="h-4 w-4 mr-2 flex-shrink-0" />
+                            <span className="text-sm">Placements</span>
+                          </Button>
+                          
+                          {/* Divider Line - spans full width of left panel */}
+                          <div className="border-t border-border w-full my-4"></div>
+                          
+                          {/* Space for future element properties */}
+                          <div className="h-8"></div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </TabsContent>
 
@@ -1596,10 +1602,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                     </Card>
                   </div>
                 </TabsContent>
-
-  
               </div>
             </Tabs>
+            </div>
           )}
         </div>
 

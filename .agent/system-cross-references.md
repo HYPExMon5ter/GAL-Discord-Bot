@@ -1,7 +1,7 @@
 ---
 id: system.cross-references
-version: 2.1
-last_updated: 2025-01-17
+version: 2.3
+last_updated: 2025-01-24
 tags: [system, cross-references, architecture, documentation, mapping]
 ---
 
@@ -51,6 +51,12 @@ canvas-editor-architecture.md    ↔ dashboard/canvas/*           ↔ canvas-edi
 api-backend-system.md             ↔ api/*                         ↔ api-deployment.md        ↵ api/main.py
 frontend-components.md           ↔ dashboard/components/*       ↔ dashboard-operations.md  ↵ dashboard/hooks/*.tsx
 dashboard-security.md             ↔ auth/*, security middleware    ↔ dashboard-security.md      ↵ api/auth.py
+dashboard-ui-components.md       ↔ dashboard/components/ui/*    ↔ dashboard-operations.md  ↵ dashboard/components/ui/*.tsx
+dashboard-authentication.md      ↔ dashboard/components/auth/*  ↔ dashboard-security.md     ↵ dashboard/hooks/use-auth.tsx
+archive-system.md                 ↔ dashboard/components/archive/* ↔ dashboard-operations.md  ↵ dashboard/hooks/use-archives.tsx
+lock-management-system.md        ↔ dashboard/components/locks/*  ↔ canvas-editor-workflow.md ↵ dashboard/hooks/use-locks.tsx
+dashboard-testing.md              ↔ dashboard/tests/*            ↔ dashboard-operations.md  ↵ dashboard/tests/**/*.test.tsx
+dashboard-deployment.md          ↔ dashboard/Dockerfile          ↔ dashboard-deployment.md  ↵ .github/workflows/deploy.yml
 ```
 
 ### SOP Interconnections
@@ -116,7 +122,7 @@ File                              → Purpose                           ↔ Rela
 .env.local                        → Environment variables            → dashboard-operations.md      → Frontend/Backend
 requirements.txt                   → Python dependencies               → api-deployment.md             → Backend
 package.json                       → Node.js dependencies             → dashboard-deployment.md      → Frontend
-config.yaml                       → Bot configuration                 → bot_current_features.md     → Bot core
+config.yaml                       → Bot configuration                 → Bot core (see bot.py)        → Bot core
 dashboard/tsconfig.json            → TypeScript configuration         → developer-documentation.md → Frontend
 dashboard/tailwind.config.js       → Tailwind CSS configuration        → frontend-components.md      → UI styling
 ```

@@ -1,7 +1,7 @@
 ---
 id: system.architecture
-version: 2.0
-last_updated: 2025-01-13
+version: 2.1
+last_updated: 2025-01-24
 tags: [system, architecture, unified-data-flow, api-backend, event-system]
 ---
 
@@ -274,7 +274,7 @@ except Exception as e:
 ```
 
 ## Cross-References
-- `./data_flow.md` - Detailed data flow diagrams
+- `[API Integration](./api-integration.md)` - Data flow and API integration documentation
 - `./flows_registration_checkin.md` - Registration and check-in workflows
 - `./scheduling_logic.md` - Tournament scheduling system
 - `./core-modules.md` - Core component documentation

@@ -1,7 +1,7 @@
 ---
 id: system.frontend_components
-version: 1.0
-last_updated: 2025-01-18
+version: 1.1
+last_updated: 2025-01-24
 tags: [frontend, dashboard, components, react, typescript]
 ---
 
@@ -225,6 +225,10 @@ const GraphicCard = ({ graphic }: { graphic: Graphic }) => (
 
 ## Related Documentation
 
+- [Dashboard UI Components](./dashboard-ui-components.md) - Complete UI component documentation
+- [Dashboard Authentication](./dashboard-authentication.md) - Authentication system details
+- [Archive System](./archive-system.md) - Archive management documentation
+- [Lock Management System](./lock-management-system.md) - Lock management details
 - [Canvas Editor Architecture](./canvas-editor-architecture.md) - Detailed canvas editing system
 - [API Backend System](./api-backend-system.md) - Backend API documentation
 - [System Cross-References](../system-cross-references.md) - Component integration mapping

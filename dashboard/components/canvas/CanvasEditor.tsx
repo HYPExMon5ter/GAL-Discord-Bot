@@ -442,13 +442,69 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     addToHistory(HistoryManager.createActionTypes.addElement(newElement));
   }, [snapToGrid, addToHistory]);
 
+  // Real player data fetching
+  const fetchRealPlayerData = useCallback(async () => {
+    setPlayerDataLoading(true);
+    setPlayerDataError(null);
+    
+    try {
+      const response = await playerApi.getRankedPlayers({
+        sortBy: previewConfig.sortBy,
+        sortOrder: previewConfig.sortOrder,
+        limit: previewConfig.playerCount || 50,
+      });
+      
+      const playerData: PlayerData[] = response.players.map(player => ({
+        player_name: player.player_name,
+        total_points: player.total_points,
+        standing_rank: player.standing_rank,
+        player_id: player.player_id,
+        discord_id: player.discord_id,
+        riot_id: player.riot_id,
+        round_scores: player.round_scores || {},
+      }));
+      
+      setRealPlayerData(playerData);
+    } catch (error) {
+      console.error('Error fetching player data:', error);
+      setPlayerDataError('Failed to load real player data');
+      setRealPlayerData([]);
+    } finally {
+      setPlayerDataLoading(false);
+    }
+  }, [previewConfig.sortBy, previewConfig.sortOrder, previewConfig.playerCount]);
+
   const addPropertyElement = useCallback((propertyType: CanvasPropertyType) => {
     const newElement = createPropertyElement(propertyType, snapToGrid);
     
-    // Apply simplified dynamic binding
-    const simplifiedBinding = createSimplifiedBinding(newElement);
-    const elementWithBinding = { ...newElement, dataBinding: simplifiedBinding };
+    // Create element series for auto-generation
+    const newSeries = createElementSeries(
+      propertyType,
+      newElement,
+      { horizontal: 0, vertical: 56, direction: 'vertical' }  // Default vertical spacing
+    );
     
+    // Apply simplified dynamic binding with series reference
+    const simplifiedBinding = createSimplifiedBinding(newElement);
+    const elementWithBinding = { 
+      ...newElement, 
+      dataBinding: {
+        ...simplifiedBinding,
+        seriesId: newSeries.id,
+      }
+    };
+    
+    // Add series first
+    setElementSeries((previous) => {
+      const nextSeries = [...previous, newSeries];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elementSeries: nextSeries,
+      }));
+      return nextSeries;
+    });
+    
+    // Add element
     setElements((previous) => {
       const nextElements = [...previous, elementWithBinding];
       setCanvasData((prevData) => ({
@@ -457,15 +513,14 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       }));
       return nextElements;
     });
+    
     setSelectedElement(elementWithBinding);
 
-    // Automatically fetch real player data for placement elements to ensure latest standings
-    if (propertyType === 'player_placement') {
-      fetchRealPlayerData();
-    }
+    // Automatically fetch real player data for all dynamic elements
+    fetchRealPlayerData();
 
     addToHistory(HistoryManager.createActionTypes.addElement(elementWithBinding));
-  }, [snapToGrid, addToHistory]);
+  }, [snapToGrid, addToHistory, fetchRealPlayerData]);
 
   const addElementSeries = useCallback((propertyType: CanvasPropertyType) => {
     const baseElement = createPropertyElement(propertyType, snapToGrid);
@@ -616,37 +671,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     setCanvasData(prevData => updatePreviewModeConfig(prevData, newPreviewConfig));
   }, [previewConfig]);
 
-  // Real player data fetching
-  const fetchRealPlayerData = useCallback(async () => {
-    setPlayerDataLoading(true);
-    setPlayerDataError(null);
-    
-    try {
-      const response = await playerApi.getRankedPlayers({
-        sortBy: previewConfig.sortBy,
-        sortOrder: previewConfig.sortOrder,
-        limit: previewConfig.playerCount || 50,
-      });
-      
-      const playerData: PlayerData[] = response.players.map(player => ({
-        player_name: player.player_name,
-        total_points: player.total_points,
-        standing_rank: player.standing_rank,
-        player_id: player.player_id,
-        discord_id: player.discord_id,
-        riot_id: player.riot_id,
-        round_scores: player.round_scores || {},
-      }));
-      
-      setRealPlayerData(playerData);
-    } catch (error) {
-      console.error('Error fetching player data:', error);
-      setPlayerDataError('Failed to load real player data');
-      setRealPlayerData([]);
-    } finally {
-      setPlayerDataLoading(false);
-    }
-  }, [previewConfig.sortBy, previewConfig.sortOrder, previewConfig.playerCount]);
+  
 
   // Fetch real player data when preview mode is enabled and config changes
   useEffect(() => {
@@ -683,7 +708,29 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     return previewElements;
   }, [elements, elementSeries, previewConfig, realPlayerData]);
 
-
+  // Helper function to get display content for elements
+  const getElementDisplayContent = (element: CanvasElement): string => {
+    // Static text elements
+    if (element.type === 'text') {
+      return element.content || 'Text';
+    }
+    
+    // Dynamic elements without data binding
+    if (!element.dataBinding || element.dataBinding.source !== 'dynamic') {
+      return element.placeholderText || ELEMENT_CONFIGS[element.type]?.label || 'Data';
+    }
+    
+    // Handle both ElementDataBinding and CanvasDataBinding
+    const binding = element.dataBinding;
+    
+    // Series-generated elements have manualValue pre-populated (CanvasDataBinding)
+    if ('manualValue' in binding && binding.seriesId && binding.manualValue) {
+      return binding.manualValue;
+    }
+    
+    // Fallback to placeholder
+    return ('fallbackText' in binding && binding.fallbackText) || element.placeholderText || 'Loading...';
+  };
 
   const deleteElement = useCallback(
     (elementId: string) => {
@@ -1517,6 +1564,33 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             </div>
                           )}
 
+                          {/* Spacing Control - Only for series elements */}
+                          {selectedElement.dataBinding?.seriesId && (
+                            <div>
+                              <label className="text-xs text-muted-foreground">Element Spacing (px)</label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={elementSpacing}
+                                onChange={(e) => {
+                                  const newSpacing = Number(e.target.value) || 0;
+                                  setElementSpacing(newSpacing);
+                                  
+                                  // Update the series spacing
+                                  const seriesId = selectedElement.dataBinding?.seriesId;
+                                  if (seriesId) {
+                                    setElementSeries(prev => 
+                                      updateElementSeries(prev, seriesId, {
+                                        spacing: { horizontal: 0, vertical: newSpacing, direction: 'vertical' }
+                                      })
+                                    );
+                                  }
+                                }}
+                                className="h-8"
+                              />
+                            </div>
+                          )}
+
                           {/* Element Type Info */}
                           <div className="text-xs text-muted-foreground p-2 bg-muted rounded">
                             <div>Type: {selectedElement.type}</div>
@@ -1673,7 +1747,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                   }
                 }}
               >
-                {(element.type === 'text' || ['player', 'score', 'placement'].includes(element.type)) && (
+                {(element.type === 'text' || ['player_name', 'player_score', 'player_placement', 'team_name', 'round_score'].includes(element.type)) && (
                   <div
                     style={{
                       ...elementStyleToCss(element),
@@ -1681,7 +1755,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {element.content || (element.type === 'text' ? 'Text' : element.placeholderText)}
+                    {getElementDisplayContent(element)}
                   </div>
                 )}
               </div>

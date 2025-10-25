@@ -555,6 +555,16 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       sortOrder,
     };
     
+    // Link element to series
+    const elementWithBinding = {
+      ...baseElement,
+      dataBinding: {
+        ...createSimplifiedBinding(baseElement),
+        seriesId: enhancedSeries.id,
+      }
+    };
+    
+    // Add series
     setElementSeries((previous) => {
       const nextSeries = [...previous, enhancedSeries];
       setCanvasData((prevData) => ({
@@ -564,8 +574,18 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       return nextSeries;
     });
     
-    setSelectedElement(baseElement);
-    addToHistory(HistoryManager.createActionTypes.addElement(enhancedSeries));
+    // CRITICAL FIX: Add base element to elements array (this was missing!)
+    setElements((previous) => {
+      const nextElements = [...previous, elementWithBinding];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elements: nextElements,
+      }));
+      return nextElements;
+    });
+    
+    setSelectedElement(elementWithBinding);
+    addToHistory(HistoryManager.createActionTypes.addElement(elementWithBinding));
     
     // Automatically fetch real player data to ensure auto-population has latest data
     fetchRealPlayerData();
@@ -574,7 +594,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       title: 'Auto-populated Players Added',
       description: `Added players series sorted by ${sortBy} (${sortOrder})`,
     });
-  }, [snapToGrid, addToHistory, toast]);
+  }, [snapToGrid, addToHistory, toast, fetchRealPlayerData]);
 
   // Add round-specific score elements
   const addRoundScores = useCallback((roundId: string) => {
@@ -625,6 +645,24 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       }));
       setSelectedElement((prev) => (prev?.id === elementId ? result.next : prev));
 
+      // If element is linked to series and position changed, update series baseElement
+      const element = elements.find(e => e.id === elementId);
+      if (element?.dataBinding?.seriesId && (updates.x !== undefined || updates.y !== undefined)) {
+        const seriesId = element.dataBinding.seriesId;
+        const currentSeries = elementSeries.find(s => s.id === seriesId);
+        if (currentSeries) {
+          setElementSeries(prev => 
+            updateElementSeries(prev, seriesId, {
+              baseElement: {
+                ...currentSeries.baseElement,
+                x: updates.x !== undefined ? updates.x : element.x,
+                y: updates.y !== undefined ? updates.y : element.y,
+              }
+            })
+          );
+        }
+      }
+
       addToHistory(
         HistoryManager.createActionTypes.updateElement(
           elementId,
@@ -633,7 +671,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         ),
       );
     },
-    [elements, gridSize, gridSnapEnabled, addToHistory],
+    [elements, elementSeries, gridSize, gridSnapEnabled, addToHistory],
   );
 
 
@@ -672,6 +710,17 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   }, [previewConfig]);
 
   
+
+  // Sync elementSpacing state when selection changes
+  useEffect(() => {
+    if (selectedElement?.dataBinding?.seriesId) {
+      const seriesId = selectedElement.dataBinding.seriesId;
+      const series = elementSeries.find(s => s.id === seriesId);
+      if (series) {
+        setElementSpacing(series.spacing.vertical);
+      }
+    }
+  }, [selectedElement, elementSeries]);
 
   // Fetch real player data when preview mode is enabled and config changes
   useEffect(() => {

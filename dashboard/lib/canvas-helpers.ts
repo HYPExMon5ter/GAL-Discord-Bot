@@ -449,6 +449,7 @@ function normalizeElementSeries(series: any): ElementSeries {
     sortOrder: series?.sortOrder === 'asc' || series?.sortOrder === 'desc' 
       ? series.sortOrder 
       : 'desc',
+    roundId: typeof series?.roundId === 'string' ? series.roundId : undefined,
   };
 }
 
@@ -528,6 +529,7 @@ export function generateElementsFromSeries(
         field: getBindingFieldForElementType(series.type),
         seriesId: series.id,
         manualValue: getElementValueForPlayer(player, series.type, series.roundId),
+        roundId: series.roundId, // Ensure roundId is passed through to generated elements
       },
       isPlaceholder: false,
     };

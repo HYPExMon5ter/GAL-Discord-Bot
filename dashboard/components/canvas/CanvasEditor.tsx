@@ -598,19 +598,41 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   // Add round-specific score elements
   const addRoundScores = useCallback((roundId: string) => {
-    const baseElement = createPropertyElement('round_score', snapToGrid);
+    const baseElement = createRoundScoreElement(snapToGrid, roundId);
     
-    // Apply round-specific binding
-    const roundBinding: ElementDataBinding = {
-      source: 'dynamic',
-      dataType: 'round_score',
-      snapshotId: 'latest',
-      roundId,
-      fallbackText: 'Round Score',
+    // Create a series for round scores to enable auto-population
+    const roundSeries: ElementSeries = {
+      id: `round-scores-${roundId}-${Date.now()}`,
+      type: 'round_score',
+      baseElement,
+      spacing: { horizontal: 0, vertical: 56, direction: 'vertical' },
+      autoGenerate: true,
+      maxElements: 50,
+      sortBy: 'total_points',
+      sortOrder: 'desc',
+      roundId, // Store roundId in the series
     };
     
-    const elementWithBinding = { ...baseElement, dataBinding: roundBinding };
+    // Link element to series
+    const elementWithBinding: CanvasElement = {
+      ...baseElement,
+      dataBinding: {
+        ...baseElement.dataBinding,
+        seriesId: roundSeries.id,
+      } as ElementDataBinding
+    };
     
+    // Add series first
+    setElementSeries((previous) => {
+      const nextSeries = [...previous, roundSeries];
+      setCanvasData((prevData) => ({
+        ...prevData,
+        elementSeries: nextSeries,
+      }));
+      return nextSeries;
+    });
+    
+    // Add element
     setElements((previous) => {
       const nextElements = [...previous, elementWithBinding];
       setCanvasData((prevData) => ({
@@ -619,15 +641,18 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       }));
       return nextElements;
     });
+    
     setSelectedElement(elementWithBinding);
-
     addToHistory(HistoryManager.createActionTypes.addElement(elementWithBinding));
     
+    // Automatically fetch real player data to ensure round scores have latest data
+    fetchRealPlayerData();
+    
     toast({
-      title: 'Round Score Added',
-      description: `Added score element for ${roundId}`,
+      title: 'Round Scores Added',
+      description: `Added scores series for ${roundId.replace('round_', 'Round ')}`,
     });
-  }, [snapToGrid, addToHistory, toast]);
+  }, [snapToGrid, addToHistory, toast, fetchRealPlayerData]);
 
   const updateElement = useCallback(
     (elementId: string, updates: Partial<CanvasElement>) => {
@@ -651,6 +676,14 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         const seriesId = element.dataBinding.seriesId;
         const currentSeries = elementSeries.find(s => s.id === seriesId);
         if (currentSeries) {
+          console.log('Updating series baseElement position:', {
+            seriesId,
+            oldPosition: { x: currentSeries.baseElement.x, y: currentSeries.baseElement.y },
+            newPosition: { 
+              x: updates.x !== undefined ? updates.x : element.x, 
+              y: updates.y !== undefined ? updates.y : element.y 
+            }
+          });
           setElementSeries(prev => 
             updateElementSeries(prev, seriesId, {
               baseElement: {
@@ -748,9 +781,25 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       }
     });
 
-    // Add elements from series with data
+    // Add elements from series with data, using the updated baseElement position
     elementSeries.forEach(series => {
-      const seriesElements = generateElementsFromSeries(series, dataSource);
+      // Find the current base element position from the elements array
+      const currentBaseElement = elements.find(el => el.id === series.baseElement.id);
+      const updatedSeries = {
+        ...series,
+        baseElement: currentBaseElement || series.baseElement
+      };
+      
+      console.log('Preview mode generating elements for series:', {
+        seriesId: series.id,
+        seriesType: series.type,
+        baseElementId: series.baseElement.id,
+        originalPosition: { x: series.baseElement.x, y: series.baseElement.y },
+        currentPosition: currentBaseElement ? { x: currentBaseElement.x, y: currentBaseElement.y } : null,
+        roundId: series.roundId
+      });
+      
+      const seriesElements = generateElementsFromSeries(updatedSeries, dataSource);
       previewElements.push(...seriesElements);
     });
 
@@ -1588,13 +1637,32 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                               <Select
                                 value={selectedElement.dataBinding?.roundId || ''}
                                 onValueChange={(value) => {
+                                  console.log('Round selection changed:', value, 'for element:', selectedElement.id, 'type:', selectedElement.type);
+                                  
+                                  // Update both the element and its series if it exists
                                   if (selectedElement.dataBinding) {
+                                    const updatedBinding = {
+                                      ...selectedElement.dataBinding,
+                                      roundId: value || undefined,
+                                    };
+                                    
+                                    // Update the element
                                     updateElement(selectedElement.id, {
-                                      dataBinding: {
-                                        ...selectedElement.dataBinding,
-                                        roundId: value || undefined,
-                                      }
+                                      dataBinding: updatedBinding
                                     });
+                                    
+                                    // If this element is part of a series, update the series as well
+                                    if (selectedElement.dataBinding.seriesId) {
+                                      const seriesId = selectedElement.dataBinding.seriesId;
+                                      console.log('Updating series:', seriesId, 'with roundId:', value);
+                                      setElementSeries(prev => 
+                                        prev.map(series => 
+                                          series.id === seriesId 
+                                            ? { ...series, roundId: value || undefined }
+                                            : series
+                                        )
+                                      );
+                                    }
                                   }
                                 }}
                               >

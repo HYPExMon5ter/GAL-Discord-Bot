@@ -746,8 +746,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   // Sync elementSpacing state when selection changes
   useEffect(() => {
-    if (selectedElement?.dataBinding?.seriesId) {
-      const seriesId = selectedElement.dataBinding.seriesId;
+    // Always sync spacing for all dynamic elements, regardless of whether they have a seriesId
+    if (selectedElement && (selectedElement.type === 'player_name' || selectedElement.type === 'player_score' || selectedElement.type === 'player_placement')) {
+      const seriesId = selectedElement.dataBinding?.seriesId;
       const series = elementSeries.find(s => s.id === seriesId);
       if (series) {
         setElementSpacing(series.spacing.vertical);
@@ -1635,6 +1636,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                             <div>
                               <label className="text-xs text-muted-foreground">Round Selection</label>
                               <Select
+                                key={`round-select-${selectedElement.id}`}
                                 value={selectedElement.dataBinding?.roundId || ''}
                                 onValueChange={(value) => {
                                   console.log('Round selection changed:', value, 'for element:', selectedElement.id, 'type:', selectedElement.type);
@@ -1678,11 +1680,14 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
                                   ))}
                                 </SelectContent>
                               </Select>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Current: {selectedElement.dataBinding?.roundId ? roundOptions.find(r => r.value === selectedElement.dataBinding?.roundId)?.label || selectedElement.dataBinding?.roundId : 'Total Score'}
+                              </div>
                             </div>
                           )}
 
-                          {/* Spacing Control - Only for series elements */}
-                          {selectedElement.dataBinding?.seriesId && (
+                          {/* Spacing Control - For all dynamic elements */}
+                          {(selectedElement?.type === 'player_name' || selectedElement?.type === 'player_score' || selectedElement?.type === 'player_placement') && (
                             <div>
                               <label className="text-xs text-muted-foreground">Element Spacing (px)</label>
                               <Input

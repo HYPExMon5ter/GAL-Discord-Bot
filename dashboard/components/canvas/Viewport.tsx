@@ -36,6 +36,8 @@ export function Viewport({
   const {
     zoom,
     pan,
+    zoomIn,
+    zoomOut,
     handleWheel,
     handlePanStart,
     handlePanMove,

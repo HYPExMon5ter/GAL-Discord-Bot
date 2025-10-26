@@ -38,9 +38,9 @@ export function useTournamentData(options: FetchOptions = {}) {
         params.append('roundId', fetchOptions.roundId);
       }
 
-      const response = await api.get(`/graphics/players/ranked?${params.toString()}`);
+        const response = await api.get(`/players/ranked?${params.toString()}`);
       
-      if (response.data && response.data.players) {
+      if (response && response.data && response.data.players) {
         setState(prev => ({
           ...prev,
           players: response.data.players,
@@ -48,11 +48,15 @@ export function useTournamentData(options: FetchOptions = {}) {
           lastUpdated: new Date(),
         }));
       } else {
-        throw new Error('Invalid response format');
+        throw new Error('No player data available');
       }
     } catch (error) {
       console.error('Failed to fetch tournament data:', error);
       setState(prev => ({
+        ...prev,
+        loading: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }));{
         ...prev,
         loading: false,
         error: error instanceof Error ? error.message : 'Unknown error',

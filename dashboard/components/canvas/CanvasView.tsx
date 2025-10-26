@@ -1,5 +1,6 @@
 'use client';
 
+import { cn } from '@/lib/utils';
 import React, { useState, useEffect } from 'react';
 import { BackgroundRenderer } from './elements/BackgroundRenderer';
 import { TextElementComponent } from './elements/TextElement';

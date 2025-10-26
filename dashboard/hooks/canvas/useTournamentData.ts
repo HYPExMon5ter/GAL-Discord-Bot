@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { PlayerData } from '@/lib/canvas/types';
-import { api } from '@/lib/api';
+import api from '@/lib/api';
 
 interface TournamentDataState {
   players: PlayerData[];

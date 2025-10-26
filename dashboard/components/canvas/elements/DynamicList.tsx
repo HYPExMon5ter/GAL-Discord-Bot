@@ -3,6 +3,7 @@
 import React from 'react';
 import type { DynamicElement, PlayerData } from '@/lib/canvas/types';
 import { generateMockData } from '@/lib/canvas/mock-data';
+import { cn } from '@/lib/utils';
 
 interface DynamicListProps {
   element: DynamicElement;

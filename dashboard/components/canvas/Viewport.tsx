@@ -252,7 +252,7 @@ export function Viewport({
         <div className="absolute bottom-4 right-4 bg-background/80 backdrop-blur-sm rounded-lg border p-2 flex items-center gap-2">
           <button
             className="w-8 h-8 rounded hover:bg-muted flex items-center justify-center text-sm"
-            onClick={() => {}} // Zoom out
+            onClick={zoomOut}
             disabled={disabled}
           >
             -
@@ -262,7 +262,7 @@ export function Viewport({
           </span>
           <button
             className="w-8 h-8 rounded hover:bg-muted flex items-center justify-center text-sm"
-            onClick={() => {}} // Zoom in
+            onClick={zoomIn}
             disabled={disabled}
           >
             +

@@ -51,3 +51,18 @@ export interface ApiResponse<T> {
   error?: string;
   message?: string;
 }
+
+// Export clean canvas types from new location
+export type {
+  CanvasState,
+  BackgroundConfig,
+  ElementType,
+  BaseElement,
+  TextElement,
+  DynamicElement,
+  CanvasElement,
+  PlayerData,
+  ElementDefaults
+} from '@/lib/canvas/types';
+
+export { DEFAULT_ELEMENT_CONFIGS, DEFAULT_PREVIEW_COUNT, DEFAULT_SPACING } from '@/lib/canvas/types';

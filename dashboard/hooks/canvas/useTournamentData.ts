@@ -56,10 +56,6 @@ export function useTournamentData(options: FetchOptions = {}) {
         ...prev,
         loading: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-      }));{
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
       }));
     }
   }, []);

@@ -65,10 +65,17 @@ cd ..
 cp .env.local.example .env.local
 cp config.yaml.example config.yaml
 
-# Edit configuration files
-vim .env.local
-vim config.yaml
+# Edit configuration files with your actual values
+notepad .env.local        # or vim, nano, etc.
+notepad config.yaml       # or vim, nano, etc.
 ```
+
+**Required Configuration:**
+- **Discord Token**: Get from Discord Developer Portal
+- **Application ID**: Discord application ID
+- **Riot API Key**: For IGN verification
+- **Master Password**: For dashboard access
+- **Google Sheets**: API credentials and sheet URLs
 
 4. **Start Services**
 ```bash
@@ -94,6 +101,182 @@ npm run dev
 5. **Access Dashboard**
 - Open [http://localhost:3000](http://localhost:3000) in browser
 - Use master password to login
+
+## 🔧 Troubleshooting
+
+### Common Issues and Solutions
+
+#### Bot Not Starting
+**Symptoms**: Error messages about missing token or configuration
+
+**Solutions**:
+1. Verify Discord token is correct in `.env.local`
+2. Check that config.yaml exists and is properly formatted
+3. Ensure all required environment variables are set
+4. Check Python environment is activated: `pip list` should show installed packages
+
+```bash
+# Verify Discord token
+echo $DISCORD_TOKEN  # Should show your token
+
+# Check Python environment
+python --version
+pip list | grep discord
+```
+
+#### Dashboard Login Fails
+**Symptoms**: "Invalid credentials" or authentication errors
+
+**Solutions**:
+1. Verify master password in `.env.local` matches what you're entering
+2. Check API backend is running on port 8000
+3. Verify dashboard can reach API endpoint
+
+```bash
+# Check API is running
+curl http://localhost:8000/health
+
+# Test API authentication
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"master_password":"your_password"}'
+```
+
+#### API Connection Errors
+**Symptoms**: 404 errors, connection refused, or CORS errors
+
+**Solutions**:
+1. Verify API is running: `ps aux | grep uvicorn`
+2. Check port 8000 is not blocked by firewall
+3. Verify Next.js configuration is correct
+
+```bash
+# Check if port is in use
+netstat -an | grep :8000
+
+# Restart API if needed
+cd api && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+#### Google Sheets Integration Issues
+**Symptoms**: Errors accessing Google Sheets data
+
+**Solutions**:
+1. Verify `google-creds.json` file exists and is valid
+2. Check sheet URLs in config.yaml are accessible
+3. Ensure service account has necessary permissions
+
+```bash
+# Test Google Sheets access
+python -c "
+import gspread
+gc = gspread.service_account('google-creds.json')
+sh = gc.open_by_url('your_sheet_url')
+print('Sheet access successful:', sh.title)
+"
+```
+
+#### Canvas View Not Working
+**Symptoms**: 404 errors when accessing `/canvas/view/{id}`
+
+**Solutions**:
+1. Verify graphic ID exists in database
+2. Check API backend is running and accessible
+3. Verify Next.js routing is working
+
+```bash
+# Test API endpoint
+curl http://localhost:8000/api/v1/graphics/1/view
+
+# Check database for graphics
+python -c "
+from api.models import engine
+import sqlite3
+conn = sqlite3.connect('dashboard.db')
+cursor = conn.cursor()
+cursor.execute('SELECT id FROM graphics LIMIT 5')
+print('Graphics in DB:', cursor.fetchall())
+conn.close()
+"
+```
+
+#### Port Already in Use
+**Symptoms**: "Address already in use" or "Port 3000/8000 is in use"
+
+**Solutions**:
+1. Kill processes using the ports
+2. Or use different ports
+
+```bash
+# Find and kill processes on port 8000
+netstat -tulpn | grep :8000
+kill -9 <PID>
+
+# Or use different ports
+cd api && python -m uvicorn main:app --port 8001
+cd dashboard && npm run dev -- -p 3001
+```
+
+#### Permission Errors (Linux/Mac)
+**Symptoms**: Permission denied errors
+
+**Solutions**:
+1. Fix file permissions
+2. Use virtual environment
+
+```bash
+# Fix permissions
+chmod +x start_dashboard.py
+
+# Ensure venv is owned by user
+sudo chown -R $USER:$USER .venv
+```
+
+#### Memory Issues
+**Symptoms**: Out of memory errors or slow performance
+
+**Solutions**:
+1. Close unnecessary applications
+2. Increase memory allocation
+3. Use lighter database (SQLite for development)
+
+```bash
+# Monitor memory usage
+htop  # or Activity Monitor on Mac
+
+# Clear Python cache
+find . -type d -name "__pycache__" -exec rm -rf {} +
+```
+
+### Getting Help
+
+1. **Check Logs**: Look at `gal_bot.log` for error details
+2. **Verify Configuration**: Double-check all environment variables
+3. **Network Issues**: Check firewall and proxy settings
+4. **Community**: Ask for help in the Discord server
+
+### Environment Verification
+
+After installation, verify everything is working:
+
+```bash
+# 1. Check Python environment
+python --version  # Should be 3.12+
+pip list | grep -E "(discord|fastapi|next)"
+
+# 2. Check Node environment
+node --version    # Should be 18+
+npm list --depth=0
+
+# 3. Check configuration files exist
+ls -la .env.local config.yaml google-creds.json
+
+# 4. Test API health
+curl http://localhost:8000/health
+
+# 5. Test Discord bot (in Discord)
+/gal help
+```
 
 ## 📚 Documentation
 

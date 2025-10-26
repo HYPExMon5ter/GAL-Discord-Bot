@@ -8,6 +8,7 @@ import { DynamicListComponent } from './elements/DynamicList';
 import { useTournamentData } from '@/hooks/canvas/useTournamentData';
 import { deserializeCanvasState } from '@/lib/canvas/serializer';
 import type { CanvasState } from '@/lib/canvas/types';
+import api from '@/lib/api';
 
 interface CanvasViewProps {
   graphicId: number;
@@ -33,12 +34,17 @@ export function CanvasView({ graphicId, onError, className }: CanvasViewProps) {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(`/api/graphics/${graphicId}`);
-        if (!response.ok) {
-          throw new Error(`Failed to load graphic: ${response.statusText}`);
+        // First try the public view endpoint (no auth required)
+        let response, data;
+        try {
+          response = await api.get(`/graphics/${graphicId}/view`);
+          data = response.data;
+        } catch (err) {
+          // If public view fails, try the authenticated endpoint
+          response = await api.get(`/graphics/${graphicId}`);
+          data = response.data;
         }
-
-        const data = await response.json();
+        
         const canvasState = deserializeCanvasState(data.data_json);
         setCanvas(canvasState);
 

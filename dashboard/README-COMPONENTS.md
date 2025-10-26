@@ -93,6 +93,41 @@ interface CanvasEditorProps {
 />
 ```
 
+#### CanvasView
+**Location**: `components/canvas/CanvasView.tsx`
+
+Read-only viewer component for displaying live graphics with real-time tournament data.
+
+**Features**:
+- Renders graphics from serialized canvas state
+- Fetches and displays real tournament data
+- Public access without authentication
+- Responsive canvas sizing
+- Error handling and loading states
+- Debug information in development mode
+
+**Props**:
+```typescript
+interface CanvasViewProps {
+  graphicId: number;
+  onError?: (error: string) => void;
+  className?: string;
+}
+```
+
+**Usage**:
+```tsx
+<CanvasView 
+  graphicId={1}
+  onError={(error) => console.error(error)}
+  className="w-full h-full"
+/>
+```
+
+**Access via URL**:
+Graphics can be viewed directly using the URL pattern: `/canvas/view/{graphicId}`
+Example: `http://localhost:3000/canvas/view/1`
+
 ### 📊 Graphics Management Components
 
 #### GraphicsTable
@@ -320,6 +355,54 @@ const { acquireLock, releaseLock, refreshLock, lockStatus } = useLocks();
 - `releaseLock(graphicId: number)`: Release current lock
 - `refreshLock(graphicId: number)`: Extend lock duration
 - `lockStatus`: Current lock information
+
+### useTournamentData
+**Location**: `hooks/canvas/useTournamentData.tsx`
+
+Custom hook for fetching and managing tournament data for canvas elements.
+
+**Features**:
+- Fetches ranked player data from API
+- Supports sorting and filtering options
+- Automatic data refresh
+- Error handling and retry logic
+- Optimized for real-time display
+
+**Usage**:
+```typescript
+const { 
+  players, 
+  loading, 
+  error, 
+  lastUpdated, 
+  refresh, 
+  getPlayers, 
+  getPlayerCount 
+} = useTournamentData({
+  sortBy: 'total_points',
+  sortOrder: 'desc',
+  limit: 50
+});
+```
+
+**Options**:
+```typescript
+interface FetchOptions {
+  sortBy?: 'total_points' | 'player_name' | 'standing_rank';
+  sortOrder?: 'asc' | 'desc';
+  limit?: number;
+  roundId?: string;
+}
+```
+
+**Methods**:
+- `refresh()`: Manually refresh the data
+- `getPlayers(options)`: Get filtered/sorted players
+- `getPlayerCount()`: Get total player count
+- `players`: Array of player data
+- `loading`: Loading state
+- `error`: Error message if any
+- `lastUpdated`: Timestamp of last update
 
 ### useDashboardData
 **Location**: `hooks/use-dashboard-data.tsx`

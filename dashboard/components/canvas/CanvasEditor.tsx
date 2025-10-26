@@ -23,7 +23,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [title, setTitle] = useState(graphic.title);
   const [saving, setSaving] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [lock, setLock] = useState<any>(null);
+  const [hasLock, setHasLock] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,7 +44,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       try {
         const acquiredLock = await acquireLock(graphic.id);
         if (acquiredLock) {
-          setLock(acquiredLock);
+          setHasLock(true);
         } else {
           toast({
             title: 'Lock unavailable',
@@ -69,14 +69,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   // Auto-refresh lock every 2 minutes
   React.useEffect(() => {
-    if (!lock) return;
+    if (!hasLock) return;
 
     const interval = window.setInterval(async () => {
       try {
-        const refreshedLock = await refreshLock(graphic.id);
-        if (refreshedLock) {
-          setLock(refreshedLock);
-        }
+        await refreshLock(graphic.id);
       } catch (error) {
         console.error('Error refreshing lock:', error);
         toast({
@@ -88,12 +85,12 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     }, 120000);
 
     return () => window.clearInterval(interval);
-  }, [lock, graphic.id, refreshLock, toast]);
+  }, [hasLock, graphic.id, refreshLock, toast]);
 
   // Release lock on unmount
   React.useEffect(() => {
     return () => {
-      if (lock && lock.user_name === lock.user_name) {
+      if (hasLock) {
         releaseLock(graphic.id).catch((error) => {
           console.error('Error releasing lock:', error);
         });
@@ -224,7 +221,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     );
   }
 
-  const isDisabled = saving || !lock;
+  const isDisabled = saving || !hasLock;
 
   return (
     <div className="fixed inset-0 bg-background z-30 flex flex-col">

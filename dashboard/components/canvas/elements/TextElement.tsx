@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { cn } from '@/lib/utils';
 import type { TextElement } from '@/lib/canvas/types';
 
 interface TextElementProps {

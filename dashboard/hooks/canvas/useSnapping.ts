@@ -10,6 +10,40 @@ interface SnapLine {
 
 export function useSnapping() {
   const [snapLines, setSnapLines] = useState<SnapLine[]>([]);
+  const lastSnapResultRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Throttled snap calculation to reduce computational overhead
+  const throttledCalculateSnap = useCallback((
+    element: CanvasElement,
+    elements: CanvasElement[],
+    currentPosition: { x: number; y: number },
+    threshold?: { horizontal: number; vertical: number }
+  ) => {
+    // Only recalculate if position changed significantly
+    if (lastSnapResultRef.current && 
+        Math.abs(currentPosition.x - lastSnapResultRef.current.x) < 5 &&
+        Math.abs(currentPosition.y - lastSnapResultRef.current.y) < 5) {
+      return {
+        x: lastSnapResultRef.current.x,
+        y: lastSnapResultRef.current.y,
+        hasSnapX: false,
+        hasSnapY: false,
+      };
+    }
+
+    const result = calculateElementSnapping(element, elements, currentPosition, threshold);
+    lastSnapResultRef.current = { x: result.x, y: result.y };
+    
+    // Update snap lines for visual feedback
+    setSnapLines(result.snapLines);
+    
+    return {
+      x: result.x,
+      y: result.y,
+      hasSnapX: result.snapLines.some(line => line.type === 'vertical'),
+      hasSnapY: result.snapLines.some(line => line.type === 'horizontal'),
+    };
+  }, []);
 
   // Calculate snap position for an element
   const calculateSnap = useCallback((
@@ -18,6 +52,7 @@ export function useSnapping() {
     currentPosition: { x: number; y: number },
     threshold?: { horizontal: number; vertical: number }
   ) => {
+    // Simplified snapping with reduced calculations
     const result = calculateElementSnapping(element, elements, currentPosition, threshold);
     
     // Update snap lines for visual feedback
@@ -34,6 +69,7 @@ export function useSnapping() {
   // Clear snap lines
   const clearSnapLines = useCallback(() => {
     setSnapLines([]);
+    lastSnapResultRef.current = null;
   }, []);
 
   // Check if position should snap (for preview)
@@ -57,6 +93,7 @@ export function useSnapping() {
 
     // Actions
     calculateSnap,
+    throttledCalculateSnap,
     clearSnapLines,
     shouldSnap,
   };

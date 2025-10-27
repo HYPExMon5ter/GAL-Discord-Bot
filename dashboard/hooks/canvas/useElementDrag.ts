@@ -35,6 +35,20 @@ function throttle<T extends (...args: any[]) => void>(
   }) as T;
 }
 
+// RequestAnimationFrame for smooth visual updates
+function rafThrottle<T extends (...args: any[]) => void>(func: T): T {
+  let rafId: number | null = null;
+  
+  return ((...args: Parameters<T>) => {
+    if (rafId === null) {
+      rafId = requestAnimationFrame(() => {
+        func(...args);
+        rafId = null;
+      });
+    }
+  }) as T;
+}
+
 export function useElementDrag() {
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
@@ -46,6 +60,7 @@ export function useElementDrag() {
   // Refs for throttling and performance
   const lastUpdateRef = useRef<{ x: number; y: number } | null>(null);
   const onPositionChangeRef = useRef<(elementId: string, x: number, y: number) => void>(() => {});
+  const visualUpdateRef = useRef<(elementId: string, x: number, y: number) => void>(() => {});
 
   // Start dragging an element
   const startDrag = useCallback((
@@ -83,13 +98,19 @@ export function useElementDrag() {
     };
   }, [dragState]);
 
-  // Throttled version of position update for smoother dragging
-  const throttledUpdatePosition = useCallback(
+  // Smooth visual update using requestAnimationFrame
+  const smoothVisualUpdate = useCallback(
+    rafThrottle((elementId: string, x: number, y: number) => {
+      visualUpdateRef.current(elementId, x, y);
+    }),
+    []
+  );
+
+  // Throttled state update (less frequent)
+  const throttledStateUpdate = useCallback(
     throttle((elementId: string, x: number, y: number) => {
-      // Always update position but keep the throttling
       onPositionChangeRef.current(elementId, x, y);
-      lastUpdateRef.current = { x, y };
-    }, 8), // ~120fps for smoother movement
+    }, 16), // ~60fps for state updates
     []
   );
 
@@ -116,13 +137,17 @@ export function useElementDrag() {
     const handleMouseDown = (e: React.MouseEvent) => {
       e.stopPropagation();
       onPositionChangeRef.current = onPositionChange;
+      visualUpdateRef.current = onPositionChange; // For immediate visual feedback
       startDrag(element.id, element, e.clientX, e.clientY);
     };
 
     const handleMouseMove = (e: MouseEvent) => {
       const dragUpdate = updateDrag(e.clientX, e.clientY);
       if (dragUpdate) {
-        throttledUpdatePosition(dragUpdate.elementId, dragUpdate.x, dragUpdate.y);
+        // Immediate visual update
+        smoothVisualUpdate(dragUpdate.elementId, dragUpdate.x, dragUpdate.y);
+        // Throttled state update
+        throttledStateUpdate(dragUpdate.elementId, dragUpdate.x, dragUpdate.y);
       }
     };
 
@@ -136,18 +161,22 @@ export function useElementDrag() {
       onMouseMove: handleMouseMove,
       onMouseUp: handleMouseUp,
     };
-  }, [startDrag, updateDrag, endDrag, throttledUpdatePosition]);
+  }, [startDrag, updateDrag, endDrag, smoothVisualUpdate, throttledStateUpdate]);
 
   // Global drag state for canvas
   const getGlobalDragHandlers = useCallback((
     onPositionChange: (elementId: string, x: number, y: number) => void
   ) => {
     onPositionChangeRef.current = onPositionChange;
+    visualUpdateRef.current = onPositionChange; // For immediate visual feedback
     
     const handleMouseMove = (e: MouseEvent) => {
       const dragUpdate = updateDrag(e.clientX, e.clientY);
       if (dragUpdate) {
-        throttledUpdatePosition(dragUpdate.elementId, dragUpdate.x, dragUpdate.y);
+        // Immediate visual update
+        smoothVisualUpdate(dragUpdate.elementId, dragUpdate.x, dragUpdate.y);
+        // Throttled state update
+        throttledStateUpdate(dragUpdate.elementId, dragUpdate.x, dragUpdate.y);
       }
     };
 
@@ -160,7 +189,7 @@ export function useElementDrag() {
       onMouseMove: handleMouseMove,
       onMouseUp: handleMouseUp,
     };
-  }, [updateDrag, endDrag, throttledUpdatePosition]);
+  }, [updateDrag, endDrag, smoothVisualUpdate, throttledStateUpdate]);
 
   return {
     // State

@@ -27,6 +27,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [loading, setLoading] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lockAcquisitionRef = useRef<boolean>(false);
 
   // Canvas state management
   const {
@@ -38,8 +39,14 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     getSerializedData,
   } = useCanvasState(graphic.data_json);
 
-  // Acquire lock on mount
+  // Acquire lock on mount with guard against double-acquisition
   React.useEffect(() => {
+    // Prevent double-acquisition in React Strict Mode
+    if (lockAcquisitionRef.current) {
+      return;
+    }
+    lockAcquisitionRef.current = true;
+
     const acquireInitialLock = async () => {
       try {
         const acquiredLock = await acquireLock(graphic.id);
@@ -47,12 +54,35 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           setLock(acquiredLock);
         } else {
           toast({
-            title: 'Lock unavailable',
-            description: 'Unable to acquire an editing lock. This graphic may be in use.',
+            title: 'Graphic is being edited',
+            description: 'This graphic is currently being edited in another window or tab.',
             variant: 'destructive',
           });
         }
-      } catch (error) {
+      } catch (error: any) {
+        // Handle 409 errors gracefully (they might be due to our own lock)
+        if (error?.response?.status === 409) {
+          console.warn('Lock acquisition returned 409, checking if we already have a lock');
+          // Try to get the current lock status
+          try {
+            const response = await fetch(`/api/v1/lock/${graphic.id}/status`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
+                'Content-Type': 'application/json',
+              },
+            });
+            if (response.ok) {
+              const lockData = await response.json();
+              if (lockData.locked && lockData.lock_info) {
+                setLock(lockData.lock_info);
+                return; // Lock is valid, continue
+              }
+            }
+          } catch (statusError) {
+            console.error('Failed to check lock status:', statusError);
+          }
+        }
+        
         console.error('Error acquiring lock:', error);
         toast({
           title: 'Lock error',
@@ -102,7 +132,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   // Release lock on unmount
   React.useEffect(() => {
     return () => {
-      if (lock && lock.locked) {
+      if (lock?.locked) {
         releaseLock(graphic.id).catch((error: any) => {
           // Only log error if it's not a 404 (lock already released/expired)
           if (error?.response?.status !== 404) {
@@ -117,7 +147,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         });
       }
     };
-  }, [lock, graphic.id, releaseLock, toast]);
+  }, [lock?.id, graphic.id, releaseLock, toast]);
 
   // Handle background upload
   const handleBackgroundUpload = useCallback((file: File) => {

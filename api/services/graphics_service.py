@@ -9,6 +9,7 @@ domain-specific `ServiceError`s when something goes wrong.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -16,6 +17,8 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from api.services.errors import ConflictError, NotFoundError
+
+logger = logging.getLogger(__name__)
 from ..models import Archive, CanvasLock, Graphic
 from ..schemas.graphics import (
     CanvasLockCreate,
@@ -55,7 +58,6 @@ class GraphicsService:
         return {
             "id": lock.id,
             "graphic_id": lock.graphic_id,
-            "user_name": lock.user_name,
             "locked": lock.locked,
             "locked_at": lock.locked_at,
             "expires_at": lock.expires_at,
@@ -171,8 +173,8 @@ class GraphicsService:
         """
         graphic = self._get_graphic_or_error(graphic_id)
         lock = self._get_active_lock_model(graphic_id)
-        if lock and lock.user_name != user_name and not is_admin:
-            raise ConflictError("Graphic is locked by another user.")
+        if lock and not is_admin:
+            raise ConflictError("Cannot delete while graphic is being edited.")
 
         graphic.archived = True
         graphic.updated_at = self._utcnow()
@@ -182,52 +184,53 @@ class GraphicsService:
     # Lock management
     # --------------------------------------------------------------------- #
     def acquire_lock(self, lock_request: CanvasLockCreate) -> Dict[str, Any]:
-        """Acquire or extend a lock for editing a graphic."""
+        """Acquire an exclusive lock for editing a graphic."""
+        # Clean up any expired locks first
+        self.cleanup_expired_locks()
+        
         existing_lock = self._get_active_lock_model(lock_request.graphic_id)
 
-        if existing_lock and existing_lock.user_name != lock_request.user_name:
-            raise ConflictError("Graphic is already locked by another user.")
-
         if existing_lock:
-            existing_lock.expires_at = self._utcnow() + timedelta(minutes=30)
-            self.db.commit()
-            self.db.refresh(existing_lock)
+            # Return existing lock instead of throwing an error (idempotent operation)
+            # This allows hot reloads and remounts to continue without conflicts
+            logger.info(f"Lock already exists for graphic {lock_request.graphic_id}, returning existing lock")
             return self._serialize_lock(existing_lock)
 
         lock = CanvasLock(
             graphic_id=lock_request.graphic_id,
-            user_name=lock_request.user_name,
             locked=True,
             locked_at=self._utcnow(),
-            expires_at=self._utcnow() + timedelta(minutes=5),
+            expires_at=self._utcnow() + timedelta(minutes=30),
         )
         self.db.add(lock)
         self.db.commit()
         self.db.refresh(lock)
         return self._serialize_lock(lock)
 
-    def release_lock(self, graphic_id: int, user_name: str) -> None:
+    def release_lock(self, graphic_id: int, user_name: str = None) -> None:
         """
-        Release a lock owned by the caller.
-
-        Raises:
-            NotFoundError: if no active lock exists for the user.
+        Release a lock for a graphic.
+        
+        This operation is idempotent - if no lock exists, it's considered successful
+        since the desired state (no lock) is already achieved.
         """
         lock = (
             self.db.query(CanvasLock)
             .filter(
                 and_(
                     CanvasLock.graphic_id == graphic_id,
-                    CanvasLock.user_name == user_name,
                     CanvasLock.locked.is_(True),
                 )
             )
             .first()
         )
+        
+        # If no active lock exists, the operation is already successful
         if not lock:
-            raise NotFoundError("No active lock found for this user.")
-
-        lock.locked = False
+            return
+            
+        # Delete the lock record
+        self.db.delete(lock)
         self.db.commit()
 
     def get_active_lock(self, graphic_id: int) -> Optional[Dict[str, Any]]:
@@ -235,8 +238,8 @@ class GraphicsService:
         lock = self._get_active_lock_model(graphic_id)
         return self._serialize_lock(lock) if lock else None
 
-    def get_lock_status(self, graphic_id: int, user_name: str) -> LockStatusResponse:
-        """Return lock status information for the caller."""
+    def get_lock_status(self, graphic_id: int, user_name: str = None) -> LockStatusResponse:
+        """Return lock status information for a graphic."""
         lock = self.get_active_lock(graphic_id)
         if not lock:
             return LockStatusResponse(locked=False, lock_info=None, can_edit=True)
@@ -244,37 +247,18 @@ class GraphicsService:
         return LockStatusResponse(
             locked=True,
             lock_info=lock,
-            can_edit=lock["user_name"] == user_name,
+            can_edit=False,  # If locked, no one else can edit
         )
 
-    def cleanup_expired_locks(self) -> int:
-        """Unlock any expired locks."""
-        expired_locks = (
-            self.db.query(CanvasLock)
-            .filter(
-                or_(
-                    CanvasLock.expires_at <= self._utcnow(),
-                    CanvasLock.locked.is_(False),
-                )
-            )
-            .all()
-        )
+    
 
-        count = len(expired_locks)
-        for lock in expired_locks:
-            lock.locked = False
-
-        self.db.commit()
-        return count
-
-    def refresh_lock(self, graphic_id: int, user_name: str) -> Dict[str, Any]:
-        """Extend an existing lock owned by the caller."""
+    def refresh_lock(self, graphic_id: int, user_name: str = None) -> Dict[str, Any]:
+        """Extend an existing lock for a graphic."""
         lock = (
             self.db.query(CanvasLock)
             .filter(
                 and_(
                     CanvasLock.graphic_id == graphic_id,
-                    CanvasLock.user_name == user_name,
                     CanvasLock.locked.is_(True),
                     CanvasLock.expires_at > self._utcnow(),
                 )
@@ -283,9 +267,9 @@ class GraphicsService:
         )
 
         if not lock:
-            raise NotFoundError("No active lock to refresh for this user.")
+            raise NotFoundError("No active lock to refresh for this graphic.")
 
-        lock.expires_at = self._utcnow() + timedelta(minutes=5)
+        lock.expires_at = self._utcnow() + timedelta(minutes=30)
         self.db.commit()
         self.db.refresh(lock)
         return {
@@ -294,6 +278,34 @@ class GraphicsService:
             "message": "Lock refreshed successfully",
         }
 
+    def cleanup_expired_locks(self) -> int:
+        """Remove all expired locks from the database.
+        
+        Returns:
+            Number of expired locks that were removed.
+        """
+        current_time = self._utcnow()
+        expired_locks = (
+            self.db.query(CanvasLock)
+            .filter(
+                and_(
+                    CanvasLock.locked.is_(True),
+                    CanvasLock.expires_at < current_time,
+                )
+            )
+            .all()
+        )
+        
+        count = len(expired_locks)
+        for lock in expired_locks:
+            self.db.delete(lock)
+        
+        if count > 0:
+            self.db.commit()
+            logger.info(f"Cleaned up {count} expired lock(s)")
+        
+        return count
+
     # --------------------------------------------------------------------- #
     # Archive operations
     # --------------------------------------------------------------------- #
@@ -301,8 +313,8 @@ class GraphicsService:
         """Archive a graphic with an optional reason."""
         graphic = self._get_graphic_or_error(graphic_id)
         lock = self._get_active_lock_model(graphic_id)
-        if lock and lock.user_name != user_name:
-            raise ConflictError("Cannot archive while another user holds the lock.")
+        if lock:
+            raise ConflictError("Cannot archive while graphic is being edited.")
 
         archive = Archive(graphic_id=graphic_id, archived_by=user_name, reason=reason)
         graphic.archived = True
@@ -356,8 +368,8 @@ class GraphicsService:
         graphic = self._get_graphic_or_error(graphic_id)
 
         lock = self._get_active_lock_model(graphic_id)
-        if lock and lock.user_name != user_name:
-            raise ConflictError("Cannot delete while another user holds the lock.")
+        if lock:
+            raise ConflictError("Cannot delete while graphic is being edited.")
 
         reason = "Permanently deleted"
         if not graphic.archived:

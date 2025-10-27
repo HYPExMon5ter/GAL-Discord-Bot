@@ -190,10 +190,17 @@ export function DashboardDataProvider({ children }: ProviderProps) {
   }, [graphics]);
 
   const acquireLock = useCallback(async (graphicId: number): Promise<CanvasLock> => {
+    // Check if we already have a lock for this graphic
+    const existingLock = locks.find(lock => lock.graphic_id === graphicId && lock.locked);
+    if (existingLock) {
+      console.log(`Lock already exists for graphic ${graphicId}, returning existing lock`);
+      return existingLock;
+    }
+    
     const lock = await lockApi.acquire(graphicId);
     setLocks(prev => [...prev.filter(entry => entry.graphic_id !== graphicId), lock]);
     return lock;
-  }, []);
+  }, [locks]);
 
   const releaseLock = useCallback(async (graphicId: number): Promise<void> => {
     await lockApi.release(graphicId);

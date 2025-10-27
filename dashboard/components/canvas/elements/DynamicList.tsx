@@ -52,13 +52,18 @@ export function DynamicListComponent({
   return (
     <div
       className={cn(
-        'absolute transition-all',
+        'absolute cursor-move select-none',
+        // Only apply transition when not dragging
+        !selected && 'transition-all duration-75',
         selected && !readOnly && 'ring-2 ring-blue-500 ring-offset-1',
         readOnly && 'pointer-events-none'
       )}
       style={{
-        left: element.x,
-        top: element.y,
+        // Use transform for better performance
+        transform: `translate(${element.x}px, ${element.y}px)`,
+        // Hardware acceleration
+        willChange: selected ? 'transform' : 'auto',
+        backfaceVisibility: 'hidden',
       }}
       onClick={handleClick}
       onMouseDown={handleMouseDown}

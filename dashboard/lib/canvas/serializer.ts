@@ -44,7 +44,7 @@ export function validateCanvasState(state: CanvasState): boolean {
       return false;
     }
     
-    if (element.type !== 'text' && (!('spacing' in element || !('previewCount' in element))) {
+    if (element.type !== 'text' && (!('spacing' in element) || !('previewCount' in element))) {
       return false;
     }
   }

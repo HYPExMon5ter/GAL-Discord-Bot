@@ -8,7 +8,7 @@ import type { CanvasState, CanvasElement } from '@/lib/canvas/types';
 import { usePanZoom } from '@/hooks/canvas/usePanZoom';
 import { useElementDrag } from '@/hooks/canvas/useElementDrag';
 import { useSnapping } from '@/hooks/canvas/useSnapping';
-import { constrainToCanvas } from '@/lib/canvas/snapping';
+import { constrainToCanvas, clearDimensionCache } from '@/lib/canvas/snapping';
 
 interface ViewportProps {
   canvas: CanvasState;
@@ -68,6 +68,11 @@ export function Viewport({
       onUpdateElement(elementId, { x: constrained.x, y: constrained.y });
     }
   };
+
+  // Clear dimension cache when elements change
+  useEffect(() => {
+    clearDimensionCache();
+  }, [canvas.elements]);
 
   // Handle canvas click (deselect element)
   const handleCanvasClick = (e: React.MouseEvent) => {

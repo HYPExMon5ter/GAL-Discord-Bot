@@ -25,6 +25,41 @@ interface SnapLine {
   type: 'horizontal' | 'vertical';
 }
 
+// Cache for element dimensions to avoid recalculating
+const elementDimensionCache = new Map<string, { width: number; height: number }>();
+
+// Get element dimensions with caching
+function getElementDimensions(element: CanvasElement): { width: number; height: number } {
+  if (elementDimensionCache.has(element.id)) {
+    return elementDimensionCache.get(element.id)!;
+  }
+
+  let width = 100;
+  let height = 30;
+
+  if (element.type === 'text') {
+    // Create a temporary element to measure text dimensions
+    const tempDiv = document.createElement('div');
+    tempDiv.style.position = 'absolute';
+    tempDiv.style.visibility = 'hidden';
+    tempDiv.style.fontSize = `${element.fontSize || 16}px`;
+    tempDiv.style.fontFamily = element.fontFamily || 'sans-serif';
+    tempDiv.style.whiteSpace = 'nowrap';
+    tempDiv.textContent = element.content || '';
+    document.body.appendChild(tempDiv);
+    
+    const rect = tempDiv.getBoundingClientRect();
+    width = rect.width;
+    height = rect.height;
+    
+    document.body.removeChild(tempDiv);
+  }
+
+  const dimensions = { width, height };
+  elementDimensionCache.set(element.id, dimensions);
+  return dimensions;
+}
+
 export function calculateElementSnapping(
   element: CanvasElement,
   elements: CanvasElement[],
@@ -37,8 +72,13 @@ export function calculateElementSnapping(
 
   // Don't snap to self
   const otherElements = elements.filter(el => el.id !== element.id);
+  
+  // Get element dimensions once
+  const elementDims = getElementDimensions(element);
 
   for (const other of otherElements) {
+    const otherDims = getElementDimensions(other);
+
     // Horizontal snapping (align to other elements' X positions)
     const horizontalSnapX = calculateSnap(
       currentPosition.x,
@@ -61,54 +101,49 @@ export function calculateElementSnapping(
       snapLines.push({ y: verticalSnapY, type: 'horizontal' });
     }
 
-    // Edge-to-edge snapping
-    const elementWidth = 100;  // Approximate width - could be enhanced
-    const elementHeight = 30;  // Approximate height
-    const otherWidth = 100;
-    const otherHeight = 30;
-
+    // Edge-to-edge snapping with actual dimensions
     // Right edge to left edge
     const rightToLeftSnap = calculateSnap(
-      currentPosition.x + elementWidth,
+      currentPosition.x + elementDims.width,
       other.x,
       threshold.horizontal
     );
     if (rightToLeftSnap !== null) {
-      snappedX = rightToLeftSnap - elementWidth;
+      snappedX = rightToLeftSnap - elementDims.width;
       snapLines.push({ x: other.x, type: 'vertical' });
     }
 
     // Left edge to right edge
     const leftToRightSnap = calculateSnap(
       currentPosition.x,
-      other.x + otherWidth,
+      other.x + otherDims.width,
       threshold.horizontal
     );
     if (leftToRightSnap !== null) {
       snappedX = leftToRightSnap;
-      snapLines.push({ x: other.x + otherWidth, type: 'vertical' });
+      snapLines.push({ x: other.x + otherDims.width, type: 'vertical' });
     }
 
     // Bottom edge to top edge
     const bottomToTopSnap = calculateSnap(
-      currentPosition.y + elementHeight,
+      currentPosition.y + elementDims.height,
       other.y,
       threshold.vertical
     );
     if (bottomToTopSnap !== null) {
-      snappedY = bottomToTopSnap - elementHeight;
+      snappedY = bottomToTopSnap - elementDims.height;
       snapLines.push({ y: other.y, type: 'horizontal' });
     }
 
     // Top edge to bottom edge
     const topToBottomSnap = calculateSnap(
       currentPosition.y,
-      other.y + otherHeight,
+      other.y + otherDims.height,
       threshold.vertical
     );
     if (topToBottomSnap !== null) {
       snappedY = topToBottomSnap;
-      snapLines.push({ y: other.y + otherHeight, type: 'horizontal' });
+      snapLines.push({ y: other.y + otherDims.height, type: 'horizontal' });
     }
   }
 
@@ -117,6 +152,11 @@ export function calculateElementSnapping(
     y: snappedY,
     snapLines,
   };
+}
+
+// Clear dimension cache when elements change
+export function clearDimensionCache() {
+  elementDimensionCache.clear();
 }
 
 // Helper to calculate if two positions should snap

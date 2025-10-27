@@ -75,13 +75,24 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       try {
         const refreshedLock = await refreshLock(graphic.id);
         setLock(refreshedLock);
-      } catch (error) {
-        console.error('Error refreshing lock:', error);
-        toast({
-          title: 'Lock refresh failed',
-          description: 'Unable to extend the editing lock. Save changes soon.',
-          variant: 'destructive',
-        });
+      } catch (error: any) {
+        // Handle 404 errors gracefully (lock expired or doesn't exist)
+        if (error?.response?.status === 404) {
+          console.warn('Lock expired or no longer exists, releasing lock state');
+          setLock(null);
+          toast({
+            title: 'Lock expired',
+            description: 'Your editing lock has expired. Please refresh the page to continue editing.',
+            variant: 'destructive',
+          });
+        } else {
+          console.error('Error refreshing lock:', error);
+          toast({
+            title: 'Lock refresh failed',
+            description: 'Unable to extend the editing lock. Save changes soon.',
+            variant: 'destructive',
+          });
+        }
       }
     }, 120000);
 

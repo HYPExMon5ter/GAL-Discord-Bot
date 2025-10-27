@@ -55,7 +55,7 @@ export function Viewport({
   } = useElementDrag();
 
   // Element snapping
-  const { snapLines, calculateSnap, throttledCalculateSnap, clearSnapLines } = useSnapping();
+  const { snapLines, calculateSnap, clearSnapLines } = useSnapping();
 
   // Handle element position update
   const handleElementPositionUpdate = (elementId: string, x: number, y: number) => {
@@ -115,8 +115,8 @@ export function Viewport({
       if (rect) {
         const canvasPos = screenToCanvas(clientX - rect.left, clientY - rect.top);
         
-        // Apply throttled snapping for better performance
-        const snapped = throttledCalculateSnap(element, canvas.elements, canvasPos);
+        // Apply snapping
+        const snapped = calculateSnap(element, canvas.elements, canvasPos);
         
         handleElementPositionUpdate(element.id, snapped.x, snapped.y);
       }

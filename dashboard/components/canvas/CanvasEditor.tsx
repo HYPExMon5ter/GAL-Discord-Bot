@@ -7,7 +7,7 @@ import { Sidebar } from './Sidebar';
 import { Viewport } from './Viewport';
 import { useCanvasState } from '@/hooks/canvas/useCanvasState';
 import { useLocks } from '@/hooks/use-locks';
-import type { Graphic, BackgroundConfig } from '@/types';
+import type { Graphic, BackgroundConfig, CanvasLock } from '@/types';
 import type { CanvasElement, ElementType } from '@/lib/canvas/types';
 
 interface CanvasEditorProps {
@@ -23,7 +23,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const [title, setTitle] = useState(graphic.title);
   const [saving, setSaving] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [hasLock, setHasLock] = useState(false);
+  const [lock, setLock] = useState<CanvasLock | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,7 +44,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       try {
         const acquiredLock = await acquireLock(graphic.id);
         if (acquiredLock) {
-          setHasLock(true);
+          setLock(acquiredLock);
         } else {
           toast({
             title: 'Lock unavailable',
@@ -69,11 +69,12 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   // Auto-refresh lock every 2 minutes
   React.useEffect(() => {
-    if (!hasLock) return;
+    if (!lock) return;
 
     const interval = window.setInterval(async () => {
       try {
-        await refreshLock(graphic.id);
+        const refreshedLock = await refreshLock(graphic.id);
+        setLock(refreshedLock);
       } catch (error) {
         console.error('Error refreshing lock:', error);
         toast({
@@ -85,12 +86,12 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     }, 120000);
 
     return () => window.clearInterval(interval);
-  }, [hasLock, graphic.id, refreshLock, toast]);
+  }, [lock, graphic.id, refreshLock, toast]);
 
   // Release lock on unmount
   React.useEffect(() => {
     return () => {
-      if (hasLock) {
+      if (lock) {
         releaseLock(graphic.id).catch((error) => {
           console.error('Error releasing lock:', error);
         });
@@ -221,7 +222,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     );
   }
 
-  const isDisabled = saving || !hasLock;
+  const isDisabled = saving || !lock;
 
   return (
     <div className="fixed inset-0 bg-background z-30 flex flex-col">

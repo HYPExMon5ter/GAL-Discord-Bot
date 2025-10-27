@@ -189,7 +189,7 @@ class GraphicsService:
             raise ConflictError("Graphic is already locked by another user.")
 
         if existing_lock:
-            existing_lock.expires_at = self._utcnow() + timedelta(minutes=5)
+            existing_lock.expires_at = self._utcnow() + timedelta(minutes=30)
             self.db.commit()
             self.db.refresh(existing_lock)
             return self._serialize_lock(existing_lock)

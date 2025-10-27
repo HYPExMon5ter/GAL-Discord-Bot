@@ -24,6 +24,8 @@ export function DynamicListComponent({
   realData = [],
   readOnly = false 
 }: DynamicListProps) {
+  const [isDragging, setIsDragging] = React.useState(false);
+
   // Get display data based on mode
   const displayData = React.useMemo(() => {
     if (mode === 'editor') {
@@ -36,7 +38,7 @@ export function DynamicListComponent({
   }, [element, mode, realData]);
 
   const handleClick = (e: React.MouseEvent) => {
-    if (!readOnly) {
+    if (!readOnly && !isDragging) {
       e.stopPropagation();
       onSelect?.();
     }
@@ -45,7 +47,15 @@ export function DynamicListComponent({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!readOnly) {
       e.stopPropagation();
+      setIsDragging(true);
       onDragStart?.(e);
+      
+      // Reset dragging state on mouse up
+      const handleMouseUp = () => {
+        setIsDragging(false);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+      document.addEventListener('mouseup', handleMouseUp);
     }
   };
 
@@ -53,8 +63,8 @@ export function DynamicListComponent({
     <div
       className={cn(
         'absolute cursor-move select-none',
-        // Only apply transition when not dragging
-        !selected && 'transition-all duration-75',
+        // No transition when dragging or selected
+        !selected && !isDragging && 'transition-all duration-75',
         selected && !readOnly && 'ring-2 ring-blue-500 ring-offset-1',
         readOnly && 'pointer-events-none'
       )}
@@ -62,7 +72,7 @@ export function DynamicListComponent({
         // Use transform for better performance
         transform: `translate(${element.x}px, ${element.y}px)`,
         // Hardware acceleration
-        willChange: selected ? 'transform' : 'auto',
+        willChange: isDragging ? 'transform' : 'auto',
         backfaceVisibility: 'hidden',
       }}
       onClick={handleClick}

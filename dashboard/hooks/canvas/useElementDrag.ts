@@ -86,14 +86,10 @@ export function useElementDrag() {
   // Throttled version of position update for smoother dragging
   const throttledUpdatePosition = useCallback(
     throttle((elementId: string, x: number, y: number) => {
-      // Only update if position changed significantly
-      if (!lastUpdateRef.current || 
-          Math.abs(x - lastUpdateRef.current.x) > 1 || 
-          Math.abs(y - lastUpdateRef.current.y) > 1) {
-        onPositionChangeRef.current(elementId, x, y);
-        lastUpdateRef.current = { x, y };
-      }
-    }, 16), // ~60fps
+      // Always update position but keep the throttling
+      onPositionChangeRef.current(elementId, x, y);
+      lastUpdateRef.current = { x, y };
+    }, 8), // ~120fps for smoother movement
     []
   );
 

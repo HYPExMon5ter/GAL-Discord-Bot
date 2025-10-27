@@ -19,8 +19,10 @@ export function TextElementComponent({
   onDragStart,
   readOnly = false 
 }: TextElementProps) {
+  const [isDragging, setIsDragging] = React.useState(false);
+
   const handleClick = (e: React.MouseEvent) => {
-    if (!readOnly) {
+    if (!readOnly && !isDragging) {
       e.stopPropagation();
       onSelect?.();
     }
@@ -29,7 +31,15 @@ export function TextElementComponent({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!readOnly) {
       e.stopPropagation();
+      setIsDragging(true);
       onDragStart?.(e);
+      
+      // Reset dragging state on mouse up
+      const handleMouseUp = () => {
+        setIsDragging(false);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+      document.addEventListener('mouseup', handleMouseUp);
     }
   };
 
@@ -37,8 +47,8 @@ export function TextElementComponent({
     <div
       className={cn(
         'absolute cursor-move select-none',
-        // Only apply transition when not dragging
-        !selected && 'transition-all duration-75',
+        // No transition when dragging or selected
+        !selected && !isDragging && 'transition-all duration-75',
         selected && !readOnly && 'ring-2 ring-blue-500 ring-offset-1',
         readOnly && 'pointer-events-none'
       )}
@@ -50,7 +60,7 @@ export function TextElementComponent({
         color: element.color,
         whiteSpace: 'nowrap',
         // Hardware acceleration
-        willChange: selected ? 'transform' : 'auto',
+        willChange: isDragging ? 'transform' : 'auto',
         backfaceVisibility: 'hidden',
       }}
       onClick={handleClick}

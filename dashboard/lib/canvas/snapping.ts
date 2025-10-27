@@ -28,6 +28,12 @@ interface SnapLine {
 // Cache for element dimensions to avoid recalculating
 const elementDimensionCache = new Map<string, { width: number; height: number }>();
 
+// Cache for snap calculations to reduce jitter
+const snapResultCache = new Map<string, { x: number; y: number; snapLines: SnapLine[] }>();
+
+// Global measurement container for text dimensions (created once)
+let measurementContainer: HTMLDivElement | null = null;
+
 // Get element dimensions with caching
 function getElementDimensions(element: CanvasElement): { width: number; height: number } {
   if (elementDimensionCache.has(element.id)) {
@@ -38,21 +44,28 @@ function getElementDimensions(element: CanvasElement): { width: number; height: 
   let height = 30;
 
   if (element.type === 'text') {
-    // Create a temporary element to measure text dimensions
+    // Create or reuse measurement container
+    if (!measurementContainer) {
+      measurementContainer = document.createElement('div');
+      measurementContainer.style.position = 'absolute';
+      measurementContainer.style.visibility = 'hidden';
+      measurementContainer.style.top = '-9999px';
+      measurementContainer.style.left = '-9999px';
+      document.body.appendChild(measurementContainer);
+    }
+
+    // Create a temporary element for measurement
     const tempDiv = document.createElement('div');
-    tempDiv.style.position = 'absolute';
-    tempDiv.style.visibility = 'hidden';
     tempDiv.style.fontSize = `${element.fontSize || 16}px`;
     tempDiv.style.fontFamily = element.fontFamily || 'sans-serif';
     tempDiv.style.whiteSpace = 'nowrap';
     tempDiv.textContent = element.content || '';
-    document.body.appendChild(tempDiv);
     
+    measurementContainer.appendChild(tempDiv);
     const rect = tempDiv.getBoundingClientRect();
     width = rect.width;
     height = rect.height;
-    
-    document.body.removeChild(tempDiv);
+    measurementContainer.removeChild(tempDiv);
   }
 
   const dimensions = { width, height };
@@ -66,6 +79,14 @@ export function calculateElementSnapping(
   currentPosition: { x: number; y: number },
   threshold: SnapThreshold = DEFAULT_SNAP_THRESHOLD
 ): SnapResult {
+  // Create cache key based on element, position, and other elements
+  const cacheKey = `${element.id}_${Math.round(currentPosition.x)}_${Math.round(currentPosition.y)}_${elements.map(e => e.id).join(',')}`;
+  
+  // Check cache first
+  if (snapResultCache.has(cacheKey)) {
+    return snapResultCache.get(cacheKey)!;
+  }
+
   const snapLines: SnapLine[] = [];
   let snappedX = currentPosition.x;
   let snappedY = currentPosition.y;
@@ -147,16 +168,29 @@ export function calculateElementSnapping(
     }
   }
 
-  return {
+  const result = {
     x: snappedX,
     y: snappedY,
     snapLines,
   };
+
+  // Cache the result (limit cache size to prevent memory issues)
+  if (snapResultCache.size > 100) {
+    // Clear oldest entries
+    const firstKey = snapResultCache.keys().next().value;
+    if (firstKey) {
+      snapResultCache.delete(firstKey);
+    }
+  }
+  snapResultCache.set(cacheKey, result);
+
+  return result;
 }
 
 // Clear dimension cache when elements change
 export function clearDimensionCache() {
   elementDimensionCache.clear();
+  snapResultCache.clear();
 }
 
 // Helper to calculate if two positions should snap

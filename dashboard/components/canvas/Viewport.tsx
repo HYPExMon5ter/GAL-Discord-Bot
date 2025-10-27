@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { BackgroundRenderer } from './elements/BackgroundRenderer';
 import { TextElementComponent } from './elements/TextElement';
 import { DynamicListComponent } from './elements/DynamicList';
@@ -18,6 +18,23 @@ interface ViewportProps {
   mode: 'editor' | 'view';
   realData?: any[];
   disabled?: boolean;
+}
+
+// Debounce function to limit snap calculations
+function debounce<T extends (...args: any[]) => void>(
+  func: T,
+  delay: number
+): T {
+  let timeoutId: NodeJS.Timeout | null = null;
+  
+  return ((...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, delay);
+  }) as T;
 }
 
 export function Viewport({
@@ -56,6 +73,14 @@ export function Viewport({
 
   // Element snapping
   const { snapLines, calculateSnap, clearSnapLines } = useSnapping();
+
+  // Debounced position update for smoother performance
+  const debouncedUpdateElement = useCallback(
+    debounce((elementId: string, x: number, y: number) => {
+      handleElementPositionUpdate(elementId, x, y);
+    }, 16), // ~60fps for position updates
+    []
+  );
 
   // Handle element position update
   const handleElementPositionUpdate = (elementId: string, x: number, y: number) => {
@@ -109,19 +134,26 @@ export function Viewport({
   };
 
   // Handle element drag (with optimized snapping)
-  const handleElementDrag = (element: CanvasElement, clientX: number, clientY: number) => {
-    if (mode === 'editor' && !disabled && isDraggingElement(element.id)) {
-      const rect = viewportRef.current?.getBoundingClientRect();
-      if (rect) {
-        const canvasPos = screenToCanvas(clientX - rect.left, clientY - rect.top);
-        
-        // Apply snapping
-        const snapped = calculateSnap(element, canvas.elements, canvasPos);
-        
-        handleElementPositionUpdate(element.id, snapped.x, snapped.y);
+  const handleElementDrag = useCallback(
+    debounce((element: CanvasElement, clientX: number, clientY: number) => {
+      if (mode === 'editor' && !disabled && isDraggingElement(element.id)) {
+        const rect = viewportRef.current?.getBoundingClientRect();
+        if (rect) {
+          const canvasPos = screenToCanvas(clientX - rect.left, clientY - rect.top);
+          
+          // Apply snapping with rounding to reduce jitter
+          const roundedPos = {
+            x: Math.round(canvasPos.x),
+            y: Math.round(canvasPos.y)
+          };
+          const snapped = calculateSnap(element, canvas.elements, roundedPos);
+          
+          debouncedUpdateElement(element.id, snapped.x, snapped.y);
+        }
       }
-    }
-  };
+    }, 8), // Higher frequency debouncing for smooth movement
+    [mode, disabled, canvas.elements, calculateSnap, debouncedUpdateElement, isDraggingElement, screenToCanvas]
+  );
 
   // Global mouse event handlers
   useEffect(() => {

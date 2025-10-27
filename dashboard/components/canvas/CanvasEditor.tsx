@@ -91,13 +91,22 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   // Release lock on unmount
   React.useEffect(() => {
     return () => {
-      if (lock) {
-        releaseLock(graphic.id).catch((error) => {
-          console.error('Error releasing lock:', error);
+      if (lock && lock.locked) {
+        releaseLock(graphic.id).catch((error: any) => {
+          // Only log error if it's not a 404 (lock already released/expired)
+          if (error?.response?.status !== 404) {
+            console.error('Error releasing lock:', error);
+            toast({
+              title: 'Lock release error',
+              description: 'Unable to release the editing lock.',
+              variant: 'destructive',
+            });
+          }
+          // 404 is expected if lock was already released or expired
         });
       }
     };
-  }, [lock, graphic.id, releaseLock]);
+  }, [lock, graphic.id, releaseLock, toast]);
 
   // Handle background upload
   const handleBackgroundUpload = useCallback((file: File) => {

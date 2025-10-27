@@ -9,8 +9,11 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Body, Depends, Query
+from fastapi.exceptions import HTTPException
+from sqlalchemy.exc import NoResultFound
 
 from api.auth import TokenData
+from api.services.errors import NotFoundError
 from api.dependencies import (
     get_active_user,
     get_graphics_service,
@@ -155,8 +158,12 @@ async def release_lock(
     current_user: TokenData = Depends(require_write_access),
     service: GraphicsService = Depends(get_graphics_service),
 ) -> dict:
-    await execute_service(service.release_lock, graphic_id, current_user.username)
-    return {"message": "Lock released successfully"}
+    try:
+        await execute_service(service.release_lock, graphic_id, current_user.username)
+        return {"message": "Lock released successfully"}
+    except NotFoundError:
+        # Lock was already released or expired - this is OK
+        return {"message": "Lock was already released or expired"}
 
 
 @router.get("/lock/{graphic_id}/status", response_model=LockStatusResponse)

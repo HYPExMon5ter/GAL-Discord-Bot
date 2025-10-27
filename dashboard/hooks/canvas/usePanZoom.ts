@@ -64,8 +64,10 @@ export function usePanZoom() {
   }, [state.zoom, setZoom]);
 
   // Handle pan start
-  const handlePanStart = useCallback((e: React.MouseEvent) => {
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) { // Middle mouse or shift+left click
+  const handlePanStart = useCallback((e: React.MouseEvent, isClickOnElement: boolean = false) => {
+    // Allow left-click panning only when clicking on empty space (not on elements)
+    // Middle mouse or shift+left click always works
+    if (e.button === 1 || (e.button === 0 && e.shiftKey) || (e.button === 0 && !isClickOnElement)) {
       e.preventDefault();
       isPanningRef.current = true;
       panStartRef.current = {

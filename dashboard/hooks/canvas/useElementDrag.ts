@@ -4,61 +4,20 @@ import type { CanvasElement } from '@/lib/canvas/types';
 interface DragState {
   isDragging: boolean;
   draggedElementId: string | null;
-  dragStart: { x: number; y: number };
-  elementStart: { x: number; y: number };
 }
 
-// Throttle function to limit update frequency
-function throttle<T extends (...args: any[]) => void>(
-  func: T,
-  delay: number
-): T {
-  let timeoutId: NodeJS.Timeout | null = null;
-  let lastExecTime = 0;
-  
-  return ((...args: Parameters<T>) => {
-    const currentTime = Date.now();
-    
-    if (currentTime - lastExecTime > delay) {
-      func(...args);
-      lastExecTime = currentTime;
-    } else {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      timeoutId = setTimeout(() => {
-        func(...args);
-        lastExecTime = Date.now();
-        timeoutId = null;
-      }, delay - (currentTime - lastExecTime));
-    }
-  }) as T;
-}
-
-// RequestAnimationFrame for smooth visual updates
-function rafThrottle<T extends (...args: any[]) => void>(func: T): T {
-  let rafId: number | null = null;
-  
-  return ((...args: Parameters<T>) => {
-    if (rafId === null) {
-      rafId = requestAnimationFrame(() => {
-        func(...args);
-        rafId = null;
-      });
-    }
-  }) as T;
-}
+// RAF throttling removed - direct updates provide better responsiveness
 
 export function useElementDrag() {
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
     draggedElementId: null,
-    dragStart: { x: 0, y: 0 },
-    elementStart: { x: 0, y: 0 },
   });
 
-  // Refs for throttling and performance
-  const lastUpdateRef = useRef<{ x: number; y: number } | null>(null);
+  // Refs for drag state (avoid stale closures)
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const elementStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const elementIdRef = useRef<string | null>(null);
   const onPositionChangeRef = useRef<(elementId: string, x: number, y: number) => void>(() => {});
 
   // Start dragging an element
@@ -68,50 +27,55 @@ export function useElementDrag() {
     clientX: number, 
     clientY: number
   ) => {
+    // Store drag state in refs to avoid stale closures
+    dragStartRef.current = { x: clientX, y: clientY };
+    elementStartRef.current = { x: element.x, y: element.y };
+    elementIdRef.current = elementId;
+    
     setDragState({
       isDragging: true,
       draggedElementId: elementId,
-      dragStart: { x: clientX, y: clientY },
-      elementStart: { x: element.x, y: element.y },
     });
   }, []);
 
-  // Update drag position with throttling
+  // Update drag position (direct, no throttling)
   const updateDrag = useCallback((clientX: number, clientY: number) => {
-    if (!dragState.isDragging || !dragState.draggedElementId) {
+    // Check refs instead of state to avoid stale closures
+    if (!dragState.isDragging || !elementIdRef.current) {
       return null;
     }
 
-    const deltaX = clientX - dragState.dragStart.x;
-    const deltaY = clientY - dragState.dragStart.y;
+    const deltaX = clientX - dragStartRef.current.x;
+    const deltaY = clientY - dragStartRef.current.y;
 
     const newPosition = {
-      x: dragState.elementStart.x + deltaX,
-      y: dragState.elementStart.y + deltaY,
+      x: elementStartRef.current.x + deltaX,
+      y: elementStartRef.current.y + deltaY,
     };
 
     return {
-      elementId: dragState.draggedElementId,
+      elementId: elementIdRef.current,
       x: newPosition.x,
       y: newPosition.y,
     };
-  }, [dragState]);
+  }, [dragState.isDragging]);
 
-  // Optimized position update using requestAnimationFrame
-  const updatePosition = useCallback(
-    rafThrottle((elementId: string, x: number, y: number) => {
+  // Direct position update (no RAF throttling)
+  const updatePosition = useCallback((elementId: string, x: number, y: number) => {
+    // Only update if we're still dragging this element
+    if (dragState.isDragging && elementIdRef.current === elementId) {
       onPositionChangeRef.current(elementId, x, y);
-    }),
-    []
-  );
+    }
+  }, [dragState.isDragging]);
 
   // End dragging
   const endDrag = useCallback(() => {
+    // Clear refs immediately
+    elementIdRef.current = null;
+    
     setDragState({
       isDragging: false,
       draggedElementId: null,
-      dragStart: { x: 0, y: 0 },
-      elementStart: { x: 0, y: 0 },
     });
   }, []);
 
@@ -140,7 +104,6 @@ export function useElementDrag() {
 
     const handleMouseUp = () => {
       endDrag();
-      lastUpdateRef.current = null;
     };
 
     return {
@@ -165,7 +128,6 @@ export function useElementDrag() {
 
     const handleMouseUp = () => {
       endDrag();
-      lastUpdateRef.current = null;
     };
 
     return {

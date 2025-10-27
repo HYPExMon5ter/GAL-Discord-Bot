@@ -20,22 +20,7 @@ interface ViewportProps {
   disabled?: boolean;
 }
 
-// Debounce function to limit snap calculations
-function debounce<T extends (...args: any[]) => void>(
-  func: T,
-  delay: number
-): T {
-  let timeoutId: NodeJS.Timeout | null = null;
-  
-  return ((...args: Parameters<T>) => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      func(...args);
-    }, delay);
-  }) as T;
-}
+// Removed debounce function - using RAF throttling instead for smoother performance
 
 export function Viewport({
   canvas,
@@ -48,6 +33,7 @@ export function Viewport({
 }: ViewportProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const isClickOnElementRef = useRef<boolean>(false);
 
   // Pan/zoom controls
   const {
@@ -74,14 +60,6 @@ export function Viewport({
   // Element snapping
   const { snapLines, calculateSnap, clearSnapLines } = useSnapping();
 
-  // Debounced position update for smoother performance
-  const debouncedUpdateElement = useCallback(
-    debounce((elementId: string, x: number, y: number) => {
-      handleElementPositionUpdate(elementId, x, y);
-    }, 16), // ~60fps for position updates
-    []
-  );
-
   // Handle element position update
   const handleElementPositionUpdate = (elementId: string, x: number, y: number) => {
     if (mode === 'editor' && !disabled) {
@@ -99,9 +77,13 @@ export function Viewport({
     clearDimensionCache();
   }, [canvas.elements]);
 
-  // Handle canvas click (deselect element)
-  const handleCanvasClick = (e: React.MouseEvent) => {
+  // Handle canvas mouse down (for panning on empty space)
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (mode === 'editor' && !disabled) {
+      // Reset flag
+      isClickOnElementRef.current = false;
+      
+      // Check if clicking on an element
       const rect = viewportRef.current?.getBoundingClientRect();
       if (rect) {
         const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
@@ -117,10 +99,26 @@ export function Viewport({
         });
 
         if (!clickedElement) {
+          // Clicking on empty space
           onSelectElement(null);
           clearSnapLines();
+        } else {
+          // Clicking on an element
+          isClickOnElementRef.current = true;
         }
       }
+      
+      // Start panning with click context
+      handlePanStart(e, isClickOnElementRef.current);
+    }
+  };
+
+  // Handle canvas click (for deselect)
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    if (mode === 'editor' && !disabled && !isClickOnElementRef.current) {
+      // Only deselect if this wasn't a click on an element
+      onSelectElement(null);
+      clearSnapLines();
     }
   };
 
@@ -128,52 +126,53 @@ export function Viewport({
   const handleElementDragStart = (element: CanvasElement, e: React.MouseEvent) => {
     if (mode === 'editor' && !disabled) {
       e.stopPropagation();
+      e.preventDefault(); // Prevent canvas panning when dragging element
+      isClickOnElementRef.current = true; // Mark that we're dragging an element
       onSelectElement(element.id);
       startDrag(element.id, element, e.clientX, e.clientY);
     }
   };
 
-  // Handle element drag (with optimized snapping)
-  const handleElementDrag = useCallback(
-    debounce((element: CanvasElement, clientX: number, clientY: number) => {
-      if (mode === 'editor' && !disabled && isDraggingElement(element.id)) {
-        const rect = viewportRef.current?.getBoundingClientRect();
-        if (rect) {
-          const canvasPos = screenToCanvas(clientX - rect.left, clientY - rect.top);
-          
-          // Apply snapping with rounding to reduce jitter
-          const roundedPos = {
-            x: Math.round(canvasPos.x),
-            y: Math.round(canvasPos.y)
-          };
-          const snapped = calculateSnap(element, canvas.elements, roundedPos);
-          
-          debouncedUpdateElement(element.id, snapped.x, snapped.y);
-        }
-      }
-    }, 8), // Higher frequency debouncing for smooth movement
-    [mode, disabled, canvas.elements, calculateSnap, debouncedUpdateElement, isDraggingElement, screenToCanvas]
-  );
+  // Handle element drag (receive calculated position, apply constraints and snapping)
+  const handleElementDrag = useCallback((element: CanvasElement, x: number, y: number) => {
+    if (mode === 'editor' && !disabled && isDraggingElement(element.id)) {
+      // Apply snapping with rounding to reduce jitter
+      const roundedPos = {
+        x: Math.round(x),
+        y: Math.round(y)
+      };
+      const snapped = calculateSnap(element, canvas.elements, roundedPos);
+      
+      // Direct update - no debouncing
+      handleElementPositionUpdate(element.id, snapped.x, snapped.y);
+    }
+  }, [mode, disabled, canvas.elements, calculateSnap, handleElementPositionUpdate, isDraggingElement]);
 
   // Global mouse event handlers
   useEffect(() => {
     if (mode === 'editor') {
-      const { onMouseMove, onMouseUp } = getGlobalDragHandlers(handleElementPositionUpdate);
-      
+      // Custom mouse handler that passes calculated position to handleElementDrag
       const handleMouseMove = (e: MouseEvent) => {
         handlePanMove(e);
-        onMouseMove(e);
         
-        // Handle dragging for current element
-        const currentElement = canvas.elements.find(el => el.id === selectedElementId);
-        if (currentElement) {
-          handleElementDrag(currentElement, e.clientX, e.clientY);
+        // Handle dragging for current element (if any)
+        if (isClickOnElementRef.current && selectedElementId) {
+          const currentElement = canvas.elements.find(el => el.id === selectedElementId);
+          if (currentElement) {
+            // Calculate canvas position directly
+            const rect = viewportRef.current?.getBoundingClientRect();
+            if (rect) {
+              const canvasPos = screenToCanvas(e.clientX - rect.left, e.clientY - rect.top);
+              // Pass calculated position to handler
+              handleElementDrag(currentElement, canvasPos.x, canvasPos.y);
+            }
+          }
         }
       };
 
       const handleMouseUp = (e: MouseEvent) => {
+        isClickOnElementRef.current = false; // Reset flag
         handlePanEnd();
-        onMouseUp(e);
         clearSnapLines();
       };
 
@@ -185,7 +184,7 @@ export function Viewport({
         document.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  }, [mode, selectedElementId, canvas.elements, handlePanMove, handlePanEnd, getGlobalDragHandlers, handleElementPositionUpdate, clearSnapLines]);
+  }, [mode, selectedElementId, canvas.elements, handlePanMove, handlePanEnd, screenToCanvas, handleElementDrag, clearSnapLines]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -217,7 +216,7 @@ export function Viewport({
       ref={viewportRef}
       className="flex-1 overflow-hidden bg-gray-900 relative"
       onWheel={mode === 'editor' ? handleWheel : undefined}
-      onMouseDown={mode === 'editor' ? handlePanStart : undefined}
+      onMouseDown={mode === 'editor' ? handleCanvasMouseDown : undefined}
       onClick={handleCanvasClick}
     >
       {/* Canvas Container */}

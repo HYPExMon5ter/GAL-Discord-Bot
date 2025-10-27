@@ -9,8 +9,8 @@ interface SnapThreshold {
 }
 
 const DEFAULT_SNAP_THRESHOLD: SnapThreshold = {
-  horizontal: 8,  // 8px snap tolerance
-  vertical: 8,
+  horizontal: 5,  // 5px snap tolerance (reduced for cleaner snapping)
+  vertical: 5,
 };
 
 interface SnapResult {
@@ -28,8 +28,7 @@ interface SnapLine {
 // Cache for element dimensions to avoid recalculating
 const elementDimensionCache = new Map<string, { width: number; height: number }>();
 
-// Cache for snap calculations to reduce jitter
-const snapResultCache = new Map<string, { x: number; y: number; snapLines: SnapLine[] }>();
+// Removed snap result cache - was causing more overhead than benefit
 
 // Global measurement container for text dimensions (created once)
 let measurementContainer: HTMLDivElement | null = null;
@@ -79,17 +78,11 @@ export function calculateElementSnapping(
   currentPosition: { x: number; y: number },
   threshold: SnapThreshold = DEFAULT_SNAP_THRESHOLD
 ): SnapResult {
-  // Create cache key based on element, position, and other elements
-  const cacheKey = `${element.id}_${Math.round(currentPosition.x)}_${Math.round(currentPosition.y)}_${elements.map(e => e.id).join(',')}`;
-  
-  // Check cache first
-  if (snapResultCache.has(cacheKey)) {
-    return snapResultCache.get(cacheKey)!;
-  }
-
   const snapLines: SnapLine[] = [];
-  let snappedX = currentPosition.x;
-  let snappedY = currentPosition.y;
+  
+  // Round position first to avoid jitter
+  let snappedX = Math.round(currentPosition.x);
+  let snappedY = Math.round(currentPosition.y);
 
   // Don't snap to self
   const otherElements = elements.filter(el => el.id !== element.id);
@@ -168,29 +161,16 @@ export function calculateElementSnapping(
     }
   }
 
-  const result = {
+  return {
     x: snappedX,
     y: snappedY,
     snapLines,
   };
-
-  // Cache the result (limit cache size to prevent memory issues)
-  if (snapResultCache.size > 100) {
-    // Clear oldest entries
-    const firstKey = snapResultCache.keys().next().value;
-    if (firstKey) {
-      snapResultCache.delete(firstKey);
-    }
-  }
-  snapResultCache.set(cacheKey, result);
-
-  return result;
 }
 
 // Clear dimension cache when elements change
 export function clearDimensionCache() {
   elementDimensionCache.clear();
-  snapResultCache.clear();
 }
 
 // Helper to calculate if two positions should snap

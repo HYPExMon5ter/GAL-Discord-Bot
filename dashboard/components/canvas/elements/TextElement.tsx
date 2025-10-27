@@ -47,21 +47,23 @@ export function TextElementComponent({
     <div
       className={cn(
         'absolute cursor-move select-none',
-        // No transition when dragging or selected
-        !selected && !isDragging && 'transition-all duration-75',
+        // Removed transition entirely to eliminate jitter
         selected && !readOnly && 'ring-2 ring-blue-500 ring-offset-1',
         readOnly && 'pointer-events-none'
       )}
       style={{
-        // Use transform for better performance
-        transform: `translate(${element.x}px, ${element.y}px)`,
+        // Use transform for better performance with integer positions
+        transform: `translate(${Math.round(element.x)}px, ${Math.round(element.y)}px)`,
         fontSize: element.fontSize,
         fontFamily: element.fontFamily,
         color: element.color,
         whiteSpace: 'nowrap',
-        // Hardware acceleration
+        // Hardware acceleration only during drag
         willChange: isDragging ? 'transform' : 'auto',
         backfaceVisibility: 'hidden',
+        // Ensure sharp rendering
+        WebkitFontSmoothing: 'antialiased',
+        MozOsxFontSmoothing: 'grayscale',
       }}
       onClick={handleClick}
       onMouseDown={handleMouseDown}

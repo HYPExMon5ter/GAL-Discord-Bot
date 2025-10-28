@@ -31,6 +31,14 @@ export function Combobox({
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const [triggerWidth, setTriggerWidth] = React.useState<number>(0)
+
+  React.useEffect(() => {
+    if (triggerRef.current) {
+      setTriggerWidth(triggerRef.current.offsetWidth)
+    }
+  }, [open])
 
   const filteredOptions = options.filter(option =>
     option.toLowerCase().includes(search.toLowerCase())
@@ -54,6 +62,7 @@ export function Combobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -64,12 +73,26 @@ export function Combobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
+      <PopoverContent 
+        className="p-0" 
+        align="start"
+        style={{ width: triggerWidth }}
+        onInteractOutside={(e) => {
+          // Prevent closing when clicking inside the popover content
+          const target = e.target as Node;
+          const popoverContent = e.currentTarget;
+          if (popoverContent.contains(target)) {
+            e.preventDefault()
+          }
+        }}
+      >
         <div className="p-2">
           <Input
             placeholder="Search or create..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onFocus={(e) => e.stopPropagation()}
             className="h-9"
           />
         </div>

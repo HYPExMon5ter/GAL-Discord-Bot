@@ -3,7 +3,7 @@ import { Poppins } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/hooks/use-auth'
 import { DashboardDataProvider } from '@/hooks/use-dashboard-data'
-import { Toaster } from '@/components/ui/toaster'
+import { Toaster } from '@/components/ui/sonner'
 
 const poppins = Poppins({ 
   subsets: ['latin'],
@@ -34,7 +34,7 @@ export default function RootLayout({
         <AuthProvider>
           <DashboardDataProvider>
             {children}
-            <Toaster />
+            <Toaster duration={5000} />
           </DashboardDataProvider>
         </AuthProvider>
       </body>

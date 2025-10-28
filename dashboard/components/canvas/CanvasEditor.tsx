@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
-import { useToast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 import { TopBar } from './TopBar';
 import { Sidebar } from './Sidebar';
 import { Viewport } from './Viewport';
@@ -17,7 +17,7 @@ interface CanvasEditorProps {
 }
 
 export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
-  const { toast } = useToast();
+  
   const { acquireLock, releaseLock, refreshLock } = useLocks();
   
   const [title, setTitle] = useState(graphic.title);
@@ -53,10 +53,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         if (acquiredLock) {
           setLock(acquiredLock);
         } else {
-          toast({
-            title: 'Graphic is being edited',
-            description: 'This graphic is currently being edited in another window or tab.',
-            variant: 'destructive',
+          toast.error('Graphic in use', {
+            description: 'This graphic is currently being edited.',
           });
         }
       } catch (error: any) {
@@ -84,10 +82,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         }
         
         console.error('Error acquiring lock:', error);
-        toast({
-          title: 'Lock error',
-          description: 'We could not acquire the editing lock.',
-          variant: 'destructive',
+        toast.error('Lock error', {
+          description: 'Could not acquire editing lock.',
         });
       } finally {
         setLoading(false);
@@ -95,7 +91,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     };
 
     acquireInitialLock();
-  }, [graphic.id, acquireLock, toast]);
+  }, [graphic.id, acquireLock]);
 
   // Auto-refresh lock every 2 minutes
   React.useEffect(() => {
@@ -110,24 +106,20 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         if (error?.response?.status === 404) {
           console.warn('Lock expired or no longer exists, releasing lock state');
           setLock(null);
-          toast({
-            title: 'Lock expired',
-            description: 'Your editing lock has expired. Please refresh the page to continue editing.',
-            variant: 'destructive',
+          toast.error('Lock expired', {
+            description: 'Your editing lock has expired. Please refresh.',
           });
         } else {
           console.error('Error refreshing lock:', error);
-          toast({
-            title: 'Lock refresh failed',
-            description: 'Unable to extend the editing lock. Save changes soon.',
-            variant: 'destructive',
+          toast.error('Lock refresh failed', {
+            description: 'Unable to extend editing lock. Save changes soon.',
           });
         }
       }
     }, 120000);
 
     return () => window.clearInterval(interval);
-  }, [lock, graphic.id, refreshLock, toast]);
+  }, [lock, graphic.id, refreshLock]);
 
   // Release lock on unmount
   React.useEffect(() => {
@@ -137,17 +129,15 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           // Only log error if it's not a 404 (lock already released/expired)
           if (error?.response?.status !== 404) {
             console.error('Error releasing lock:', error);
-            toast({
-              title: 'Lock release error',
-              description: 'Unable to release the editing lock.',
-              variant: 'destructive',
+            toast.error('Lock release error', {
+              description: 'Unable to release editing lock.',
             });
           }
           // 404 is expected if lock was already released or expired
         });
       }
     };
-  }, [lock?.id, graphic.id, releaseLock, toast]);
+  }, [lock?.locked, lock?.id, graphic.id, releaseLock]);
 
   // Handle background upload
   const handleBackgroundUpload = useCallback((file: File) => {
@@ -164,23 +154,20 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
           };
           updateBackground(backgroundConfig);
           
-          toast({
-            title: 'Background uploaded',
-            description: 'Canvas resized to match the uploaded image.',
+          toast.success('Background uploaded', {
+            description: 'Canvas resized to match uploaded image.',
           });
         };
         img.onerror = () => {
-          toast({
-            title: 'Upload failed',
+          toast.error('Upload failed', {
             description: 'Unable to load the selected image file.',
-            variant: 'destructive',
           });
         };
         img.src = result;
       }
     };
     reader.readAsDataURL(file);
-  }, [updateBackground, toast]);
+  }, [updateBackground]);
 
   // Handle element addition
   const handleAddElement = useCallback((type: ElementType) => {
@@ -209,10 +196,8 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   // Handle save
   const handleSave = async () => {
     if (!title.trim()) {
-      toast({
-        title: 'Missing title',
+      toast.error('Missing title', {
         description: 'Please enter a title before saving.',
-        variant: 'destructive',
       });
       return;
     }
@@ -226,24 +211,19 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       });
 
       if (success) {
-        toast({
-          title: 'Graphic saved',
+        toast.success('Graphic saved', {
           description: `"${title.trim()}" has been updated.`,
         });
         onClose();
       } else {
-        toast({
-          title: 'Save failed',
+        toast.error('Save failed', {
           description: 'The server did not accept the update. Please try again.',
-          variant: 'destructive',
         });
       }
     } catch (error) {
       console.error('Error saving graphic:', error);
-      toast({
-        title: 'Save failed',
+      toast.error('Save failed', {
         description: 'An unexpected error occurred while saving.',
-        variant: 'destructive',
       });
     } finally {
       setSaving(false);
@@ -319,17 +299,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
         style={{ display: 'none' }}
       />
 
-      {/* Lock Status */}
-      {lock && (
-        <div className="absolute bottom-4 left-4 bg-background/80 backdrop-blur-sm rounded-lg border px-3 py-2">
-          <div className="text-xs text-muted-foreground">
-            Editing as {lock.user_name}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Lock expires: {new Date(lock.expires_at).toLocaleTimeString()}
-          </div>
-        </div>
-      )}
+  
     </div>
   );
 }

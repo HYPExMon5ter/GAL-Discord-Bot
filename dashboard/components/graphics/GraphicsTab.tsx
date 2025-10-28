@@ -13,7 +13,7 @@ import { CopyGraphicDialog } from './CopyGraphicDialog';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 import { Plus, Search, RefreshCw, AlertCircle, Sparkles, Zap, Target, Package, Archive as ArchiveIcon, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { useToast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 
 export function GraphicsTab() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,7 +24,7 @@ export function GraphicsTab() {
   const [graphicToDelete, setGraphicToDelete] = useState<Graphic | null>(null);
   const [selectedGraphicIds, setSelectedGraphicIds] = useState<number[]>([]);
   
-  const { username } = useAuth();
+  
   const router = useRouter();
   const {
     graphics,
@@ -37,7 +37,7 @@ export function GraphicsTab() {
     updateGraphic,
     duplicateGraphic,
   } = useGraphics();
-  const { toast } = useToast();
+  
 
   // Ensure graphics is always an array to prevent filter errors
   const safeGraphics = useMemo(
@@ -119,23 +119,19 @@ export function GraphicsTab() {
     setSelectedGraphicIds(prev => prev.filter(id => !idsToArchive.includes(id)));
 
     if (successCount > 0) {
-      toast({
-        title: successCount === 1 ? 'Graphic archived' : `${successCount} graphics archived`,
-        description:
-          successCount === 1
-            ? 'Selected graphic moved to the archive.'
-            : 'Selected graphics moved to the archive.',
+      toast.success(successCount === 1 ? 'Graphic archived' : `${successCount} graphics archived`, {
+        description: successCount === 1
+          ? 'Selected graphic moved to the archive.'
+          : 'Selected graphics moved to the archive.',
       });
     }
 
     if (successCount !== idsToArchive.length) {
-      toast({
-        title: 'Archive issues',
+      toast.error('Archive issues', {
         description: `Archived ${successCount} of ${idsToArchive.length} selected graphics.`,
-        variant: 'destructive',
       });
     }
-  }, [archiveGraphic, safeGraphics, selectedGraphicIds, toast]);
+  }, [archiveGraphic, safeGraphics, selectedGraphicIds]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedGraphicIds.length === 0) {
@@ -170,23 +166,19 @@ export function GraphicsTab() {
     setSelectedGraphicIds(prev => prev.filter(id => !idsToDelete.includes(id)));
 
     if (successCount > 0) {
-      toast({
-        title: successCount === 1 ? 'Graphic deleted' : `${successCount} graphics deleted`,
-        description:
-          successCount === 1
-            ? 'Selected graphic removed permanently.'
-            : 'Selected graphics removed permanently.',
+      toast.success(successCount === 1 ? 'Graphic deleted' : `${successCount} graphics deleted`, {
+        description: successCount === 1
+          ? 'Selected graphic removed permanently.'
+          : 'Selected graphics removed permanently.',
       });
     }
 
     if (successCount !== idsToDelete.length) {
-      toast({
-        title: 'Delete issues',
+      toast.error('Delete issues', {
         description: `Deleted ${successCount} of ${idsToDelete.length} selected graphics.`,
-        variant: 'destructive',
       });
     }
-  }, [permanentDeleteGraphic, safeGraphics, selectedGraphicIds, toast]);
+  }, [permanentDeleteGraphic, safeGraphics, selectedGraphicIds]);
 
   const handleCreateGraphic = useCallback(async (data: { title: string; event_name?: string }) => {
     try {
@@ -206,30 +198,26 @@ export function GraphicsTab() {
       });
       
       if (result && result.id) {
-        toast({
-          title: 'Graphic created',
+        toast.success('Graphic created', {
+          
           description: `“${result.title}” is ready to edit.`,
         });
         router.push(`/canvas/edit/${result.id}`);
       } else {
-        toast({
-          title: 'Create failed',
+        toast.error('Create failed', {
           description: 'A new graphic could not be created. Please try again.',
-          variant: 'destructive',
         });
       }
       
       return !!result;
     } catch (error) {
       console.error('Failed to create graphic:', error);
-      toast({
-        title: 'Create failed',
+      toast.error('Create failed', {
         description: 'An unexpected error occurred while creating the graphic.',
-        variant: 'destructive',
       });
       return false;
     }
-  }, [createGraphic, router, toast]);
+  }, [createGraphic, router]);
 
   const handleEditGraphic = useCallback((graphic: Graphic) => {
     router.push(`/canvas/edit/${graphic.id}`);
@@ -246,22 +234,22 @@ export function GraphicsTab() {
     try {
       const result = await duplicateGraphic(graphicToCopy.id, title, eventName);
       if (result) {
-        toast({
-          title: 'Graphic duplicated',
+        toast.success('Graphic duplicated', {
+          
           description: `“${graphicToCopy.title}” copied successfully.`,
         });
         return true;
       }
     } catch (error) {
       console.error('Failed to copy graphic:', error);
-      toast({
-        title: 'Copy failed',
+      toast.error('Copy failed', {
+        
         description: `Unable to copy “${graphicToCopy.title}”. Please try again.`,
-        variant: 'destructive',
+        
       });
     }
     return false;
-  }, [duplicateGraphic, graphicToCopy, toast]);
+  }, [duplicateGraphic, graphicToCopy]);
 
   const handleDeleteGraphic = useCallback((graphic: Graphic) => {
     setGraphicToDelete(graphic);
@@ -274,41 +262,41 @@ export function GraphicsTab() {
     const success = await permanentDeleteGraphic(graphicToDelete.id);
     if (success) {
       setSelectedGraphicIds(prev => prev.filter(id => id !== graphicToDelete.id));
-      toast({
-        title: 'Graphic deleted',
+      toast.success('Graphic deleted', {
+        
         description: `"${graphicToDelete.title}" has been permanently removed.`,
       });
       setGraphicToDelete(null);
       return true;
     }
 
-    toast({
-      title: 'Delete failed',
+    toast.error('Delete failed', {
+      
       description: 'Unable to remove the graphic. Please try again.',
-      variant: 'destructive',
+      
     });
     return false;
-  }, [graphicToDelete, permanentDeleteGraphic, toast]);
+  }, [graphicToDelete, permanentDeleteGraphic]);
 
   const handleArchiveGraphic = useCallback(async (graphic: Graphic) => {
     try {
       const success = await archiveGraphic(graphic.id);
       if (success) {
         setSelectedGraphicIds(prev => prev.filter(id => id !== graphic.id));
-        toast({
-          title: 'Graphic archived',
+        toast.success('Graphic archived', {
+          
           description: `"${graphic.title}" moved to the archive.`,
         });
       }
     } catch (error) {
       console.error('Failed to archive graphic:', error);
-      toast({
-        title: 'Archive failed',
+      toast.error('Archive failed', {
+        
         description: `Unable to archive "${graphic.title}". Please try again.`,
-        variant: 'destructive',
+        
       });
     }
-  }, [archiveGraphic, toast]);
+  }, [archiveGraphic]);
 
   const handleViewGraphic = useCallback((graphic: Graphic) => {
     // Open OBS view in new tab

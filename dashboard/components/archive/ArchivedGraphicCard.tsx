@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { formatDate } from '@/lib/utils';
+
 import { Archive, RotateCcw, Trash2, Calendar, User, AlertTriangle } from 'lucide-react';
 
 interface ArchivedGraphicCardProps {
@@ -22,7 +22,18 @@ export function ArchivedGraphicCard({
   onPermanentDelete,
   isAdmin = false
 }: ArchivedGraphicCardProps) {
-  const { username } = useAuth();
+  
+  const formatDate = (value: string | undefined) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const canRestore = true; // Anyone can restore
   const canDelete = isAdmin; // Only admins can permanently delete

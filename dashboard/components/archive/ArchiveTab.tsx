@@ -12,7 +12,7 @@ import { DeleteConfirmDialog } from '../graphics/DeleteConfirmDialog';
 import { Badge } from '@/components/ui/badge';
 import { Search, RefreshCw, AlertCircle, Archive, RotateCcw, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { useToast } from '@/components/ui/use-toast';
+import { toast } from 'sonner';
 
 export function ArchiveTab() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,7 +29,7 @@ export function ArchiveTab() {
     restoreGraphic, 
     permanentDeleteGraphic 
   } = useArchive();
-  const { toast } = useToast();
+  
 
   const safeArchivedGraphics = useMemo(
     () => (Array.isArray(archivedGraphics) ? archivedGraphics : []),
@@ -113,8 +113,7 @@ export function ArchiveTab() {
     setSelectedArchivedIds(prev => prev.filter(id => !idsToRestore.includes(id)));
 
     if (successCount > 0) {
-      toast({
-        title: successCount === 1 ? 'Graphic restored' : `${successCount} graphics restored`,
+      toast.success(successCount === 1 ? 'Graphic restored' : `${successCount} graphics restored`, {
         description:
           successCount === 1
             ? 'Selected graphic moved back to Active Graphics.'
@@ -123,13 +122,11 @@ export function ArchiveTab() {
     }
 
     if (successCount !== idsToRestore.length) {
-      toast({
-        title: 'Restore issues',
+      toast.error('Restore issues', {
         description: `Restored ${successCount} of ${idsToRestore.length} selected graphics.`,
-        variant: 'destructive',
       });
     }
-  }, [restoreGraphic, safeArchivedGraphics, selectedArchivedIds, toast]);
+  }, [restoreGraphic, safeArchivedGraphics, selectedArchivedIds]);
 
   const handleBulkDelete = useCallback(async () => {
     if (selectedArchivedIds.length === 0) {
@@ -165,8 +162,7 @@ export function ArchiveTab() {
     setSelectedArchivedIds(prev => prev.filter(id => !idsToDelete.includes(id)));
 
     if (successCount > 0) {
-      toast({
-        title: successCount === 1 ? 'Archived graphic deleted' : `${successCount} graphics deleted`,
+      toast.success(successCount === 1 ? 'Archived graphic deleted' : `${successCount} graphics deleted`, {
         description:
           successCount === 1
             ? 'Selected archived graphic removed permanently.'
@@ -175,33 +171,30 @@ export function ArchiveTab() {
     }
 
     if (successCount !== idsToDelete.length) {
-      toast({
-        title: 'Delete issues',
+      toast.error('Delete issues', {
         description: `Deleted ${successCount} of ${idsToDelete.length} selected graphics.`,
-        variant: 'destructive',
       });
     }
-  }, [permanentDeleteGraphic, safeArchivedGraphics, selectedArchivedIds, toast]);
+  }, [permanentDeleteGraphic, safeArchivedGraphics, selectedArchivedIds]);
 
   const handleRestoreGraphic = useCallback(async (graphic: Graphic | ArchivedGraphic) => {
     try {
       const success = await restoreGraphic(graphic.id);
       if (success) {
         setSelectedArchivedIds(prev => prev.filter(id => id !== graphic.id));
-        toast({
-          title: 'Graphic restored',
+        toast.success('Graphic restored', {
           description: `"${graphic.title}" moved back to Active Graphics.`,
         });
       }
     } catch (error) {
       console.error('Failed to restore graphic:', error);
-      toast({
-        title: 'Restore failed',
+      toast.error('Restore failed', {
+        
         description: `Unable to restore “${graphic.title}”. Please try again.`,
-        variant: 'destructive',
+        
       });
     }
-  }, [restoreGraphic, toast]);
+  }, [restoreGraphic]);
 
   const handlePermanentDeleteGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
     setGraphicToDelete(graphic);
@@ -213,21 +206,18 @@ export function ArchiveTab() {
     const success = await permanentDeleteGraphic(graphicToDelete.id);
     if (success) {
       setSelectedArchivedIds(prev => prev.filter(id => id !== graphicToDelete.id));
-      toast({
-        title: 'Archived graphic deleted',
+      toast.success('Archived graphic deleted', {
         description: `"${graphicToDelete.title}" removed permanently.`,
       });
       setGraphicToDelete(null);
       return true;
     }
 
-    toast({
-      title: 'Delete failed',
+    toast.error('Delete failed', {
       description: 'Unable to permanently delete the archived graphic.',
-      variant: 'destructive',
     });
     return false;
-  }, [graphicToDelete, permanentDeleteGraphic, toast]);
+  }, [graphicToDelete, permanentDeleteGraphic]);
 
   const handleDuplicateGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
     setGraphicToCopy(graphic);
@@ -241,22 +231,22 @@ export function ArchiveTab() {
       // Convert ArchivedGraphic to Graphic format for copying
       const result = await archiveApi.copyFromArchived(graphicToCopy.id, title, eventName);
       if (result) {
-        toast({
-          title: 'Graphic duplicated',
+        toast.success('Graphic duplicated', {
+          
           description: `Archived graphic “${graphicToCopy.title}” copied into Active Graphics.`,
         });
         return true;
       }
     } catch (error) {
       console.error('Failed to copy archived graphic:', error);
-      toast({
-        title: 'Copy failed',
+      toast.error('Copy failed', {
+        
         description: `Unable to copy “${graphicToCopy.title}”. Please try again.`,
-        variant: 'destructive',
+        
       });
     }
     return false;
-  }, [graphicToCopy, toast]);
+  }, [graphicToCopy]);
 
   const handleViewGraphic = useCallback((graphic: Graphic | ArchivedGraphic) => {
     // Open OBS view in new tab

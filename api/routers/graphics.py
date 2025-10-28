@@ -127,6 +127,16 @@ async def delete_graphic(
     return {"message": "Graphic deleted successfully"}
 
 
+@router.get("/events")
+async def get_event_names(
+    _user: TokenData = Depends(get_active_user),
+    service: GraphicsService = Depends(get_graphics_service),
+) -> list[str]:
+    """Get list of unique event names from all graphics."""
+    payload = await execute_service(service.get_event_names)
+    return payload
+
+
 @router.delete("/graphics/{graphic_id}/permanent")
 async def permanent_delete_graphic(
     graphic_id: int,

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { EventSelector } from '@/components/graphics/EventSelector';
 import { ArrowLeft, Save, X } from 'lucide-react';
 
 interface TopBarProps {
@@ -27,42 +28,38 @@ export function TopBar({
   disabled = false 
 }: TopBarProps) {
   return (
-    <div className="border-b bg-card p-4 flex items-center justify-between">
-      <div className="flex items-center gap-4 flex-1">
-        <Button
-          variant="outline"
-          onClick={onClose}
-          disabled={saving}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-        
-        <div className="flex-1 flex gap-3">
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground">Graphic Title</label>
-            <Input
-              value={title}
-              onChange={(e) => onTitleChange(e.target.value)}
-              placeholder="Enter graphic title..."
-              className="text-lg font-semibold"
-              disabled={saving || disabled}
-            />
-          </div>
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground">Event Name</label>
-            <Input
-              value={eventName}
-              onChange={(e) => onEventNameChange(e.target.value)}
-              placeholder="Enter event name..."
-              className="text-lg font-semibold"
-              disabled={saving || disabled}
-            />
-          </div>
+    <div className="border-b bg-card p-4 flex items-center justify-between gap-4">
+      <Button
+        variant="outline"
+        onClick={onClose}
+        disabled={saving}
+      >
+        <ArrowLeft className="h-4 w-4 mr-2" />
+        Back
+      </Button>
+
+      <div className="flex-1 flex gap-3">
+        <div className="flex-1 space-y-1">
+          <label className="text-xs text-muted-foreground">Graphic Title</label>
+          <Input
+            value={title}
+            onChange={(e) => onTitleChange(e.target.value)}
+            placeholder="Enter graphic title..."
+            disabled={saving || disabled}
+          />
+        </div>
+        <div className="flex-1 space-y-1">
+          <label className="text-xs text-muted-foreground">Event Name</label>
+          <EventSelector
+            value={eventName}
+            onValueChange={onEventNameChange}
+            disabled={saving || disabled}
+            className="w-full"
+          />
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2 pb-[1px]">
         <Button
           variant="outline"
           onClick={onClose}

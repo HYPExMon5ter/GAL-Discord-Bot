@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { EventSelector } from './EventSelector';
 import { Plus } from 'lucide-react';
 
 interface CreateGraphicDialogProps {
@@ -83,17 +84,14 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
 
           <div className="space-y-2">
             <label htmlFor="eventName" className="text-sm font-medium">Event Name *</label>
-            <Input
-              id="eventName"
-              placeholder="Enter the event name..."
+            <EventSelector
               value={eventName}
-              onChange={(e) => setEventName(e.target.value)}
-              required
+              onValueChange={setEventName}
               disabled={loading}
-              maxLength={100}
+              className="w-full"
             />
             <p className="text-xs text-muted-foreground">
-              Specify the event this graphic is for (e.g., &quot;Tournament Finals&quot;, &quot;Weekly Show&quot;).
+              Select an existing event or create a new one for this graphic.
             </p>
           </div>
 

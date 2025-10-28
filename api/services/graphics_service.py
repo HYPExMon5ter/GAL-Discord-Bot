@@ -113,6 +113,18 @@ class GraphicsService:
         graphics = query.order_by(Graphic.updated_at.desc()).all()
         return [self._serialize_graphic(graphic) for graphic in graphics]
 
+    def get_event_names(self) -> List[str]:
+        """Get list of distinct event names from all graphics."""
+        result = (
+            self.db.query(Graphic.event_name)
+            .filter(Graphic.event_name.isnot(None))
+            .filter(Graphic.event_name != '')
+            .distinct()
+            .order_by(Graphic.event_name)
+            .all()
+        )
+        return [row[0] for row in result if row[0]]
+
     def get_graphic_by_id(self, graphic_id: int) -> Dict[str, Any]:
         """Return a graphic by ID or raise ``NotFoundError``."""
         graphic = self._get_graphic_or_error(graphic_id)

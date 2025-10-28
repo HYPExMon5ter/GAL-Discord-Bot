@@ -32,11 +32,22 @@ export function Combobox({
   const [open, setOpen] = React.useState(false)
   const [search, setSearch] = React.useState("")
   const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const inputRef = React.useRef<HTMLInputElement>(null)
   const [triggerWidth, setTriggerWidth] = React.useState<number>(0)
 
   React.useEffect(() => {
     if (triggerRef.current) {
       setTriggerWidth(triggerRef.current.offsetWidth)
+    }
+  }, [open])
+
+  // Auto-focus input when dropdown opens
+  React.useEffect(() => {
+    if (open && inputRef.current) {
+      // Small delay to ensure popover is fully rendered
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 0)
     }
   }, [open])
 
@@ -78,21 +89,33 @@ export function Combobox({
         align="start"
         style={{ width: triggerWidth }}
         onInteractOutside={(e) => {
-          // Prevent closing when clicking inside the popover content
-          const target = e.target as Node;
-          const popoverContent = e.currentTarget;
-          if (popoverContent.contains(target)) {
+          // Only prevent closing if clicking on the input or dropdown items
+          const target = e.target as HTMLElement;
+          const isInput = target.tagName === 'INPUT';
+          const isInsideContent = e.currentTarget.contains(target);
+          
+          if (isInput || isInsideContent) {
             e.preventDefault()
           }
         }}
       >
         <div className="p-2">
           <Input
+            ref={inputRef}
             placeholder="Search or create..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onClick={(e) => e.stopPropagation()}
-            onFocus={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && search.trim() && !options.includes(search.trim())) {
+                e.preventDefault()
+                handleCreateNew()
+              }
+              // Allow Escape to close
+              if (e.key === 'Escape') {
+                setOpen(false)
+              }
+            }}
             className="h-9"
           />
         </div>

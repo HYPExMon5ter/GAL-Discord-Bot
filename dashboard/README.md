@@ -24,17 +24,22 @@ A modern, password-gated web portal for managing live broadcast graphics. Built 
 
 ### 🔒 Lock Management
 - Single-user edit locks per graphic
-- Visual lock status indicators
-- Auto-refresh and expiration handling
-- "In Use" badges for locked content
+- Simple toast notifications when attempting to edit locked content
+- Auto-expiring locks (5 minutes)
+- No visual lock indicators in the UI
 
 ## Technology Stack
 
 - **Frontend**: Next.js 14 + TypeScript
-- **UI**: Tailwind CSS + shadcn/ui components
+- **UI**: Tailwind CSS + shadcn/ui components + Sonner for notifications
 - **State Management**: React Hooks + Context API
 - **API Integration**: Axios with FastAPI backend
 - **Authentication**: JWT tokens with secure storage
+
+### 📢 Notifications
+- Modern Sonner toast system with 5-second auto-dismiss
+- Clear, concise error messages for locked graphics
+- Toast notifications for all user actions (save, delete, create, etc.)
 
 ## Getting Started
 

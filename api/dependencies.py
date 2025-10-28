@@ -30,7 +30,7 @@ load_dotenv(os.path.join(parent_dir, ".env"))
 load_dotenv(os.path.join(parent_dir, ".env.local"), override=True)
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dashboard.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./dashboard/dashboard.db")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

@@ -39,17 +39,17 @@ export function Sidebar({
   };
 
   return (
-    <div className="w-64 border-r bg-muted flex flex-col">
+    <div className="w-64 border-r bg-muted flex flex-col overflow-hidden">
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'tools' | 'layers')}>
-        <div className="border-b bg-card p-2">
+        <div className="border-b bg-card p-2 flex-shrink-0">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="tools">Tools</TabsTrigger>
             <TabsTrigger value="layers">Layers</TabsTrigger>
           </TabsList>
         </div>
 
-        <div className="flex-1 flex flex-col">
-          <TabsContent value="tools" className="flex-1 m-0">
+        <div className="flex-1 flex flex-col min-h-0">
+          <TabsContent value="tools" className="flex-1 m-0 overflow-y-auto gal-scrollbar">
             <ToolsTab
               onAddElement={onAddElement}
               onBackgroundUpload={onBackgroundUpload}
@@ -57,7 +57,7 @@ export function Sidebar({
             />
           </TabsContent>
 
-          <TabsContent value="layers" className="flex-1 m-0">
+          <TabsContent value="layers" className="flex-1 m-0 overflow-y-auto gal-scrollbar">
             <LayersTab
               elements={elements}
               selectedElementId={selectedElementId}
@@ -69,8 +69,8 @@ export function Sidebar({
         </div>
       </Tabs>
 
-      {/* Properties Panel - Fixed at bottom */}
-      <div className="border-t bg-card">
+      {/* Properties Panel - Dynamically fills remaining space */}
+      <div className="border-t bg-card flex-1 min-h-0 overflow-y-auto gal-scrollbar">
         <PropertiesPanel
           element={selectedElement || null}
           onChange={handleElementChange}

@@ -7,7 +7,9 @@ import { ArrowLeft, Save, X } from 'lucide-react';
 
 interface TopBarProps {
   title: string;
+  eventName: string;
   onTitleChange: (title: string) => void;
+  onEventNameChange: (eventName: string) => void;
   onSave: () => void;
   onClose: () => void;
   saving?: boolean;
@@ -16,7 +18,9 @@ interface TopBarProps {
 
 export function TopBar({ 
   title, 
+  eventName,
   onTitleChange, 
+  onEventNameChange,
   onSave, 
   onClose, 
   saving = false,
@@ -27,7 +31,6 @@ export function TopBar({
       <div className="flex items-center gap-4 flex-1">
         <Button
           variant="outline"
-          size="sm"
           onClick={onClose}
           disabled={saving}
         >
@@ -35,21 +38,33 @@ export function TopBar({
           Back
         </Button>
         
-        <div className="flex-1">
-          <Input
-            value={title}
-            onChange={(e) => onTitleChange(e.target.value)}
-            placeholder="Enter graphic title..."
-            className="text-lg font-semibold"
-            disabled={saving || disabled}
-          />
+        <div className="flex-1 flex gap-3">
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground">Graphic Title</label>
+            <Input
+              value={title}
+              onChange={(e) => onTitleChange(e.target.value)}
+              placeholder="Enter graphic title..."
+              className="text-lg font-semibold"
+              disabled={saving || disabled}
+            />
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-muted-foreground">Event Name</label>
+            <Input
+              value={eventName}
+              onChange={(e) => onEventNameChange(e.target.value)}
+              placeholder="Enter event name..."
+              className="text-lg font-semibold"
+              disabled={saving || disabled}
+            />
+          </div>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
-          size="sm"
           onClick={onClose}
           disabled={saving}
         >
@@ -57,9 +72,8 @@ export function TopBar({
         </Button>
         
         <Button
-          size="sm"
           onClick={onSave}
-          disabled={saving || disabled || !title.trim()}
+          disabled={saving || disabled || !title.trim() || !eventName.trim()}
         >
           <Save className="h-4 w-4 mr-2" />
           {saving ? 'Saving...' : 'Save'}

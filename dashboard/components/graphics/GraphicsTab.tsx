@@ -316,11 +316,11 @@ export function GraphicsTab() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-2">
-            <span className="text-yellow-400">🎨</span> Active Graphics
+        <div className="flex-1">
+          <h2 className="text-3xl font-bold font-abrau gal-text-gradient-peach flex items-center justify-center gap-2">
+            Active Graphics
           </h2>
-          <p className="text-muted-foreground text-lg">
+          <p className="text-muted-foreground text-lg text-center">
             Create and manage broadcast graphics for live use
           </p>
         </div>

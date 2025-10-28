@@ -128,12 +128,12 @@ const GraphicsTableComponent = ({
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) {
-      return <ChevronUp className="h-4 w-4 text-gray-400" />;
+      return <ChevronUp className="h-4 w-4 text-muted-foreground" />;
     }
     return sortDirection === 'asc' ? (
-      <ChevronUp className="h-4 w-4 text-blue-600" />
+      <ChevronUp className="h-4 w-4 text-gal-cyan" />
     ) : (
-      <ChevronDown className="h-4 w-4 text-blue-600" />
+      <ChevronDown className="h-4 w-4 text-gal-cyan" />
     );
   };
 
@@ -148,104 +148,104 @@ const GraphicsTableComponent = ({
   const renderActionButtons = (graphic: Graphic | ArchivedGraphic) => {
     if (isArchived) {
       return (
-        <div className="flex items-center justify-center gap-1 flex-wrap">
+        <div className="flex items-center justify-center gap-1">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onDuplicate(graphic)}
-            className="h-8 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+            className="h-7 w-7 p-0 text-gal-purple hover:text-gal-purple hover:bg-gal-purple/10 gal-glow-purple/30 hover:gal-glow-purple"
             title="Duplicate graphic"
           >
-            <Copy className="h-3 w-3 mr-1" />
-            <span className="text-xs">Copy</span>
+            <Copy className="h-3 w-3" />
+            
           </Button>
           {showRestoreButton && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => resolveRestoreHandler()?.(graphic)}
-              className="h-8 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+              className="h-7 w-7 p-0 text-gal-success hover:text-gal-success hover:bg-gal-success/10 gal-glow-success/30 hover:gal-glow-success"
               title="Restore to active"
             >
-              <RotateCcw className="h-3 w-3 mr-1" />
-              <span className="text-xs">Restore</span>
+              <RotateCcw className="h-3 w-3" />
+              
             </Button>
           )}
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onDelete(graphic)}
-            className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+            className="h-7 w-7 p-0 text-gal-error hover:text-gal-error hover:bg-gal-error/10 gal-glow-error/30 hover:gal-glow-error"
             title="Delete graphic"
           >
-            <Trash2 className="h-3 w-3 mr-1" />
-            <span className="text-xs">Delete</span>
+            <Trash2 className="h-3 w-3" />
+            
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onView(graphic)}
-            className="h-8 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+            className="h-7 w-7 p-0 text-gal-cyan hover:text-gal-cyan hover:bg-gal-cyan/10 gal-glow-cyan/30 hover:gal-glow-cyan"
             title="View in OBS"
           >
-            <Eye className="h-3 w-3 mr-1" />
-            <span className="text-xs">View</span>
+            <Eye className="h-3 w-3" />
+            
           </Button>
         </div>
       );
     }
 
     return (
-      <div className="flex items-center justify-center gap-1 flex-wrap">
+      <div className="flex items-center justify-center gap-1">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => onEdit(graphic)}
-          className="h-8 px-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+          className="h-7 w-7 p-0 text-gal-cyan hover:text-gal-cyan hover:bg-gal-cyan/10 gal-glow-cyan/30 hover:gal-glow-cyan"
           title="Edit graphic"
         >
-          <Edit className="h-3 w-3 mr-1" />
-          <span className="text-xs">Edit</span>
+          <Edit className="h-3 w-3" />
+          
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => onDuplicate(graphic)}
-          className="h-8 px-2 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+          className="h-7 w-7 p-0 text-gal-purple hover:text-gal-purple hover:bg-gal-purple/10 gal-glow-purple/30 hover:gal-glow-purple"
           title="Duplicate graphic"
         >
-          <Copy className="h-3 w-3 mr-1" />
-          <span className="text-xs">Copy</span>
+          <Copy className="h-3 w-3" />
+          
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => onArchive(graphic)}
-          className="h-8 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+          className="h-7 w-7 p-0 text-gal-amber hover:text-gal-amber hover:bg-gal-amber/10 gal-glow-amber/30 hover:gal-glow-amber"
           title="Archive graphic"
         >
-          <ArchiveIcon className="h-3 w-3 mr-1" />
-          <span className="text-xs">Archive</span>
+          <ArchiveIcon className="h-3 w-3" />
+          
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => onDelete(graphic)}
-          className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+          className="h-7 w-7 p-0 text-gal-error hover:text-gal-error hover:bg-gal-error/10 gal-glow-error/30 hover:gal-glow-error"
           title="Delete graphic"
         >
-          <Trash2 className="h-3 w-3 mr-1" />
-          <span className="text-xs">Delete</span>
+          <Trash2 className="h-3 w-3" />
+          
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => onView(graphic)}
-          className="h-8 px-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+          className="h-7 w-7 p-0 text-gal-cyan hover:text-gal-cyan hover:bg-gal-cyan/10 gal-glow-cyan/30 hover:gal-glow-cyan"
           title="View in OBS"
         >
-          <Eye className="h-3 w-3 mr-1" />
-          <span className="text-xs">View</span>
+          <Eye className="h-3 w-3" />
+          
         </Button>
       </div>
     );
@@ -274,7 +274,7 @@ const GraphicsTableComponent = ({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse rounded-lg overflow-hidden">
         <thead>
-          <tr className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+          <tr className="border-b border-border/20 bg-gradient-to-r from-gal-card/50 to-gal-card/30">
             {selectable && (
               <th className="w-12 py-4 px-4">
                 <div className="flex items-center justify-center">
@@ -284,39 +284,39 @@ const GraphicsTableComponent = ({
                     checked={allVisibleSelected}
                     onChange={handleToggleSelectAllInternal}
                     aria-label={allVisibleSelected ? 'Deselect all graphics' : 'Select all graphics'}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="h-4 w-4 rounded border-border text-gal-cyan focus:ring-gal-cyan/20 bg-gal-card"
                   />
                 </div>
               </th>
             )}
-            <th className="text-center py-4 px-4 font-semibold text-gray-800">
+            <th className="text-center py-4 px-4 font-semibold font-montserrat text-gal-text-primary">
               <button
                 onClick={() => handleSort('title')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full text-sm"
+                className="flex items-center justify-center gap-1 hover:text-gal-cyan transition-colors w-full text-sm"
               >
                 Graphic Name
                 <SortIcon field="title" />
               </button>
             </th>
-            <th className="text-center py-4 px-4 font-semibold text-gray-800">
+            <th className="text-center py-4 px-4 font-semibold font-montserrat text-gal-text-primary">
               <button
                 onClick={() => handleSort('event_name')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full text-sm"
+                className="flex items-center justify-center gap-1 hover:text-gal-cyan transition-colors w-full text-sm"
               >
                 Event Name
                 <SortIcon field="event_name" />
               </button>
             </th>
-            <th className="text-center py-4 px-4 font-semibold text-gray-800">
+            <th className="text-center py-4 px-4 font-semibold font-montserrat text-gal-text-primary">
               <button
                 onClick={() => handleSort(isArchived ? 'archived_at' : 'updated_at')}
-                className="flex items-center justify-center gap-1 hover:text-blue-600 transition-colors w-full text-sm"
+                className="flex items-center justify-center gap-1 hover:text-gal-cyan transition-colors w-full text-sm"
               >
                 {isArchived ? 'Archive Date' : 'Last Edited'}
                 <SortIcon field={isArchived ? 'archived_at' : 'updated_at'} />
               </button>
             </th>
-            <th className="text-center py-4 px-4 font-semibold text-gray-800">
+            <th className="text-center py-4 px-4 font-semibold font-montserrat text-gal-text-primary">
               <div className="flex items-center justify-center text-sm">Actions</div>
             </th>
           </tr>
@@ -325,13 +325,13 @@ const GraphicsTableComponent = ({
           {sortedGraphics.map((graphic, index) => {
             const isSelected = selectable && selectedSet.has(graphic.id);
             const rowBorder =
-              index === sortedGraphics.length - 1 ? 'border-transparent' : 'border-gray-100';
+              index === sortedGraphics.length - 1 ? 'border-transparent' : 'border-border/10';
 
             return (
               <tr
                 key={graphic.id}
-                className={`border-b ${rowBorder} ${
-                  isSelected ? 'bg-blue-50/70 dark:bg-blue-900/30' : 'bg-white dark:bg-slate-900'
+                className={`border-b ${rowBorder} gal-table-row ${
+                  isSelected ? 'selected' : ''
                 }`}
               >
                 {selectable && (
@@ -344,23 +344,23 @@ const GraphicsTableComponent = ({
                         aria-label={
                           isSelected ? `Deselect ${graphic.title}` : `Select ${graphic.title}`
                         }
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-border text-gal-cyan focus:ring-gal-cyan/20 bg-gal-card"
                       />
                     </div>
                   </td>
                 )}
                 <td className="text-center py-4 px-4">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100">
+                  <div className="font-semibold font-montserrat text-gal-text-primary">
                     {graphic.title}
                   </div>
                 </td>
                 <td className="text-center py-4 px-4">
-                  <div className="text-gray-600 dark:text-gray-300 font-medium">
-                    {graphic.event_name || <span className="text-gray-400 italic">No event</span>}
+                  <div className="font-montserrat text-gal-text-secondary font-medium">
+                    {graphic.event_name || <span className="text-muted-foreground italic">No event</span>}
                   </div>
                 </td>
                 <td className="text-center py-4 px-4">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                  <div className="text-sm font-montserrat text-muted-foreground">
                     {getDisplayDate(graphic)}
                   </div>
                 </td>

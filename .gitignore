@@ -21,6 +21,9 @@ gal_bot.log
 # Data storage
 persisted_views.json
 waitlist_data.json
+dashboard.db
+api/dashboard.db
+dashboard/dashboard.db
 
 # Temp
 .claude

@@ -50,7 +50,6 @@ class GraphicListResponse(BaseModel):
 class CanvasLockBase(BaseModel):
     """Base schema for canvas locks"""
     graphic_id: int
-    user_name: str
 
 
 class CanvasLockCreate(CanvasLockBase):

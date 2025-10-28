@@ -34,11 +34,11 @@ export function useLocks() {
     getLockForGraphic,
     isLockedByUser: (graphicId: number, username: string): boolean => {
       const lock = getLockForGraphic(graphicId);
-      return lock?.locked === true && lock?.user_name === username;
+      return lock?.locked === true;
     },
     isLockedByOtherUser: (graphicId: number, username: string): boolean => {
       const lock = getLockForGraphic(graphicId);
-      return lock?.locked === true && lock?.user_name !== username;
+      return lock?.locked === true;
     },
   };
 }

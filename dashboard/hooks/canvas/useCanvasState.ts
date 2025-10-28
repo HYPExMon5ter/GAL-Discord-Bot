@@ -42,7 +42,7 @@ export function useCanvasState(initialJson?: string) {
     setCanvas(prev => ({
       ...prev,
       elements: prev.elements.map(el => 
-        el.id === elementId ? { ...el, ...updates } : el
+        el.id === elementId ? { ...el, ...updates } as CanvasElement : el
       )
     }));
   }, []);

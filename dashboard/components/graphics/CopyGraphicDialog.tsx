@@ -19,7 +19,7 @@ export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }:
   const [title, setTitle] = useState('');
   const [eventName, setEventName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { username } = useAuth();
+  
 
   // Reset form when dialog opens or source graphic changes
   React.useEffect(() => {
@@ -115,7 +115,6 @@ export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }:
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={handleClose}
               disabled={loading}
             >
@@ -123,7 +122,6 @@ export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }:
             </Button>
             <Button
               type="submit"
-              size="sm"
               disabled={!title.trim() || !eventName.trim() || loading}
             >
               {loading ? 'Copying...' : 'Copy Graphic'}

@@ -7,7 +7,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { GraphicsTab } from '@/components/graphics/GraphicsTab';
 import { ArchiveTab } from '@/components/archive/ArchiveTab';
 import { RefreshCw } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 
 export default function DashboardPage() {
   const { isAuthenticated, loading } = useAuth();
@@ -35,34 +35,32 @@ export default function DashboardPage() {
     return null;
   }
 
+  // Create toolbar with navigation buttons
+  const toolbar = (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setActiveTab('graphics')}
+        className={`gal-button-tab ${activeTab === 'graphics' ? 'active' : ''}`}
+      >
+        Active Graphics
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setActiveTab('archive')}
+        className={`gal-button-tab ${activeTab === 'archive' ? 'active' : ''}`}
+      >
+        Archived Graphics
+      </Button>
+    </>
+  );
+
   return (
-    <DashboardLayout>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 bg-card p-1 rounded-xl gal-card">
-          <TabsTrigger
-            value="graphics"
-            className="flex items-center gap-2 data-[state=active]:gal-button-primary data-[state=active]:text-white text-muted-foreground hover:text-foreground transition-all duration-200 rounded-lg"
-          >
-            <span className="text-yellow-300">✨</span>
-            Active Graphics
-          </TabsTrigger>
-          <TabsTrigger
-            value="archive"
-            className="flex items-center gap-2 data-[state=active]:gal-button-primary data-[state=active]:text-white text-muted-foreground hover:text-foreground transition-all duration-200 rounded-lg"
-          >
-            <span className="text-orange-300">🗂️</span>
-            Archived Graphics
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="graphics" className="mt-6">
-          <GraphicsTab />
-        </TabsContent>
-
-        <TabsContent value="archive" className="mt-6">
-          <ArchiveTab />
-        </TabsContent>
-      </Tabs>
+    <DashboardLayout toolbar={toolbar}>
+      {activeTab === 'graphics' && <GraphicsTab />}
+      {activeTab === 'archive' && <ArchiveTab />}
     </DashboardLayout>
   );
 }

@@ -266,11 +266,11 @@ export function ArchiveTab() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent flex items-center gap-2">
-            <span className="text-orange-400">📦</span> Archived Graphics
+        <div className="flex-1">
+          <h2 className="text-3xl font-bold font-abrau gal-text-gradient-twilight flex items-center justify-center gap-2">
+            Archived Graphics
           </h2>
-          <p className="text-muted-foreground text-lg">
+          <p className="text-muted-foreground text-lg text-center">
             View and restore previously archived broadcast graphics
           </p>
         </div>

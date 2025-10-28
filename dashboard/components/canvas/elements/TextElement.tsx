@@ -57,6 +57,9 @@ export function TextElementComponent({
         fontSize: element.fontSize,
         fontFamily: element.fontFamily,
         color: element.color,
+        fontWeight: element.bold ? 'bold' : 'normal',
+        fontStyle: element.italic ? 'italic' : 'normal',
+        textDecoration: element.underline ? 'underline' : 'none',
         whiteSpace: 'nowrap',
         // Hardware acceleration only during drag
         willChange: isDragging ? 'transform' : 'auto',

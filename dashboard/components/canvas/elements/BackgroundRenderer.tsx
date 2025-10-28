@@ -20,7 +20,7 @@ export function BackgroundRenderer({ background, style, children }: BackgroundRe
           <p className="text-xl font-medium mb-2">No Background</p>
           <p className="text-sm">Upload an image to get started</p>
           <p className="text-xs mt-4 text-gray-500">
-            Use the "Upload Background" button in the sidebar
+            Use the &quot;Upload Background&quot; button in the sidebar
           </p>
         </div>
         {/* Children (elements) should be visible even without background */}

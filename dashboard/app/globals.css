@@ -5,51 +5,51 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 262 83% 60%; /* GAL Primary Purple #7A3FF2 */
-    --primary-foreground: 210 40% 98%;
-    --secondary: 187 100% 50%; /* GAL Secondary Cyan #00E0FF */
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 262 83% 60%; /* GAL Purple accent */
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 100% 63%; /* GAL Error #FF5F5F */
-    --destructive-foreground: 210 40% 98%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%; /* GAL Primary Purple #7A3FF2 */
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%; /* GAL Secondary Cyan #00E0FF */
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%; /* GAL Purple accent */
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%; /* GAL Error #FF5F5F */
+    --destructive-foreground: 0 0% 98%;
     --success: 169 100% 65%; /* GAL Success #4EFFB0 */
     --success-foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 262 83% 60%; /* GAL Purple ring */
-    --radius: 0.75rem; /* 12px radius for GAL style */
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%; /* GAL Purple ring */
+    --radius: 0.5rem; /* 12px radius for GAL style */ --chart-1: 12 76% 61%; --chart-2: 173 58% 39%; --chart-3: 197 37% 24%; --chart-4: 43 74% 66%; --chart-5: 27 87% 67%;
   }
 
   .dark {
-    --background: 250 50% 4%; /* GAL Deep Background #0A0A0F */
-    --foreground: 0 0% 100%; /* GAL Text Primary #FFFFFF */
-    --card: 250 25% 10%; /* GAL Card/Surface Layer #161626 */
-    --card-foreground: 0 0% 100%; /* GAL Text Primary #FFFFFF */
-    --popover: 250 25% 10%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 262 83% 60%; /* GAL Primary Purple #7A3FF2 */
-    --primary-foreground: 0 0% 100%;
+    --background: 220 30% 4%; /* GAL Deep Background #0A0A0F */
+    --foreground: 0 0% 98%; /* GAL Text Primary #FFFFFF */
+    --card: 220 28% 9%; /* GAL Card/Surface Layer #161626 */
+    --card-foreground: 0 0% 98%; /* GAL Text Primary #FFFFFF */
+    --popover: 220 30% 4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 268 100% 62%; /* GAL Primary Purple #7A3FF2 */
+    --primary-foreground: 0 0% 4%;
     --secondary: 187 100% 50%; /* GAL Secondary Cyan #00E0FF */
-    --secondary-foreground: 250 25% 10%;
-    --muted: 250 20% 15%; /* Dark muted background */
-    --muted-foreground: 240 10% 77%; /* GAL Text Secondary #C5C5D1 */
-    --accent: 262 83% 60%; /* GAL Purple accent */
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 100% 63%; /* GAL Error #FF5F5F */
-    --destructive-foreground: 0 0% 100%;
+    --secondary-foreground: 0 0% 4%;
+    --muted: 220 28% 12%; /* Dark muted background */
+    --muted-foreground: 0 0% 75%; /* GAL Text Secondary #C5C5D1 */
+    --accent: 268 100% 62%; /* GAL Purple accent */
+    --accent-foreground: 0 0% 4%;
+    --destructive: 354 100% 68%; /* GAL Error #FF5F5F */
+    --destructive-foreground: 0 0% 98%;
     --success: 169 100% 65%; /* GAL Success #4EFFB0 */
-    --success-foreground: 250 25% 10%;
-    --border: 250 25% 15%; /* GAL Dark borders */
-    --input: 250 25% 15%;
-    --ring: 262 83% 60%; /* GAL Purple ring */
+    --success-foreground: 220 30% 4%;
+    --border: 220 28% 20%; /* GAL Dark borders */
+    --input: 220 28% 20%;
+    --ring: 268 100% 62%; /* GAL Purple ring */ --chart-1: 220 70% 50%; --chart-2: 160 60% 45%; --chart-3: 30 80% 55%; --chart-4: 280 65% 60%; --chart-5: 340 75% 55%;
   }
 }
 
@@ -134,6 +134,18 @@
   box-shadow: 0 0 20px hsl(187 100% 50% / 0.3);
 }
 
+.gal-glow-success {
+  box-shadow: 0 0 20px hsl(169 100% 65% / 0.3);
+}
+
+.gal-glow-error {
+  box-shadow: 0 0 20px hsl(354 100% 68% / 0.3);
+}
+
+.gal-glow-amber {
+  box-shadow: 0 0 20px hsl(36 92% 56% / 0.3);
+}
+
 .gal-gradient-primary {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
 }
@@ -145,10 +157,95 @@
   background-clip: text;
 }
 
+/* GAL Gradient Text Styles - Beautiful, Soft & Girly Variations */
+
+/* Dreamy Pink-Purple - Main header */
+.gal-text-gradient-primary {
+  background: linear-gradient(135deg, #F082BE 0%, #B3A8D4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: bold;
+}
+
+/* Peach Blossom - Active Graphics */
+.gal-text-gradient-peach {
+  background: linear-gradient(135deg, #FFDCF2 0%, #F082BE 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: bold;
+}
+
+/* Twilight Blue-Purple - Archive Graphics */
+.gal-text-gradient-twilight {
+  background: linear-gradient(135deg, #DEE4FF 0%, #CA9ACC 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: bold;
+}
+
+/* Sunset Glow - Beautiful orange and pink sunset */
+.gal-text-gradient-secondary {
+  background: linear-gradient(135deg, #FF8A50 0%, #FF6B9D 50%, #C44569 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 600;
+}
+
+/* Soft Sunset - Gentle sunset with orange and pink */
+.gal-text-gradient-sunset {
+  background: linear-gradient(135deg, #FFA07A 0%, #FF8FA3 50%, #FF6B9D 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 600;
+}
+
+/* Cotton Candy - Alternative soft gradient */
+.gal-text-gradient-soft {
+  background: linear-gradient(135deg, #FFDCF2 0%, #DEE4FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 500;
+}
+
 .gal-button-primary {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
   border: 1px solid hsl(var(--primary) / 0.5);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.gal-button-tab {
+  color: hsl(var(--muted-foreground));
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  border: 1px solid hsl(var(--border) / 0.3);
+  background: hsl(var(--card));
+}
+
+.gal-button-tab:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 0.5);
+  border-color: hsl(var(--primary) / 0.2);
+}
+
+.gal-button-tab.active {
+  background: linear-gradient(135deg, #FFDCF2 0%, #DEE4FF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 600;
+  border: none;
+  position: relative;
+  color: transparent; /* Fallback for browsers that don't support background-clip */
 }
 
 .gal-button-primary:hover {
@@ -181,4 +278,40 @@
 
 .gal-scrollbar::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--primary) / 0.5);
+}
+
+/* Removed celestial decorations for cleaner header */
+
+/* Color-coded Toast Styles */
+[data-sonner-toaster][data-theme="dark"] {
+  --normal-bg: hsl(var(--muted));
+  --normal-border: hsl(var(--border));
+  --normal-text: hsl(var(--foreground));
+  --success-bg: hsl(169 100% 65% / 0.9);
+  --success-border: hsl(169 100% 65%);
+  --success-text: hsl(220 30% 4%);
+  --error-bg: hsl(354 100% 68% / 0.9);
+  --error-border: hsl(354 100% 68%);
+  --error-text: hsl(0 0% 98%);
+  --info-bg: hsl(var(--primary) / 0.9);
+  --info-border: hsl(var(--primary));
+  --info-text: hsl(0 0% 98%);
+  --warning-bg: hsl(36 92% 56% / 0.9);
+  --warning-border: hsl(36 92% 56%);
+  --warning-text: hsl(220 30% 4%);
+}
+
+/* Table styling for better dark mode readability */
+.gal-table-row:nth-child(even) {
+  background-color: hsl(var(--muted) / 0.3);
+}
+
+.gal-table-row:hover {
+  background-color: hsl(var(--primary) / 0.1);
+  transition: background-color 0.2s ease;
+}
+
+.gal-table-row.selected {
+  background-color: hsl(var(--primary) / 0.2);
+  border-left: 3px solid hsl(var(--primary));
 }

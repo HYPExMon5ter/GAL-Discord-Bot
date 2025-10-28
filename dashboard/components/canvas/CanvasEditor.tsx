@@ -21,6 +21,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
   const { acquireLock, releaseLock, refreshLock } = useLocks();
   
   const [title, setTitle] = useState(graphic.title);
+  const [eventName, setEventName] = useState(graphic.event_name || '');
   const [saving, setSaving] = useState(false);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [lock, setLock] = useState<CanvasLock | null>(null);
@@ -195,9 +196,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
 
   // Handle save
   const handleSave = async () => {
-    if (!title.trim()) {
-      toast.error('Missing title', {
-        description: 'Please enter a title before saving.',
+    if (!title.trim() || !eventName.trim()) {
+      toast.error('Missing fields', {
+        description: 'Please enter both title and event name before saving.',
       });
       return;
     }
@@ -206,7 +207,7 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     try {
       const success = await onSave({
         title: title.trim(),
-        event_name: graphic.event_name || '',
+        event_name: eventName.trim(),
         data_json: getSerializedData(),
       });
 
@@ -241,6 +242,11 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
     setTitle(newTitle);
   }, []);
 
+  // Handle event name change
+  const handleEventNameChange = useCallback((newEventName: string) => {
+    setEventName(newEventName);
+  }, []);
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -259,7 +265,9 @@ export function CanvasEditor({ graphic, onClose, onSave }: CanvasEditorProps) {
       {/* Top Bar */}
       <TopBar
         title={title}
+        eventName={eventName}
         onTitleChange={handleTitleChange}
+        onEventNameChange={handleEventNameChange}
         onSave={handleSave}
         onClose={handleClose}
         saving={saving}

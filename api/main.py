@@ -41,14 +41,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins since we're not using credentials
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS middleware will be added after all other middleware to ensure proper order
 
 # Pydantic models
 class Token(BaseModel):
@@ -194,13 +187,22 @@ async def shutdown_event():
 
 
 
-# Import and include routers
+# Import middleware and routers
 from .routers import configuration, graphics, standings, tournaments, users, websocket, ign_verification
 from .middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 
-# Add custom middleware
+# Add custom middleware first (they will execute in reverse order)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add CORS middleware last (so it executes first in the middleware chain)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins since we're not using credentials
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Include API routers
 app.include_router(tournaments.router, prefix="/api/v1/tournaments", tags=["tournaments"])

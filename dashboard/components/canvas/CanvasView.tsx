@@ -137,25 +137,9 @@ export function CanvasView({ graphicId, onError, className }: CanvasViewProps) {
           })}
         </BackgroundRenderer>
 
-        {/* No Data Overlay */}
-        {canvas.elements.some(el => el.type !== 'text') && players.length === 0 && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <div className="text-center text-white">
-              <p className="text-lg font-medium">No Tournament Data</p>
-              <p className="text-sm">Dynamic elements will show real data when available</p>
-            </div>
-          </div>
-        )}
+  
 
-        {/* Debug Info (development only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="absolute top-4 left-4 bg-black/80 text-white text-xs p-2 rounded">
-            <div>Graphic ID: {graphicId}</div>
-            <div>Elements: {canvas.elements.length}</div>
-            <div>Players: {players.length}</div>
-            <div>Canvas: {canvasSize.width}x{canvasSize.height}</div>
-          </div>
-        )}
+  
       </div>
     </div>
   );

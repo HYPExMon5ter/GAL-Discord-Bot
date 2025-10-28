@@ -7,7 +7,6 @@ import { authApi } from '@/lib/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  username: string | null;
   login: (masterPassword: string) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
@@ -17,7 +16,6 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [username, setUsername] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -26,7 +24,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (token) {
       setIsAuthenticated(true);
-      setUsername('Dashboard User');
     }
     
     setLoading(false);
@@ -40,7 +37,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('expires_at', new Date(Date.now() + response.expires_in * 1000).toISOString());
       
       setIsAuthenticated(true);
-      setUsername('Dashboard User');
       
       return true;
     } catch (error) {
@@ -62,7 +58,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('expires_at');
       
       setIsAuthenticated(false);
-      setUsername(null);
       
       router.push('/login');
     }
@@ -91,7 +86,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthContextType = {
     isAuthenticated,
-    username,
     login,
     logout,
     loading,

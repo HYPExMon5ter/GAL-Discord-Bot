@@ -99,14 +99,6 @@ export function ToolsTab({ onAddElement, onBackgroundUpload, disabled = false }:
         </div>
       </div>
 
-      {/* Quick Tips */}
-      <div className="text-xs text-muted-foreground space-y-1">
-        <p className="font-medium">Quick Tips:</p>
-        <p>• Text elements show static content</p>
-        <p>• Dynamic elements show mock data in editor</p>
-        <p>• View mode displays real tournament data</p>
-        <p>• Drag elements to position them</p>
-      </div>
     </div>
   );
 }

@@ -6,9 +6,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, Lock, Sparkles, Shield } from 'lucide-react';
+import { AlertCircle, Lock, Shield } from 'lucide-react';
 
 export function LoginForm() {
   const [masterPassword, setMasterPassword] = useState('');
@@ -45,71 +44,74 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gal-deep-bg via-gal-card to-gal-deep-bg p-4">
-      <div className="absolute inset-0 bg-gradient-to-br from-gal-purple/10 via-transparent to-gal-cyan/10"></div>
+    <div className="min-h-screen flex items-center justify-center bg-gal-deep-bg p-4">
+      
       <Card className="w-full max-w-md border-border/20 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 gal-card relative z-10">
-        <CardHeader className="space-y-1 text-center">
+        <CardHeader className="space-y-4 text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-20 h-20 gal-gradient-primary rounded-2xl flex items-center justify-center text-white font-bold text-2xl gal-glow-primary">
+            <div className="w-24 h-24 gal-gradient-primary rounded-xl flex items-center justify-center text-white font-abrau text-3xl gal-glow-primary">
               GAL
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold gal-gradient-text flex items-center justify-center gap-2">
-            <span className="text-yellow-300">✨</span> Live Graphics Dashboard
+          <CardTitle className="text-4xl font-abrau font-bold text-gal-text-primary">
+            GUARDIAN ANGEL LEAGUE
           </CardTitle>
-          <CardDescription className="text-lg flex items-center justify-center gap-2 text-muted-foreground">
-            <span className="text-gal-cyan">🔐</span> Enter the master password to access the dashboard
+          <CardDescription className="text-xl font-montserrat text-gal-text-secondary">
+            Live Graphics Dashboard
+          </CardDescription>
+          <CardDescription className="text-base font-montserrat text-muted-foreground">
+            Enter the master password to access the dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="masterPassword" className="flex items-center gap-2 text-gal-purple font-semibold">
-                <span className="text-gal-cyan">🔑</span> Master Password
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-3">
+              <Label htmlFor="masterPassword" className="flex items-center gap-2 text-gal-cyan font-semibold font-montserrat text-base">
+                <Shield className="h-5 w-5" />
+                Master Password
               </Label>
               <Input
                 id="masterPassword"
                 type="password"
-                placeholder="🔒 Enter the master password"
+                placeholder="Enter the master password"
                 value={masterPassword}
                 onChange={(e) => setMasterPassword(e.target.value)}
                 required
                 disabled={loading}
-                className="border-border/30 focus:border-primary focus:ring-primary/20 bg-background"
+                className="border-border/30 focus:border-gal-cyan focus:ring-gal-cyan/20 bg-gal-card text-gal-text-primary placeholder:text-muted-foreground/60 rounded-gal"
               />
             </div>
             
             {error && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-gradient-to-r from-red-500/10 to-orange-500/10 border border-red-500/30 text-red-300">
-                <AlertCircle className="h-5 w-5 text-red-400" />
-                <span className="text-sm flex items-center gap-1">
-                  <span className="text-red-400">⚠️</span> {error}
-                </span>
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-gradient-to-r from-gal-error/10 to-transparent border border-gal-error/30 text-gal-error">
+                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                <span className="text-sm font-montserrat">{error}</span>
               </div>
             )}
             
             <Button
               type="submit"
-              className="w-full gal-button-primary text-white font-semibold transition-all duration-300"
+              className="w-full gal-button-primary text-white font-semibold font-montserrat text-base py-3 rounded-gal transition-all duration-300"
               disabled={loading}
             >
-              <span className="flex items-center gap-2">
+              <span className="flex items-center justify-center gap-2">
                 {loading ? (
                   <>
-                    <span className="animate-spin">⏳</span> Authenticating...
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Authenticating...
                   </>
                 ) : (
                   <>
-                    <Sparkles className="h-4 w-4" />
-                    Access Dashboard <span className="text-yellow-300">🚀</span>
+                    <Lock className="h-4 w-4" />
+                    Access Dashboard
                   </>
                 )}
               </span>
             </Button>
           </form>
           
-          <div className="mt-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
-            <span className="text-gal-cyan">🛡️</span> Guardian Angel League - Live Graphics Dashboard v2.0
+          <div className="mt-8 text-center text-xs text-muted-foreground font-montserrat">
+            Guardian Angel League - Live Graphics Dashboard
           </div>
         </CardContent>
       </Card>

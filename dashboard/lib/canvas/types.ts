@@ -22,6 +22,9 @@ export interface BaseElement {
   fontSize: number;
   fontFamily: string;
   color: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
 }
 
 export interface TextElement extends BaseElement {

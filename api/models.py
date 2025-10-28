@@ -42,13 +42,12 @@ class Graphic(Base):
 
 
 class CanvasLock(Base):
-    """Model for canvas editing locks"""
+    """Model for canvas editing locks - simplified for single shared login"""
 
     __tablename__ = "canvas_locks"
 
     id = Column(Integer, primary_key=True, index=True)
-    graphic_id = Column(Integer, ForeignKey("graphics.id"), nullable=False, index=True)
-    user_name = Column(String(255), nullable=False, index=True)
+    graphic_id = Column(Integer, ForeignKey("graphics.id"), nullable=False, unique=True, index=True)
     locked = Column(Boolean, default=True, nullable=False)
     locked_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -58,14 +57,13 @@ class CanvasLock(Base):
 
     # Indexes for performance
     __table_args__ = (
-        Index("idx_graphic_user_lock", "graphic_id", "user_name", "locked"),
         Index("idx_expires_active", "expires_at", "locked"),
     )
 
     def __repr__(self):
         return (
             f"<CanvasLock(id={self.id}, graphic_id={self.graphic_id}, "
-            f"user='{self.user_name}', locked={self.locked})>"
+            f"locked={self.locked})>"
         )
 
 

@@ -87,6 +87,9 @@ export function DynamicListComponent({
             fontSize: element.fontSize,
             fontFamily: element.fontFamily,
             color: element.color,
+            fontWeight: element.bold ? 'bold' : 'normal',
+            fontStyle: element.italic ? 'italic' : 'normal',
+            textDecoration: element.underline ? 'underline' : 'none',
             marginBottom: index < displayData.length - 1 ? element.spacing : 0,
             whiteSpace: 'nowrap',
           }}
@@ -106,7 +109,7 @@ function getRealData(element: DynamicElement, players: PlayerData[]): string[] {
     
     case 'scores':
       if (element.roundId && element.roundId !== 'total') {
-        return players.map(p => p.round_scores?.[element.roundId]?.toString() || '0');
+        return players.map(p => p.round_scores?.[element.roundId!]?.toString() || '0');
       }
       return players.map(p => p.total_points.toString());
     

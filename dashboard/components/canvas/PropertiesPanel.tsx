@@ -3,6 +3,9 @@
 import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Bold, Italic, Underline } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { CanvasElement } from '@/lib/canvas/types';
 
 interface PropertiesPanelProps {
@@ -17,6 +20,9 @@ const FONT_OPTIONS = [
   { value: 'Georgia', label: 'Georgia' },
   { value: 'Verdana', label: 'Verdana' },
   { value: 'Times New Roman', label: 'Times New Roman' },
+  { value: 'Abrau Regular', label: 'Abrau Regular' },
+  { value: 'Montserrat', label: 'Montserrat' },
+  { value: 'Bebas Neue Regular', label: 'Bebas Neue Regular' },
 ];
 
 const ROUND_OPTIONS = [
@@ -111,6 +117,52 @@ export function PropertiesPanel({ element, onChange, disabled = false }: Propert
           onChange={(e) => handleChange('color', e.target.value)}
           disabled={disabled}
         />
+      </div>
+
+      {/* Text Formatting */}
+      <div>
+        <label className="text-xs text-muted-foreground">Text Formatting</label>
+        <div className="flex gap-1">
+          <Button
+            type="button"
+            variant={element.bold ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleChange('bold', !element.bold)}
+            disabled={disabled}
+            className={cn(
+              "px-2 h-8",
+              element.bold && "bg-primary text-primary-foreground"
+            )}
+          >
+            <Bold className="h-3 w-3" />
+          </Button>
+          <Button
+            type="button"
+            variant={element.italic ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleChange('italic', !element.italic)}
+            disabled={disabled}
+            className={cn(
+              "px-2 h-8",
+              element.italic && "bg-primary text-primary-foreground"
+            )}
+          >
+            <Italic className="h-3 w-3" />
+          </Button>
+          <Button
+            type="button"
+            variant={element.underline ? "default" : "outline"}
+            size="sm"
+            onClick={() => handleChange('underline', !element.underline)}
+            disabled={disabled}
+            className={cn(
+              "px-2 h-8",
+              element.underline && "bg-primary text-primary-foreground"
+            )}
+          >
+            <Underline className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
 
       {/* Dynamic Element Controls */}

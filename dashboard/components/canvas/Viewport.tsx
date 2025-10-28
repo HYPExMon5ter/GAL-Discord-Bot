@@ -61,7 +61,7 @@ export function Viewport({
   const { snapLines, calculateSnap, clearSnapLines } = useSnapping();
 
   // Handle element position update
-  const handleElementPositionUpdate = (elementId: string, x: number, y: number) => {
+  const handleElementPositionUpdate = useCallback((elementId: string, x: number, y: number) => {
     if (mode === 'editor' && !disabled) {
       const constrained = constrainToCanvas(
         x, y,
@@ -70,7 +70,7 @@ export function Viewport({
       );
       onUpdateElement(elementId, { x: constrained.x, y: constrained.y });
     }
-  };
+  }, [mode, disabled, canvas.background?.width, canvas.background?.height, onUpdateElement]);
 
   // Clear dimension cache when elements change
   useEffect(() => {

@@ -72,7 +72,7 @@ ping_user: <@162359821100646401>
 
 # Tournament settings
 tournament:
-  current_name: Your Tournament Name       # Current tournament name
+  current_name: Curse of the Carousel      # Current tournament name (update with your current tournament)
 
 # Google Sheets configuration
 sheet_configuration:
@@ -102,3 +102,19 @@ cache_refresh_seconds: 600                 # Cache refresh interval in seconds (
 # Note: This section contains all embed messages for the bot
 # Full configuration is available in the complete config.yaml file
 # This example shows the basic structure needed
+
+# EMBED CONFIGURATION - Full embed messages are available in the main config
+# The complete config includes:
+# - Registration success messages
+# - Registration management messages  
+# - Check-in management messages
+# - Tournament hub interface
+# - Action confirmation messages
+# - Waitlist messages
+# - Team management messages
+# - Reminder messages
+# - System messages
+# - Schedule management messages
+# - Event mode messages
+# - Error and permission messages
+# - Help command messages

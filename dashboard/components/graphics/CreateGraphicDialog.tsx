@@ -18,7 +18,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
   const [title, setTitle] = useState('');
   const [eventName, setEventName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { username } = useAuth();
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +101,6 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
             <Button
               type="button"
               variant="outline"
-              size="sm"
               onClick={handleClose}
               disabled={loading}
             >
@@ -109,7 +108,6 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
             </Button>
             <Button
               type="submit"
-              size="sm"
               disabled={!title.trim() || !eventName.trim() || loading}
             >
               {loading ? 'Creating...' : 'Create & Start Editing'}

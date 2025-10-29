@@ -315,7 +315,7 @@ export function GraphicsTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 items-start justify-start">
+      <div className="flex flex-col gap-4 items-center justify-center">
         <div className="flex-1">
           <h2 className="text-3xl font-bold font-abrau gal-text-gradient-peach flex items-center justify-center gap-2">
             Active Graphics

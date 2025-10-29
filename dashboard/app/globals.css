@@ -247,17 +247,7 @@
   transform: scale(1.02);
 }
 
-/* Add active indicator line */
-.gal-button-tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #F082BE 0%, #B3A8D4 100%);
-  border-radius: 3px 3px 0 0;
-}
+
 
 .gal-button-primary:hover {
   box-shadow: 0 0 25px hsl(var(--primary) / 0.4);

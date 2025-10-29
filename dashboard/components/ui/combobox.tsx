@@ -44,10 +44,10 @@ export function Combobox({
   // Auto-focus input when dropdown opens
   React.useEffect(() => {
     if (open && inputRef.current) {
-      // Small delay to ensure popover is fully rendered
+      // Delay to ensure popover is fully rendered
       setTimeout(() => {
         inputRef.current?.focus()
-      }, 0)
+      }, 50)
     }
   }, [open])
 
@@ -85,11 +85,11 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent 
-        className="p-0 z-[100]" 
+        className="p-0 z-[70]" 
         align="start"
         style={{ width: triggerWidth }}
         onInteractOutside={(e) => {
-          // Only prevent closing if clicking on the input or dropdown items
+          // Don't close if clicking inside the popover content or the input
           const target = e.target as HTMLElement;
           const isInput = target.tagName === 'INPUT';
           const isInsideContent = e.currentTarget.contains(target);
@@ -98,6 +98,14 @@ export function Combobox({
             e.preventDefault()
           }
         }}
+        // Prevent focus trap issues
+        onOpenAutoFocus={(e) => {
+          e.preventDefault()
+          // Manually focus the input after popover opens
+          setTimeout(() => {
+            inputRef.current?.focus()
+          }, 50)
+        }}
       >
         <div className="p-2">
           <Input
@@ -105,7 +113,6 @@ export function Combobox({
             placeholder="Search or create..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && search.trim() && !options.includes(search.trim())) {
                 e.preventDefault()
@@ -117,6 +124,9 @@ export function Combobox({
               }
             }}
             className="h-9"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
           />
         </div>
         <div className="max-h-[300px] overflow-y-auto gal-scrollbar">

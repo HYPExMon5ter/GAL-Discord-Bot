@@ -193,13 +193,18 @@ Add events endpoint typing (optional).
 ## Implementation Status
 
 - [x] Create task plan file
-- [ ] Commit current changes
-- [ ] Install @radix-ui/react-popover
-- [ ] Create Popover component (if not exists)
-- [ ] Create Combobox component
-- [ ] Create EventSelector component
-- [ ] Add backend API endpoint and service method
-- [ ] Update CreateGraphicDialog
-- [ ] Update CopyGraphicDialog
-- [ ] Update Canvas TopBar
+- [x] Commit current changes
+- [x] Install @radix-ui/react-popover
+- [x] Create Popover component (if not exists)
+- [x] Create Combobox component
+- [x] Create EventSelector component
+- [x] Add backend API endpoint and service method
+- [x] Update CreateGraphicDialog
+- [x] Update CopyGraphicDialog
+- [x] Update Canvas TopBar
+- [x] Commit event dropdown implementation
+- [x] Fix dropdown interaction issues (input closing dropdown)
+- [x] Fix dropdown width to match trigger button
+- [x] Fix input focus and typing issues
+- [x] Fix z-index conflicts between dialog and dropdown
 - [ ] Test complete workflow

@@ -44,6 +44,13 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
     }
   };
 
+  // Handle form submission from EventSelector
+  const handleQuickSubmit = async () => {
+    if (!title.trim() || !eventName.trim()) return;
+    
+    await handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+  };
+
   const handleClose = () => {
     if (!loading) {
       setTitle('');
@@ -54,7 +61,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent>
+      <DialogContent onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
@@ -67,7 +74,7 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="title" className="text-sm font-medium">Graphic Title</label>
+            <label htmlFor="title" className="text-sm font-medium">Graphic Title *</label>
             <Input
               id="title"
               placeholder="Enter a descriptive title for this graphic..."
@@ -89,6 +96,8 @@ export function CreateGraphicDialog({ open, onOpenChange, onCreate }: CreateGrap
               onValueChange={setEventName}
               disabled={loading}
               className="w-full"
+              graphicTitle={title}
+              onSubmit={handleQuickSubmit}
             />
             <p className="text-xs text-muted-foreground">
               Select an existing event or create a new one for this graphic.

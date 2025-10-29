@@ -103,6 +103,7 @@ export function CopyGraphicDialog({ open, onOpenChange, onCopy, sourceGraphic }:
               onValueChange={setEventName}
               disabled={loading}
               className="w-full"
+              graphicTitle=""
             />
             <p className="text-xs text-muted-foreground">
               Select an existing event or create a new one for the copied graphic.

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { GraphicsTable } from '../graphics/GraphicsTable';
 import { CopyGraphicDialog } from '../graphics/CopyGraphicDialog';
 import { DeleteConfirmDialog } from '../graphics/DeleteConfirmDialog';
-import { Badge } from '@/components/ui/badge';
+
 import { Search, RefreshCw, AlertCircle, Archive, RotateCcw, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -190,7 +190,7 @@ export function ArchiveTab() {
       console.error('Failed to restore graphic:', error);
       toast.error('Restore failed', {
         
-        description: `Unable to restore “${graphic.title}”. Please try again.`,
+        description: `Unable to restore "${graphic.title}". Please try again.`,
         
       });
     }
@@ -233,7 +233,7 @@ export function ArchiveTab() {
       if (result) {
         toast.success('Graphic duplicated', {
           
-          description: `Archived graphic “${graphicToCopy.title}” copied into Active Graphics.`,
+          description: `Archived graphic "${graphicToCopy.title}" copied into Active Graphics.`,
         });
         return true;
       }
@@ -241,7 +241,7 @@ export function ArchiveTab() {
       console.error('Failed to copy archived graphic:', error);
       toast.error('Copy failed', {
         
-        description: `Unable to copy “${graphicToCopy.title}”. Please try again.`,
+        description: `Unable to copy "${graphicToCopy.title}". Please try again.`,
         
       });
     }
@@ -265,23 +265,14 @@ export function ArchiveTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex-1">
+      <div className="flex flex-col gap-4 items-center justify-center">
+        <div>
           <h2 className="text-3xl font-bold font-abrau gal-text-gradient-twilight flex items-center justify-center gap-2">
             Archived Graphics
           </h2>
           <p className="text-muted-foreground text-lg text-center">
             View and restore previously archived broadcast graphics
           </p>
-        </div>
-        
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="flex items-center gap-1 bg-gradient-to-r from-blue-100 to-purple-100 border-purple-200 text-purple-800">
-            <Archive className="h-3 w-3 text-purple-600" />
-            <span className="flex items-center gap-1">
-              {archivedGraphics.length} Archived <span className="text-purple-400">📚</span>
-            </span>
-          </Badge>
         </div>
       </div>
 

@@ -28,15 +28,19 @@ export function TopBar({
   disabled = false 
 }: TopBarProps) {
   return (
-    <div className="border-b bg-card p-4 flex items-center justify-between gap-4">
-      <Button
-        variant="outline"
-        onClick={onClose}
-        disabled={saving}
-      >
-        <ArrowLeft className="h-4 w-4 mr-2" />
-        Back
-      </Button>
+    <div className="border-b bg-card p-4 flex items-end justify-between gap-4">
+      <div className="space-y-1">
+        <div className="invisible text-xs text-muted-foreground">Navigation</div>
+        <Button
+          variant="outline"
+          onClick={onClose}
+          disabled={saving}
+          className="px-3 h-10"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
+      </div>
 
       <div className="flex-1 flex gap-3">
         <div className="flex-1 space-y-1">
@@ -59,22 +63,27 @@ export function TopBar({
         </div>
       </div>
 
-      <div className="flex items-end gap-2 pb-[1px]">
-        <Button
-          variant="outline"
-          onClick={onClose}
-          disabled={saving}
-        >
-          Cancel
-        </Button>
-        
-        <Button
-          onClick={onSave}
-          disabled={saving || disabled || !title.trim() || !eventName.trim()}
-        >
-          <Save className="h-4 w-4 mr-2" />
-          {saving ? 'Saving...' : 'Save'}
-        </Button>
+      <div className="space-y-1">
+        <div className="invisible text-xs text-muted-foreground">Actions</div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            disabled={saving}
+            className="px-3 h-10"
+          >
+            Cancel
+          </Button>
+          
+          <Button
+            onClick={onSave}
+            disabled={saving || disabled || !title.trim() || !eventName.trim()}
+            className="px-3 h-10"
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
       </div>
     </div>
   );

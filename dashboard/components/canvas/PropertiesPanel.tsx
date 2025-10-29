@@ -74,38 +74,36 @@ export function PropertiesPanel({ element, onChange, disabled = false }: Propert
       )}
 
       {/* Font Controls (all elements) */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="text-xs text-muted-foreground">Font Family</label>
-          <Select
-            value={element.fontFamily}
-            onValueChange={(value) => handleChange('fontFamily', value)}
-            disabled={disabled}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {FONT_OPTIONS.map((font) => (
-                <SelectItem key={font.value} value={font.value}>
-                  {font.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div>
+        <label className="text-xs text-muted-foreground">Font Family</label>
+        <Select
+          value={element.fontFamily}
+          onValueChange={(value) => handleChange('fontFamily', value)}
+          disabled={disabled}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="min-w-[200px]">
+            {FONT_OPTIONS.map((font) => (
+              <SelectItem key={font.value} value={font.value}>
+                {font.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-        <div>
-          <label className="text-xs text-muted-foreground">Font Size</label>
-          <Input
-            type="number"
-            min="8"
-            max="200"
-            value={element.fontSize}
-            onChange={(e) => handleChange('fontSize', parseInt(e.target.value) || 16)}
-            disabled={disabled}
-          />
-        </div>
+      <div>
+        <label className="text-xs text-muted-foreground">Font Size</label>
+        <Input
+          type="number"
+          min="8"
+          max="200"
+          value={element.fontSize}
+          onChange={(e) => handleChange('fontSize', parseInt(e.target.value) || 16)}
+          disabled={disabled}
+        />
       </div>
 
       {/* Text Color */}

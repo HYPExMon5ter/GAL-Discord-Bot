@@ -40,7 +40,7 @@ export default function DashboardPage() {
     <>
       <Button
         variant="ghost"
-        size="sm"
+        
         onClick={() => setActiveTab('graphics')}
         className={`gal-button-tab ${activeTab === 'graphics' ? 'active' : ''}`}
       >
@@ -48,7 +48,7 @@ export default function DashboardPage() {
       </Button>
       <Button
         variant="ghost"
-        size="sm"
+        
         onClick={() => setActiveTab('archive')}
         className={`gal-button-tab ${activeTab === 'archive' ? 'active' : ''}`}
       >

@@ -315,7 +315,7 @@ export function GraphicsTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="flex flex-col gap-4 items-start justify-start">
         <div className="flex-1">
           <h2 className="text-3xl font-bold font-abrau gal-text-gradient-peach flex items-center justify-center gap-2">
             Active Graphics
@@ -324,38 +324,42 @@ export function GraphicsTab() {
             Create and manage broadcast graphics for live use
           </p>
         </div>
-        
-        <Button 
-          size="sm"
-          onClick={() => setCreateDialogOpen(true)} 
-          className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-white font-semibold"
-        >
-          <Sparkles className="h-4 w-4" />
-          <span>New Graphic</span>
-        </Button>
       </div>
 
-      {/* Search and Filters */}
+      {/* Search and Actions */}
       <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
+        {/* Search Input with Icon - Full width on mobile, flex-1 on desktop */}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search graphics by title or event name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="border-blue-200 focus:border-blue-400 focus:ring-blue-200"
+            className="pl-10 border-blue-200 focus:border-blue-400 focus:ring-blue-200"
           />
         </div>
         
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={refetch}
-          disabled={loading}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
+        {/* Action Buttons - Same size, aligned */}
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
+            disabled={loading}
+            className="flex items-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-white font-semibold"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>New Graphic</span>
+          </Button>
+          
+          <Button
+            variant="outline"
+            onClick={refetch}
+            disabled={loading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {safeGraphics.length > 0 && (
@@ -363,7 +367,6 @@ export function GraphicsTab() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="ghost"
-              size="sm"
               onClick={handleClearSelection}
               disabled={selectedCount === 0}
             >
@@ -376,7 +379,7 @@ export function GraphicsTab() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="ghost"
-              size="sm"
+              
               onClick={handleBulkArchive}
               disabled={selectedCount === 0}
               className="flex items-center gap-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
@@ -386,7 +389,7 @@ export function GraphicsTab() {
             </Button>
             <Button
               variant="ghost"
-              size="sm"
+              
               onClick={handleBulkDelete}
               disabled={selectedCount === 0}
               className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
@@ -428,7 +431,7 @@ export function GraphicsTab() {
             </CardDescription>
             {!searchTerm && (
               <Button 
-                size="sm"
+                
                 onClick={() => setCreateDialogOpen(true)} 
                 className="mt-4"
               >

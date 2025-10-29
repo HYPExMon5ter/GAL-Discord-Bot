@@ -299,7 +299,7 @@ export function ArchiveTab() {
         
         <Button
           variant="outline"
-          size="sm"
+          
           onClick={refetch}
           disabled={loading}
           className="flex items-center gap-2"
@@ -314,7 +314,7 @@ export function ArchiveTab() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="ghost"
-              size="sm"
+              
               onClick={handleClearSelection}
               disabled={selectedCount === 0}
             >
@@ -326,7 +326,7 @@ export function ArchiveTab() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="ghost"
-              size="sm"
+              
               onClick={handleBulkRestore}
               disabled={selectedCount === 0}
               className="flex items-center gap-2 text-green-600 hover:text-green-700 hover:bg-green-50"
@@ -336,7 +336,7 @@ export function ArchiveTab() {
             </Button>
             <Button
               variant="ghost"
-              size="sm"
+              
               onClick={handleBulkDelete}
               disabled={selectedCount === 0}
               className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"

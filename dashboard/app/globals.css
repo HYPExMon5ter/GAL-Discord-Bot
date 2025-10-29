@@ -238,14 +238,25 @@
 }
 
 .gal-button-tab.active {
-  background: linear-gradient(135deg, #FFDCF2 0%, #DEE4FF 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  font-weight: 600;
-  border: none;
+  background: linear-gradient(135deg, rgba(240, 130, 190, 0.15) 0%, rgba(179, 168, 212, 0.15) 100%);
+  color: hsl(var(--primary));
+  font-weight: 700;
+  border: 2px solid hsl(var(--primary) / 0.3);
+  box-shadow: 0 2px 8px rgba(240, 130, 190, 0.2);
   position: relative;
-  color: transparent; /* Fallback for browsers that don't support background-clip */
+  transform: scale(1.02);
+}
+
+/* Add active indicator line */
+.gal-button-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #F082BE 0%, #B3A8D4 100%);
+  border-radius: 3px 3px 0 0;
 }
 
 .gal-button-primary:hover {

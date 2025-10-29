@@ -70,7 +70,7 @@ export function Combobox({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           ref={triggerRef}
@@ -85,7 +85,7 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent 
-        className="p-0" 
+        className="p-0 z-[100]" 
         align="start"
         style={{ width: triggerWidth }}
         onInteractOutside={(e) => {

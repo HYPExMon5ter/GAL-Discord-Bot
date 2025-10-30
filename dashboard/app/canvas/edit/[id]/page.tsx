@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { CanvasEditor } from '@/components/canvas/CanvasEditor';
 import { useGraphics } from '@/hooks/use-graphics';
@@ -12,6 +12,9 @@ export default function CanvasEditPage() {
   const params = useParams();
   const router = useRouter();
   const { getGraphic, updateGraphic, refetch } = useGraphics();
+
+  // Generate unique session ID for this editor instance
+  const sessionId = useRef<string>(crypto.randomUUID());
 
   const [graphic, setGraphic] = useState<Graphic | null>(null);
   const [loading, setLoading] = useState(true);
@@ -104,6 +107,7 @@ export default function CanvasEditPage() {
       graphic={graphic}
       onSave={handleSave}
       onClose={handleClose}
+      sessionId={sessionId.current}
     />
   );
 }

@@ -15,6 +15,7 @@ interface ViewportProps {
   selectedElementId: string | null;
   onSelectElement: (elementId: string | null) => void;
   onUpdateElement: (elementId: string, updates: Partial<CanvasElement>) => void;
+  onDeleteElement: (elementId: string) => void;
   mode: 'editor' | 'view';
   realData?: any[];
   disabled?: boolean;
@@ -27,6 +28,7 @@ export function Viewport({
   selectedElementId,
   onSelectElement,
   onUpdateElement,
+  onDeleteElement,
   mode,
   realData = [],
   disabled = false
@@ -192,7 +194,7 @@ export function Viewport({
       const handleKeyDown = (e: KeyboardEvent) => {
         // Delete selected element
         if (e.key === 'Delete' && selectedElementId) {
-          onUpdateElement(selectedElementId, { /* mark for deletion */ });
+          onDeleteElement(selectedElementId);
           onSelectElement(null);
         }
         // Escape to deselect
@@ -205,7 +207,7 @@ export function Viewport({
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
-  }, [mode, disabled, selectedElementId, onSelectElement, onUpdateElement, clearSnapLines]);
+  }, [mode, disabled, selectedElementId, onSelectElement, onDeleteElement, clearSnapLines]);
 
   const canvasSize = canvas.background 
     ? { width: canvas.background.width, height: canvas.background.height }

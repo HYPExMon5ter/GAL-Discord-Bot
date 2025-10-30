@@ -120,23 +120,32 @@ export const archiveApi = {
 };
 
 export const lockApi = {
-  acquire: async (graphicId: number): Promise<CanvasLock> => {
-    const response: AxiosResponse<CanvasLock> = await api.post(`/lock/${graphicId}`);
+  acquire: async (graphicId: number, sessionId: string): Promise<CanvasLock> => {
+    const response: AxiosResponse<CanvasLock> = await api.post(`/lock/${graphicId}`, {
+      graphic_id: graphicId,
+      session_id: sessionId
+    });
     return response.data;
   },
 
-  release: async (graphicId: number): Promise<void> => {
-    await api.delete(`/lock/${graphicId}`);
+  release: async (graphicId: number, sessionId: string): Promise<void> => {
+    await api.delete(`/lock/${graphicId}`, { data: { session_id: sessionId } });
   },
 
-  getStatus: async (graphicId?: number): Promise<CanvasLock[]> => {
-    const url = graphicId ? `/lock/status?graphic_id=${graphicId}` : '/lock/status';
-    const response: AxiosResponse<CanvasLock[]> = await api.get(url);
+  getStatus: async (graphicId: number, sessionId?: string): Promise<{
+    locked: boolean;
+    lock_info?: CanvasLock;
+    can_edit: boolean;
+  }> => {
+    const url = sessionId ? `/lock/${graphicId}/status?session_id=${sessionId}` : `/lock/${graphicId}/status`;
+    const response = await api.get(url);
     return response.data;
   },
 
-  refresh: async (graphicId: number): Promise<CanvasLock> => {
-    const response: AxiosResponse<CanvasLock> = await api.post(`/lock/${graphicId}/refresh`);
+  refresh: async (graphicId: number, sessionId: string): Promise<CanvasLock> => {
+    const response: AxiosResponse<CanvasLock> = await api.post(`/lock/${graphicId}/refresh`, {
+      session_id: sessionId
+    });
     return response.data;
   },
 };

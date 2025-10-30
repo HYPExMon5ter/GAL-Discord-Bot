@@ -54,12 +54,13 @@ class CanvasLockBase(BaseModel):
 
 class CanvasLockCreate(CanvasLockBase):
     """Schema for creating a canvas lock"""
-    pass
+    session_id: str = Field(..., description="Browser session identifier for lock ownership")
 
 
 class CanvasLockResponse(CanvasLockBase):
     """Schema for canvas lock response"""
     id: int
+    session_id: str
     locked: bool
     locked_at: datetime
     expires_at: datetime

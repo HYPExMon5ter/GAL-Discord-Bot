@@ -49,9 +49,11 @@ export function LoginForm() {
       <Card className="w-full max-w-md border-border/20 bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 gal-card relative z-10">
         <CardHeader className="space-y-4 text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-24 h-24 gal-gradient-primary rounded-xl flex items-center justify-center text-white font-abrau text-3xl gal-glow-primary">
-              GAL
-            </div>
+            <img 
+              src="/assets/Logo2.png" 
+              alt="Guardian Angel League Logo" 
+              className="w-32 h-32 rounded-xl gal-glow-primary object-cover"
+            />
           </div>
           <CardTitle className="text-4xl font-abrau font-bold text-gal-text-primary">
             GUARDIAN ANGEL LEAGUE

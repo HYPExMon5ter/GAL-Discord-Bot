@@ -58,6 +58,7 @@ class GraphicsService:
         return {
             "id": lock.id,
             "graphic_id": lock.graphic_id,
+            "session_id": lock.session_id,
             "locked": lock.locked,
             "locked_at": lock.locked_at,
             "expires_at": lock.expires_at,
@@ -196,20 +197,28 @@ class GraphicsService:
     # Lock management
     # --------------------------------------------------------------------- #
     def acquire_lock(self, lock_request: CanvasLockCreate) -> Dict[str, Any]:
-        """Acquire an exclusive lock for editing a graphic."""
+        """Acquire an exclusive lock for editing a graphic with session validation."""
         # Clean up any expired locks first
         self.cleanup_expired_locks()
         
         existing_lock = self._get_active_lock_model(lock_request.graphic_id)
 
         if existing_lock:
-            # Return existing lock instead of throwing an error (idempotent operation)
-            # This allows hot reloads and remounts to continue without conflicts
-            logger.info(f"Lock already exists for graphic {lock_request.graphic_id}, returning existing lock")
-            return self._serialize_lock(existing_lock)
+            # Check if the existing lock belongs to the same session
+            if existing_lock.session_id == lock_request.session_id:
+                # Same session - return existing lock (idempotent for same session)
+                logger.info(f"Lock already exists for graphic {lock_request.graphic_id} in session {lock_request.session_id}")
+                return self._serialize_lock(existing_lock)
+            else:
+                # Different session - lock conflict
+                raise ConflictError(
+                    f"Graphic {lock_request.graphic_id} is currently being edited in another session. "
+                    f"Lock expires at {existing_lock.expires_at.isoformat()}"
+                )
 
         lock = CanvasLock(
             graphic_id=lock_request.graphic_id,
+            session_id=lock_request.session_id,
             locked=True,
             locked_at=self._utcnow(),
             expires_at=self._utcnow() + timedelta(minutes=30),
@@ -219,12 +228,13 @@ class GraphicsService:
         self.db.refresh(lock)
         return self._serialize_lock(lock)
 
-    def release_lock(self, graphic_id: int, user_name: str = None) -> None:
+    def release_lock(self, graphic_id: int, session_id: str, user_name: str = None) -> None:
         """
-        Release a lock for a graphic.
+        Release a lock for a graphic with session validation.
         
-        This operation is idempotent - if no lock exists, it's considered successful
-        since the desired state (no lock) is already achieved.
+        Only the session that owns the lock can release it.
+        This operation is idempotent - if no lock exists or no lock belongs to this session,
+        it's considered successful since the desired state (no lock for this session) is already achieved.
         """
         lock = (
             self.db.query(CanvasLock)
@@ -232,16 +242,19 @@ class GraphicsService:
                 and_(
                     CanvasLock.graphic_id == graphic_id,
                     CanvasLock.locked.is_(True),
+                    CanvasLock.session_id == session_id,  # Only consider locks owned by this session
                 )
             )
             .first()
         )
         
-        # If no active lock exists, the operation is already successful
+        # If no active lock exists for this session, the operation is already successful
         if not lock:
+            logger.info(f"No active lock found for graphic {graphic_id} in session {session_id}")
             return
             
         # Delete the lock record
+        logger.info(f"Releasing lock for graphic {graphic_id} in session {session_id}")
         self.db.delete(lock)
         self.db.commit()
 
@@ -250,28 +263,32 @@ class GraphicsService:
         lock = self._get_active_lock_model(graphic_id)
         return self._serialize_lock(lock) if lock else None
 
-    def get_lock_status(self, graphic_id: int, user_name: str = None) -> LockStatusResponse:
-        """Return lock status information for a graphic."""
+    def get_lock_status(self, graphic_id: int, session_id: str = None, user_name: str = None) -> LockStatusResponse:
+        """Return lock status information for a graphic with session context."""
         lock = self.get_active_lock(graphic_id)
         if not lock:
             return LockStatusResponse(locked=False, lock_info=None, can_edit=True)
 
+        # Check if the lock belongs to the requesting session
+        can_edit = lock.get("session_id") == session_id
+        
         return LockStatusResponse(
             locked=True,
             lock_info=lock,
-            can_edit=False,  # If locked, no one else can edit
+            can_edit=can_edit,  # Only the owning session can edit
         )
 
     
 
-    def refresh_lock(self, graphic_id: int, user_name: str = None) -> Dict[str, Any]:
-        """Extend an existing lock for a graphic."""
+    def refresh_lock(self, graphic_id: int, session_id: str, user_name: str = None) -> Dict[str, Any]:
+        """Extend an existing lock for a graphic with session validation."""
         lock = (
             self.db.query(CanvasLock)
             .filter(
                 and_(
                     CanvasLock.graphic_id == graphic_id,
                     CanvasLock.locked.is_(True),
+                    CanvasLock.session_id == session_id,  # Only refresh locks owned by this session
                     CanvasLock.expires_at > self._utcnow(),
                 )
             )
@@ -279,11 +296,12 @@ class GraphicsService:
         )
 
         if not lock:
-            raise NotFoundError("No active lock to refresh for this graphic.")
+            raise NotFoundError("No active lock found for this session to refresh.")
 
         lock.expires_at = self._utcnow() + timedelta(minutes=30)
         self.db.commit()
         self.db.refresh(lock)
+        logger.info(f"Refreshed lock for graphic {graphic_id} in session {session_id}")
         return {
             "lock": self._serialize_lock(lock),
             "success": True,

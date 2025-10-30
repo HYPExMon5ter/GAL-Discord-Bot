@@ -13,6 +13,7 @@ export interface Graphic {
 export interface CanvasLock {
   id: number;
   graphic_id: number;
+  session_id: string;
   locked: boolean;
   locked_at: string;
   expires_at: string;

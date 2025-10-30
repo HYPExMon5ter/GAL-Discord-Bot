@@ -26,9 +26,11 @@ export function DashboardLayout({
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-14 h-14 gal-gradient-primary rounded-xl flex items-center justify-center text-white font-abrau text-2xl gal-glow-primary">
-                GAL
-              </div>
+              <img 
+                src="/assets/Logo2.png" 
+                alt="Guardian Angel League Logo" 
+                className="w-20 h-20 rounded-xl gal-glow-primary object-cover"
+              />
               <div>
                 <h1 className="text-4xl font-abrau font-bold gal-text-gradient-sunset">
                   {title}

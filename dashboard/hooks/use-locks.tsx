@@ -1,7 +1,5 @@
 'use client';
 
-import { useEffect } from 'react';
-
 import { useDashboardData } from './use-dashboard-data';
 
 export function useLocks() {
@@ -15,13 +13,8 @@ export function useLocks() {
     getLockForGraphic,
   } = useDashboardData();
 
-  useEffect(() => {
-    if (!lockState.hasLoaded && !lockState.loading) {
-      fetchLocks().catch(error => {
-        console.error('Initial lock fetch failed', error);
-      });
-    }
-  }, [fetchLocks, lockState.hasLoaded, lockState.loading]);
+  // Note: We no longer fetch all locks on mount since locks are now per-graphic
+  // Locks are fetched on-demand when trying to acquire them
 
   return {
     locks,

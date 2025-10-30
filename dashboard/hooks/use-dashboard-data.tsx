@@ -49,9 +49,9 @@ interface DashboardDataContextValue {
 
   getGraphicById: (id: number) => Promise<Graphic | null>;
 
-  acquireLock: (graphicId: number) => Promise<CanvasLock>;
-  releaseLock: (graphicId: number) => Promise<void>;
-  refreshLock: (graphicId: number) => Promise<CanvasLock>;
+  acquireLock: (graphicId: number, sessionId: string) => Promise<CanvasLock>;
+  releaseLock: (graphicId: number, sessionId: string) => Promise<void>;
+  refreshLock: (graphicId: number, sessionId: string) => Promise<CanvasLock>;
   getLockForGraphic: (graphicId: number) => CanvasLock | null;
 }
 
@@ -107,8 +107,10 @@ export function DashboardDataProvider({ children }: ProviderProps) {
   const fetchLocks = useCallback(async () => {
     setLockState(prev => ({ ...prev, loading: true, error: null }));
     try {
-      const data = await lockApi.getStatus();
-      setLocks(Array.isArray(data) ? data : []);
+      // Note: The API doesn't have a "get all locks" endpoint anymore
+      // We'll fetch locks on-demand for individual graphics
+      // For now, set an empty array to indicate no active locks in this session
+      setLocks([]);
       setLockState(prev => ({ ...prev, hasLoaded: true }));
     } catch (error) {
       console.error('Failed to fetch locks', error);
@@ -189,7 +191,7 @@ export function DashboardDataProvider({ children }: ProviderProps) {
     }
   }, [graphics]);
 
-  const acquireLock = useCallback(async (graphicId: number): Promise<CanvasLock> => {
+  const acquireLock = useCallback(async (graphicId: number, sessionId: string): Promise<CanvasLock> => {
     // Check if we already have a lock for this graphic
     const existingLock = locks.find(lock => lock.graphic_id === graphicId && lock.locked);
     if (existingLock) {
@@ -197,18 +199,18 @@ export function DashboardDataProvider({ children }: ProviderProps) {
       return existingLock;
     }
     
-    const lock = await lockApi.acquire(graphicId);
+    const lock = await lockApi.acquire(graphicId, sessionId);
     setLocks(prev => [...prev.filter(entry => entry.graphic_id !== graphicId), lock]);
     return lock;
   }, [locks]);
 
-  const releaseLock = useCallback(async (graphicId: number): Promise<void> => {
-    await lockApi.release(graphicId);
+  const releaseLock = useCallback(async (graphicId: number, sessionId: string): Promise<void> => {
+    await lockApi.release(graphicId, sessionId);
     setLocks(prev => prev.filter(entry => entry.graphic_id !== graphicId));
   }, []);
 
-  const refreshLock = useCallback(async (graphicId: number): Promise<CanvasLock> => {
-    const lock = await lockApi.refresh(graphicId);
+  const refreshLock = useCallback(async (graphicId: number, sessionId: string): Promise<CanvasLock> => {
+    const lock = await lockApi.refresh(graphicId, sessionId);
     setLocks(prev => [...prev.filter(entry => entry.graphic_id !== graphicId), lock]);
     return lock;
   }, []);

@@ -153,40 +153,53 @@ async def permanent_delete_graphic(
 @router.post("/lock/{graphic_id}", response_model=CanvasLockResponse)
 async def acquire_lock(
     graphic_id: int,
+    lock_request: CanvasLockCreate,
     current_user: TokenData = Depends(require_write_access),
     service: GraphicsService = Depends(get_graphics_service),
 ) -> CanvasLockResponse:
-    request = CanvasLockCreate(graphic_id=graphic_id)
-    payload = await execute_service(service.acquire_lock, request)
+    # Ensure the graphic_id in the URL matches the one in the request body
+    lock_request.graphic_id = graphic_id
+    payload = await execute_service(service.acquire_lock, lock_request)
     return CanvasLockResponse(**payload)
 
 
 @router.delete("/lock/{graphic_id}")
 async def release_lock(
     graphic_id: int,
+    session_request: dict = Body(...),
     current_user: TokenData = Depends(require_write_access),
     service: GraphicsService = Depends(get_graphics_service),
 ) -> dict:
-    await execute_service(service.release_lock, graphic_id, current_user.username)
+    session_id = session_request.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    
+    await execute_service(service.release_lock, graphic_id, session_id, current_user.username)
     return {"message": "Lock released successfully"}
 
 
 @router.get("/lock/{graphic_id}/status", response_model=LockStatusResponse)
 async def get_lock_status(
     graphic_id: int,
+    session_id: Optional[str] = Query(None, description="Session ID for lock ownership check"),
     current_user: TokenData = Depends(get_active_user),
     service: GraphicsService = Depends(get_graphics_service),
 ) -> LockStatusResponse:
-    return await execute_service(service.get_lock_status, graphic_id, current_user.username)
+    return await execute_service(service.get_lock_status, graphic_id, session_id, current_user.username)
 
 
 @router.post("/lock/{graphic_id}/refresh", response_model=CanvasLockResponse)
 async def refresh_lock(
     graphic_id: int,
+    session_request: dict = Body(...),
     current_user: TokenData = Depends(require_write_access),
     service: GraphicsService = Depends(get_graphics_service),
 ) -> CanvasLockResponse:
-    payload = await execute_service(service.refresh_lock, graphic_id, current_user.username)
+    session_id = session_request.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id is required")
+    
+    payload = await execute_service(service.refresh_lock, graphic_id, session_id, current_user.username)
     return CanvasLockResponse(**payload["lock"])
 
 

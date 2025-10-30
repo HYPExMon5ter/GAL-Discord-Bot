@@ -48,6 +48,7 @@ class CanvasLock(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     graphic_id = Column(Integer, ForeignKey("graphics.id"), nullable=False, unique=True, index=True)
+    session_id = Column(String(255), nullable=False, index=True)  # Track which browser session owns the lock
     locked = Column(Boolean, default=True, nullable=False)
     locked_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -63,7 +64,7 @@ class CanvasLock(Base):
     def __repr__(self):
         return (
             f"<CanvasLock(id={self.id}, graphic_id={self.graphic_id}, "
-            f"locked={self.locked})>"
+            f"session_id='{self.session_id}', locked={self.locked})>"
         )
 
 

@@ -31,12 +31,10 @@ def register(gal: app_commands.Group) -> None:
             return
 
         try:
-            # Test UI components have been removed during project cleanup
-            await interaction.response.send_message(
-                "Test UI components have been removed during project cleanup.\n"
-                "Use the main tournament commands for UI functionality.",
-                ephemeral=True
-            )
+            from core.test_components import TestComponents
+
+            view = TestComponents()
+            await interaction.response.send_message(view=view, ephemeral=True)
         except Exception as exc:
             await handle_command_exception(interaction, exc, "Test Command")
 

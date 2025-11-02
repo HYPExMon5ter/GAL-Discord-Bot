@@ -318,6 +318,26 @@ async def send_system_notification(notification: dict):
     )
 
 
+async def send_placement_update(round_name: str, lobby_updates: List[dict]):
+    """
+    Notify dashboard clients that placements were updated.
+    Dashboard should refresh standings data.
+    
+    Args:
+        round_name: Name of the round that was updated
+        lobby_updates: List of placement updates with lobby, player, placement info
+    """
+    await manager.broadcast({
+        "type": "placement_update",
+        "data": {
+            "round": round_name,
+            "lobby_updates": lobby_updates,
+            "action": "refresh",
+            "timestamp": utcnow().isoformat(),
+        }
+    })
+
+
 __all__ = [
     "send_tournament_update",
     "send_user_update",

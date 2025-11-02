@@ -184,8 +184,8 @@ def register(gal: app_commands.Group) -> None:
                         failed_players
                     )
 
-                    # TODO: Trigger dashboard update (Phase 5)
-                    # await _trigger_dashboard_update(round_name)
+                    # Trigger dashboard update
+                    await _trigger_dashboard_update(guild_id, round_name, successful_placements, failed_players)
 
                 except Exception as e:
                     await progress_message.edit(
@@ -330,6 +330,57 @@ async def _send_confirmation_embed(
     embed.set_footer(text=f"Use /gal updateplacements round:{round.replace(' ', '').lower()} preview:True to preview changes")
     
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+async def _trigger_dashboard_update(guild_id: str, round_name: str, successful_placements: dict, failed_players: list):
+    """
+    Trigger live dashboard update after placement updates.
+    
+    Args:
+        guild_id: Discord guild ID
+        round_name: Name of the round that was updated
+        successful_placements: Dictionary of successful {riot_id: placement}
+        failed_players: List of failed player dictionaries
+    """
+    try:
+        # Prepare lobby updates for dashboard
+        lobby_updates = []
+        
+        # Group successful placements by lobby
+        for riot_id, placement in successful_placements.items():
+            # Find the player in the structure to get lobby info
+            from integrations.lobby_manager import LobbyManager
+            try:
+                structure = await LobbyManager.detect_structure(guild_id)
+                
+                # Find player in structure
+                for lobby_info in structure.lobbies.values():
+                    for player in lobby_info.players:
+                        if player.riot_id == riot_id:
+                            lobby_updates.append({
+                                "lobby": player.lobby,
+                                "player": player.ign,
+                                "placement": placement
+                            })
+                            break
+            except Exception as e:
+                logger.warning(f"Failed to get lobby info for {riot_id}: {e}")
+                # Still include the placement without lobby info
+                lobby_updates.append({
+                    "lobby": "Unknown",
+                    "player": riot_id,
+                    "placement": placement
+                })
+        
+        # Send WebSocket broadcast to dashboard
+        from api.routers.websocket import send_placement_update
+        await send_placement_update(round_name, lobby_updates)
+        
+        logger.info(f"Dashboard update triggered for {round_name}: {len(lobby_updates)} placements")
+        
+    except Exception as e:
+        logger.error(f"Failed to trigger dashboard update: {e}")
+        # Don't fail the command if dashboard update fails
 
 
 __all__ = ["register"]

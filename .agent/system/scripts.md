@@ -13,41 +13,44 @@ The `scripts/` directory contains automation and maintenance utilities for the G
 ## Directory Structure
 ```
 scripts/
-├── check_doc_drift.py          # Documentation audit and drift detection
+├── documentation_manager.py    # Unified documentation audit and fix tool
 ├── generate_snapshot.py        # AI session context snapshot generator  
 ├── migrate_columns.py          # Database schema migration utility
-└── update_system_docs.py       # System documentation update automation
+├── launch_services.py          # Service launch and management utility
+├── launch_services.bat         # Windows batch file for service launching
+└── run_quality_checks.py       # Code quality and health checks
 ```
 
 ## Script Details
 
-### 1. Documentation Drift Auditor (`scripts/check_doc_drift.py`)
-**Purpose**: Automated auditing of documentation completeness and accuracy  
-**Size**: 11,175 lines  
+### 1. Unified Documentation Manager (`scripts/documentation_manager.py`)
+**Purpose**: Comprehensive documentation auditing and automated fixing  
+**Size**: 18,492 lines  
 **Dependencies**: Standard library (os, sys, pathlib, datetime, re)  
 
 #### Functionality
-- **Module Analysis**: Scans Python codebase for classes, functions, and modules
-- **Documentation Coverage**: Identifies undocumented code components
-- **Cross-Reference Validation**: Checks for broken internal links and references
-- **SOP Gap Detection**: Identifies missing Standard Operating Procedures
-- **Pattern Recognition**: Detects repeated workflows that may need SOPs
+- **Automated Auditing**: Scans for documentation issues including orphaned references and broken links
+- **Path Fixing**: Automatically corrects incorrect file paths in documentation
+- **Link Repair**: Fixes broken cross-references between documentation files
+- **Issue Reporting**: Provides categorized findings with severity levels
+- **Automated Fixes**: Applies fixes to resolve common documentation issues
 
 #### Key Features
-- **Comprehensive Scanning**: Analyzes entire codebase excluding __pycache__, .venv, .git
-- **Smart Detection**: Extracts class definitions and public functions
-- **Audit Reporting**: Generates structured findings with severity levels
-- **Pattern Matching**: Identifies recurring code patterns for SOP creation
+- **Comprehensive Scanning**: Analyzes entire documentation in .agent/system/
+- **Smart Path Detection**: Identifies and fixes incorrect file references
+- **Link Validation**: Checks and repairs broken internal links
+- **Automated Repair**: Fixes issues without manual intervention
+- **Focused Reporting**: Provides clear, actionable audit results
 
 #### Usage
 ```bash
-python scripts/check_doc_drift.py
+python scripts/documentation_manager.py
 ```
 
 #### Output
-- Console report with findings categorized by severity
-- Recommendations for missing documentation
-- Pattern detection results for SOP creation
+- Console report with findings categorized by severity and fix status
+- Automatic application of fixes for common documentation issues
+- Summary of all fixes applied during the run
 - Cross-reference validation results
 
 #### Configuration
@@ -126,28 +129,28 @@ python scripts/migrate_columns.py
 - **Logging Configuration**: Configurable log levels and formatting
 - **Error Recovery**: Comprehensive error handling and reporting
 
-### 4. System Documentation Updater (`scripts/update_system_docs.py`)
-**Purpose**: Automated updates to .agent/system documentation  
-**Size**: 6,566 lines  
-**Dependencies**: Standard library (os, sys, pathlib, datetime, typing)  
+### 4. Launch Services (`scripts/launch_services.py`)
+**Purpose**: Service launch and management utility  
+**Size**: 5,756 lines  
+**Dependencies**: asyncio, subprocess, os, sys  
 
 #### Functionality
-- **Code Analysis**: Scans codebase for recent changes and updates
-- **Documentation Sync**: Updates .agent/system files with current state
-- **Version Management**: Maintains documentation versioning and timestamps
-- **Cross-Reference Updates**: Ensures internal links remain valid
-- **Metadata Updates**: Refreshes file sizes, line counts, and timestamps
+- **Service Management**: Launches and monitors system services
+- **Process Control**: Manages subprocess lifecycle and health checks
+- **Configuration Loading**: Loads service configurations from files
+- **Logging Integration**: Integrates with system logging framework
+- **Error Handling**: Comprehensive error recovery and reporting
 
 #### Key Features
-- **Incremental Updates**: Processes only modified files for efficiency
-- **Function Extraction**: Identifies both synchronous and asynchronous functions
-- **Class Documentation**: Updates class definitions and inheritance
-- **Path Resolution**: Handles relative and absolute path references
-- **Version Control**: Maintains consistent version numbering
+- **Async Operations**: Uses asyncio for efficient service management
+- **Health Monitoring**: Continuous service health checks
+- **Automatic Restart**: Automatic service restart on failure
+- **Configuration Hot Reload**: Dynamic configuration updates
+- **Status Reporting**: Real-time service status updates
 
 #### Usage
 ```bash
-python scripts/update_system_docs.py
+python scripts/documentation_manager.py
 ```
 
 #### Output
@@ -201,8 +204,8 @@ python scripts/update_system_docs.py
 ## Usage Patterns
 
 ### Maintenance Workflows
-1. **Daily**: Run `scripts/check_doc_drift.py` to identify documentation gaps
-2. **Weekly**: Execute `scripts/update_system_docs.py` after code changes
+1. **Daily**: Run `scripts/documentation_manager.py` to audit and fix documentation
+2. **Weekly**: Execute `scripts/documentation_manager.py` after major code changes
 3. **On Demand**: Use `scripts/generate_snapshot.py` for AI session preparation
 4. **One-time**: Run `scripts/migrate_columns.py` for system upgrades
 
@@ -303,7 +306,7 @@ python scripts/update_system_docs.py
 ---
 
 **Version**: 1.0  
-**Last Updated**: 2025-10-10  
-**Total Scripts**: 4 utilities  
-**Combined Size**: ~30,000 lines of code  
+**Last Updated**: 2025-11-02  
+**Total Scripts**: 6 utilities  
+**Combined Size**: ~42,000 lines of code  
 **Maintained By**: Guardian Angel League Development Team

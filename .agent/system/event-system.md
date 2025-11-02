@@ -172,7 +172,7 @@ class Event:
 
 ### 3. Event Handlers
 
-#### Tournament Event Handler (`handlers/tournament_events.py`)
+#### Tournament Event Handler (`core/events/handlers/tournament_events.py`)
 **Lines**: 217 lines  
 **Purpose**: Tournament lifecycle management and business logic
 
@@ -192,7 +192,7 @@ class Event:
 - **Notification Handling**: Send appropriate notifications
 - **State Management**: Update tournament states correctly
 
-#### User Event Handler (`handlers/user_events.py`)
+#### User Event Handler (`core/events/handlers/user_events.py`)
 **Lines**: 164 lines  
 **Purpose**: User management and permissions handling
 
@@ -210,7 +210,7 @@ class Event:
 - **Ban Management**: Enforce ban/unban actions
 - **Activity Tracking**: Track user activity
 
-#### Guild Event Handler (`handlers/guild_events.py`)
+#### Guild Event Handler (`core/events/handlers/guild_events.py`)
 **Lines**: 189 lines  
 **Purpose**: Discord guild management and configuration
 
@@ -225,7 +225,7 @@ class Event:
 - **Role Management**: Handle guild roles
 - **Integration Setup**: Configure bot integrations
 
-#### Configuration Event Handler (`handlers/configuration_events.py`)
+#### Configuration Event Handler (`core/events/handlers/configuration_events.py`)
 **Lines**: 143 lines  
 **Purpose**: System configuration management and hot reloading
 
@@ -242,7 +242,7 @@ class Event:
 
 ### 4. Event Subscribers
 
-#### Dashboard Subscriber (`subscribers/dashboard_subscribers.py`)
+#### Dashboard Subscriber (`core/events/subscribers/dashboard_subscribers.py`)
 **Lines**: 127 lines  
 **Purpose**: Real-time dashboard updates via WebSocket connections
 
@@ -268,7 +268,7 @@ class Event:
 }
 ```
 
-#### Discord Subscriber (`subscribers/discord_subscribers.py`)
+#### Discord Subscriber (`core/events/subscribers/discord_subscribers.py`)
 **Lines**: 118 lines  
 **Purpose**: Discord bot integration and user notifications
 

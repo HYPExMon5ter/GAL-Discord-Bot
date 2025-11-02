@@ -197,3 +197,53 @@ User Request → API Call → External Service → Data Transform → Discord Em
 **Module Count**: 9 integration modules + 2 service modules  
 **Documentation Status**: Complete  
 **Last Reviewed**: 2025-01-18
+
+
+## Recent Integration Module Updates
+
+### lobby_manager
+
+**Description**: Lobby manager for Google Sheets integration.
+
+**Classes**:
+
+- `PlayerPosition`
+  - Represents a player's position in the lobbies tab.
+- `LobbyInfo`
+  - Information about a specific lobby.
+- `LobbyStructure`
+  - Represents the detected lobbies tab structure.
+- `PlacementUpdate`
+  - Placement update data.
+- `BatchResult`
+  - Result of batch placement updates.
+- `FailedPlayer`
+  - Failed placement update details.
+- `LobbyManager`
+  - Manages lobbies tab operations for placement updates.
+
+**Dependencies**:
+- __future__.annotations, dataclasses.dataclass, typing.Dict, typing.List, typing.Optional, typing.Tuple, integrations.sheets.get_sheet_for_guild, integrations.sheets.apply_sheet_updates
+
+### riot_api
+
+**Key Functions**:
+
+- `validate_region(region)`
+  - Validate if a region is supported.
+
+**Classes**:
+
+- `PlacementResult`
+  - Result of fetching placement for a single player.
+- `RiotAPIError`
+  - Custom exception for Riot API-related errors.
+  - Inherits from: Exception
+- `RateLimitError`
+  - Exception for rate limit errors.
+  - Inherits from: RiotAPIError
+- `RiotAPI`
+  - Riot Games API integration for TFT data.
+
+**Dependencies**:
+- typing.Dict, typing.List, typing.Any, typing.Optional, dataclasses.dataclass, datetime.datetime, utils.logging_utils.SecureLogger

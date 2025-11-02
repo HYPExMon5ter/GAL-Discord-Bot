@@ -6,8 +6,8 @@
 ## 🏗️ System Architecture
 
 ### Core Components
-- **Discord Bot (`bot.py`)**: Modern Discord.py v2 implementation with slash commands
-- **Command System (`core/commands.py`)**: Tournament management, registration, check-in
+- **Discord Bot (`bot.py`)**: Modern discord.py v2 implementation with slash commands
+- **Command System (`core/commands/`)**: Tournament management, registration, check-in
 - **Configuration (`config.py`, `config.yaml`)**: YAML-based with environment validation
 - **Persistence Layer**: PostgreSQL with SQLite fallback, connection pooling
 - **Integration Framework**: Modular system for external services

@@ -89,7 +89,7 @@ api/
 
 ## API Routes
 
-### 1. Tournament Management (`routers/tournaments.py`)
+### 1. Tournament Management (`api/routers/tournaments.py`)
 **Purpose**: Complete CRUD operations for tournament data
 
 **Endpoints**: Standard REST operations for tournament lifecycle management
@@ -99,7 +99,7 @@ api/
 - Validation rules and business logic
 - Error handling and response formatting
 
-### 2. User Management (`routers/users.py`)
+### 2. User Management (`api/routers/users.py`)
 **Purpose**: User data management and authentication
 
 **Key Features**:
@@ -112,7 +112,7 @@ api/
 - Authentication endpoint implementations
 - Authorization patterns
 
-### 3. Configuration Management (`routers/configuration.py`)
+### 3. Configuration Management (`api/routers/configuration.py`)
 **Purpose**: Dynamic configuration management
 
 **Key Features**:
@@ -125,7 +125,7 @@ api/
 - Dynamic update mechanisms
 - Environment handling
 
-### 4. WebSocket Events (`routers/websocket.py`)
+### 4. WebSocket Events (`api/routers/websocket.py`)
 **Purpose**: Real-time event streaming to connected clients
 
 **Key Features**:
@@ -140,7 +140,7 @@ api/
 
 ## Data Models
 
-### 1. Authentication Models (`schemas/auth.py`)
+### 1. Authentication Models (`api/schemas/auth.py`)
 **Purpose**: JWT authentication request/response models
 
 **For Implementation Details**: See `api/schemas/auth.py` for:
@@ -148,7 +148,7 @@ api/
 - Token validation models
 - User authentication data structures
 
-### 2. Tournament Models (`schemas/tournament.py`)
+### 2. Tournament Models (`api/schemas/tournament.py`)
 **Purpose**: Tournament data validation and serialization
 
 **For Implementation Details**: See `api/schemas/tournament.py` for:
@@ -156,7 +156,7 @@ api/
 - Response serialization models
 - Validation rules and constraints
 
-### 3. User Models (`schemas/user.py`)
+### 3. User Models (`api/schemas/user.py`)
 **Purpose**: User data validation and serialization
 
 **For Implementation Details**: See `api/schemas/user.py` for:
@@ -164,7 +164,7 @@ api/
 - Authentication data models
 - Permission and role structures
 
-### 4. Configuration Models (`schemas/configuration.py`)
+### 4. Configuration Models (`api/schemas/configuration.py`)
 **Purpose**: Configuration data validation and serialization
 
 **For Implementation Details**: See `api/schemas/configuration.py` for:
@@ -174,7 +174,7 @@ api/
 
 ## Business Logic Services
 
-### 1. Tournament Service (`services/tournament_service.py`)
+### 1. Tournament Service (`api/services/tournament_service.py`)
 **Purpose**: Tournament business logic and data operations
 
 **For Implementation Details**: See `api/services/tournament_service.py` for:
@@ -182,7 +182,7 @@ api/
 - Data validation logic
 - Integration with data access layer
 
-### 2. User Service (`services/user_service.py`)
+### 2. User Service (`api/services/user_service.py`)
 **Purpose**: User management business logic
 
 **For Implementation Details**: See `api/services/user_service.py` for:
@@ -190,7 +190,7 @@ api/
 - Authentication workflows
 - Permission handling
 
-### 3. Configuration Service (`services/configuration_service.py`)
+### 3. Configuration Service (`api/services/configuration_service.py`)
 **Purpose**: Configuration management business logic
 
 **For Implementation Details**: See `api/services/configuration_service.py` for:
@@ -252,7 +252,7 @@ api/
 
 ## Graphics Service and JSON Serialization
 
-### Graphics Service (`services/graphics_service.py`)
+### Graphics Service (`api/services/graphics_service.py`)
 **Purpose**: Business logic layer for graphics management with proper JSON serialization
 
 **Key Features**:
@@ -394,7 +394,7 @@ def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, A
         raise
 ```
 
-### Graphics API Endpoints (`routers/graphics.py`)
+### Graphics API Endpoints (`api/routers/graphics.py`)
 **Purpose**: REST API endpoints for graphics management
 
 **Key Endpoints**:
@@ -413,7 +413,7 @@ def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, A
 - Error handling patterns
 - Authentication requirements
 
-### Graphics Schemas (`schemas/graphics.py`)
+### Graphics Schemas (`api/schemas/graphics.py`)
 **Purpose**: Pydantic models for graphics data validation
 
 **Key Models**:
@@ -452,3 +452,138 @@ def create_graphic(self, graphic: GraphicCreate, created_by: str) -> Dict[str, A
 - **psycopg2-binary**: PostgreSQL database adapter
 - **alembic**: Database migration tool
 - **redis-py**: Redis client for caching
+
+
+## Recent API Module Updates
+
+### websocket
+
+**Description**: WebSocket endpoints for real-time updates with backpressure handling.
+
+**Key Functions**:
+
+- `utcnow()`
+  - Timezone-aware wrapper used throughout the WebSocket manager.
+- `async websocket_endpoint(websocket, token)`
+  - WebSocket endpoint for real-time updates.
+- `async websocket_status()`
+  - Get WebSocket connection status.
+- `async send_tournament_update(tournament_data)`
+- `async send_user_update(user_data)`
+- `async send_configuration_update(config_data)`
+- `async send_system_notification(notification)`
+- `async send_placement_update(round_name, lobby_updates)`
+  - Notify dashboard clients that placements were updated.
+Dashboard should refresh standings data.
+
+Args:
+    round_name: Name of the round that was updated
+    lobby_updates: List of placement updates with lobby, player, placement info
+
+**Classes**:
+
+- `ConnectionContext`
+- `ConnectionManager`
+  - Manages active WebSocket connections with bounded queues to avoid head-of-line
+blocking and implements graceful teardown on errors or backpressure.
+  - Methods: `get_connection_count()`, `get_user_count()`
+
+**Dependencies**:
+- __future__.annotations, contextlib.suppress, dataclasses.dataclass, dataclasses.field, datetime.UTC, datetime.datetime, datetime.timedelta, typing.Any, typing.Dict, typing.List, typing.Optional, typing.Set, fastapi.APIRouter, fastapi.WebSocket, fastapi.WebSocketDisconnect, jose.JWTError, jose.jwt, api.auth.ALGORITHM, api.auth.SECRET_KEY, api.auth.TokenData
+
+### graphics_service
+
+**Description**: Service layer for graphics management.
+
+Acts as the orchestration layer between the FastAPI routers and the underlying
+SQLAlchemy models, exposing operations as simple Python methods while raising
+domain-specific `ServiceError`s when something goes wrong.
+
+**Classes**:
+
+- `GraphicsService`
+  - Service for managing graphics and canvas locks.
+  - Methods: `create_graphic()`, `get_graphics()`, `get_event_names()`, `get_graphic_by_id()`, `update_graphic()`, ...
+
+**Dependencies**:
+- __future__.annotations, datetime.UTC, datetime.datetime, datetime.timedelta, typing.Any, typing.Dict, typing.List, typing.Optional, sqlalchemy.and_, sqlalchemy.or_, sqlalchemy.orm.Session, api.services.errors.ConflictError, api.services.errors.NotFoundError, models.Archive, models.CanvasLock, models.Graphic, schemas.graphics.CanvasLockCreate, schemas.graphics.GraphicCreate, schemas.graphics.GraphicUpdate, schemas.graphics.LockStatusResponse, api.services.StandingsService
+
+### graphics
+
+**Description**: Graphics API endpoints.
+
+Routers delegate to the graphics service and keep controller logic minimal.
+
+**Key Functions**:
+
+- `async create_graphic(graphic, current_user, service)`
+- `async get_graphics(include_archived, _user, service)`
+- `async get_graphic(graphic_id, _user, service)`
+- `async update_graphic(graphic_id, graphic_update, current_user, service)`
+- `async duplicate_graphic(graphic_id, duplicate_request, new_title, new_event_name, current_user, service)`
+- `async delete_graphic(graphic_id, current_user, service)`
+- `async get_event_names(_user, service)`
+  - Get list of unique event names from all graphics.
+- `async permanent_delete_graphic(graphic_id, _admin, service)`
+- `async acquire_lock(graphic_id, lock_request, current_user, service)`
+- `async release_lock(graphic_id, session_request, current_user, service)`
+- `async get_lock_status(graphic_id, session_id, current_user, service)`
+- `async refresh_lock(graphic_id, session_request, current_user, service)`
+- `async get_all_lock_status(_user)`
+- `async archive_graphic(graphic_id, archive_request, current_user, service)`
+- `async restore_graphic(graphic_id, current_user, service)`
+- `async get_archived_graphics(current_user, service)`
+- `async permanent_delete_archive(graphic_id, _admin, service)`
+- `async cleanup_expired_locks(_admin, service)`
+- `async get_ranked_players(tournament_id, guild_id, sort_by, sort_order, limit, service)`
+  - Get ranked player data for simplified element system.
+- `async view_graphic(graphic_id, service)`
+
+**Dependencies**:
+- __future__.annotations, typing.Any, typing.Dict, typing.Optional, fastapi.APIRouter, fastapi.Body, fastapi.Depends, fastapi.Query, fastapi.exceptions.HTTPException, sqlalchemy.exc.NoResultFound, api.auth.TokenData, api.dependencies.get_active_user, api.dependencies.get_graphics_service, api.dependencies.require_roles, api.dependencies.require_write_access, api.services.graphics_service.GraphicsService, api.utils.service_runner.execute_service, schemas.graphics.ArchiveActionRequest, schemas.graphics.ArchiveListResponse, schemas.graphics.ArchiveResponse, schemas.graphics.CanvasLockCreate, schemas.graphics.CanvasLockResponse, schemas.graphics.GraphicCreate, schemas.graphics.GraphicListResponse, schemas.graphics.GraphicResponse, schemas.graphics.GraphicUpdate, schemas.graphics.LockStatusResponse
+
+### graphics
+
+**Description**: Pydantic schemas for graphics management
+
+**Classes**:
+
+- `GraphicBase`
+  - Base schema for graphics
+  - Inherits from: BaseModel
+- `GraphicCreate`
+  - Schema for creating a new graphic
+  - Inherits from: GraphicBase
+- `GraphicUpdate`
+  - Schema for updating an existing graphic
+  - Inherits from: BaseModel
+- `GraphicResponse`
+  - Schema for graphic response
+  - Inherits from: BaseModel
+- `GraphicListResponse`
+  - Schema for graphics list response
+  - Inherits from: BaseModel
+- `CanvasLockBase`
+  - Base schema for canvas locks
+  - Inherits from: BaseModel
+- `CanvasLockCreate`
+  - Schema for creating a canvas lock
+  - Inherits from: CanvasLockBase
+- `CanvasLockResponse`
+  - Schema for canvas lock response
+  - Inherits from: CanvasLockBase
+- `LockStatusResponse`
+  - Schema for lock status response
+  - Inherits from: BaseModel
+- `ArchiveActionRequest`
+  - Schema for archive action requests
+  - Inherits from: BaseModel
+- `ArchiveResponse`
+  - Schema for archive action response
+  - Inherits from: BaseModel
+- `ArchiveListResponse`
+  - Schema for archive list response
+  - Inherits from: BaseModel
+
+**Dependencies**:
+- datetime.datetime, typing.Dict, typing.Any, typing.Optional, pydantic.BaseModel, pydantic.ConfigDict, pydantic.Field

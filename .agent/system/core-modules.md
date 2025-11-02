@@ -17,7 +17,7 @@ The `core/` directory contains the primary bot functionality including command h
 - **Key Functions**: Module imports and package setup
 - **Dependencies**: discord.py, internal core modules
 
-### `core/commands.py`
+### `core/commands/`
 - **Purpose**: Slash command definitions and tournament management logic (2,147 lines)
 - **Key Functions**: 
   - Tournament registration and check-in commands
@@ -64,7 +64,7 @@ The `core/` directory contains the primary bot functionality including command h
 - **Dependencies**: SQLite/PostgreSQL, database drivers
 - **Integration Points**: All modules requiring data persistence
 
-### `core/events.py`
+### `core/events/event_bus.py`
 - **Purpose**: Discord event handlers and bot lifecycle management (639 lines)
 - **Key Functions**:
   - Bot startup and shutdown
@@ -125,3 +125,42 @@ User Interactions → Event Routing → Command Processing → Helper Functions 
 **Module Count**: 10 core modules  
 **Documentation Status**: Complete  
 **Last Reviewed**: 2025-10-10
+
+
+## Recent Command Module Updates
+
+### utility
+
+**Description**: Utility, help, and information commands.
+
+**Key Functions**:
+
+- `register(gal)`
+  - Register utility commands with the GAL command group.
+
+**Dependencies**:
+- __future__.annotations, typing.Optional, discord.app_commands, config.EMBEDS_CFG, config.GAL_COMMAND_IDS, helpers.ConfigManager, common.command_tracer, common.ensure_staff, common.handle_command_exception, core.test_components.TestComponents
+
+### placement
+
+**Description**: Placement update commands.
+
+**Key Functions**:
+
+- `register(gal)`
+  - Register placement commands with the GAL command group.
+
+**Dependencies**:
+- __future__.annotations, discord.app_commands, discord.ext.commands, integrations.lobby_manager.LobbyManager, integrations.riot_api.RiotAPI, common.command_tracer, common.ensure_staff, common.handle_command_exception, api.routers.websocket.send_placement_update, integrations.lobby_manager.LobbyManager
+
+### registration
+
+**Description**: Registration and roster management commands.
+
+**Key Functions**:
+
+- `register(gal)`
+  - Attach registration commands to the GAL command group.
+
+**Dependencies**:
+- __future__.annotations, typing.List, typing.Optional, typing.Sequence, typing.Tuple, discord.app_commands, config._FULL_CFG, config.embed_from_cfg, config.get_checked_in_role, config.get_registered_role, config.get_unified_channel_name, core.components_traditional.update_unified_channel, core.persistence.get_event_mode_for_guild, core.persistence.persisted, core.persistence.save_persisted, helpers.EmbedHelper, integrations.sheets.refresh_sheet_cache, utils.utils.send_reminder_dms, common.command_tracer, common.ensure_staff, common.handle_command_exception, common.localized_choice, common.logger, common.respond_with_message, core.discord_events.recent_pings, core.persistence.set_event_mode_for_guild, integrations.sheets.cache_lock, integrations.sheets.sheet_cache, helpers.sheet_helpers.SheetOperations, core.views.WaitlistRegistrationDMView

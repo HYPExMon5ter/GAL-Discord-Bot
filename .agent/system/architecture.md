@@ -13,7 +13,7 @@ tags: [system, architecture, unified-data-flow, api-backend, event-system]
 - **Data**: Unified data flow architecture with database-first (SQLite for dev, Postgres-ready). Google Sheets serves as a **view**
 - **Events**: Event-driven architecture with prioritized handling and real-time updates
 - **Security**: Comprehensive token masking, secure logging, and JWT-based API authentication
-- **Documentation**: `.agent` auto-maintained via Droid + Git hooks + CI audits
+- **Documentation**: `.agent` auto-maintained via scripts/documentation_manager.py script
 
 ## Unified Data Flow Architecture
 
@@ -88,12 +88,12 @@ The Guardian Angel League system now implements a unified data flow architecture
 - `core/models/configuration.py` (201 lines) - Configuration entities with versioning
 
 ### Legacy Core Components (`core/`)
-- `core/commands.py` (86,573 lines) - Slash command definitions and tournament management logic
+- `core/commands/` (86,573 lines) - Slash command definitions and tournament management logic
 - `core/components_traditional.py` (73,408 lines) - Traditional Discord components and UI elements
 - `core/views.py` (51,100 lines) - View classes and persistent view management
 - `core/config_ui.py` (36,243 lines) - Configuration UI components and settings management
 - `core/persistence.py` (16,544 lines) - Data persistence layer and database operations
-- `core/events.py` (29,619 lines) - Discord event handlers and bot lifecycle management
+- `core/events/event_bus.py` (29,619 lines) - Discord event handlers and bot lifecycle management
 - `core/onboard.py` (23,126 lines) - User onboarding system and approval workflow
 - `core/migration.py` (11,993 lines) - Database migration and schema management
 - `core/test_components.py` (7,157 lines) - Testing framework for core components
@@ -139,7 +139,7 @@ The Guardian Angel League system now implements a unified data flow architecture
 
 ### Scripts (`scripts/`)
 - `scripts/generate_snapshot.py` (9,208 lines) - Context snapshot generator for AI sessions
-- `scripts/update_system_docs.py` (6,566 lines) - System documentation update utilities
+- `scripts/scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\documentation_manager.py` (18,492 lines) - Unified documentation audit and fix tool
 - `scripts/migrate_columns.py` (2,905 lines) - Column migration and database schema updates
 
 ## Data Flow Architecture
@@ -299,7 +299,7 @@ except Exception as e:
 **Last Reviewed**: 2025-10-11
 
 
-## Security & Logging
+## Security & Logging {#security--logging}
 
 ### Token Management
 - **Secure Logging**: All tokens and API keys are automatically masked in logs

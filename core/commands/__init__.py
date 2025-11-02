@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from discord.ext import commands
 
 from .common import logger
-from . import configuration, legacy, onboarding, registration, utility
+from . import configuration, legacy, onboarding, placement, registration, utility
 from .legacy import CommandError
 
 gal = legacy.gal
@@ -38,6 +38,7 @@ async def setup(bot: commands.Bot) -> None:
         registration.register(gal)
         configuration.register(gal)
         onboarding.register(gal)
+        placement.register(gal)
         utility.register(gal)
 
         bot.tree.add_command(gal)

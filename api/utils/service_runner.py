@@ -28,7 +28,9 @@ def _ensure_awaitable(result: ReturnType | Awaitable[ReturnType]) -> Awaitable[R
     return _wrapper()
 
 
-async def execute_service(callable_: ServiceCallable[ReturnType], *args: Any, **kwargs: Any) -> ReturnType:
+async def execute_service(
+    callable_: ServiceCallable[ReturnType], *args: Any, **kwargs: Any
+) -> ReturnType:
     """
     Execute a service callable and convert domain exceptions to HTTP errors.
 
@@ -38,7 +40,6 @@ async def execute_service(callable_: ServiceCallable[ReturnType], *args: Any, **
     """
     try:
         result = callable_(*args, **kwargs)
-        awaited = _ensure_awaitable(result)
-        return await awaited
+        return await _ensure_awaitable(result)
     except ServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc

@@ -736,7 +736,7 @@ class RegistrationModal(discord.ui.Modal):
         self.pronouns_input = discord.ui.TextInput(
             label="Pronouns",
             placeholder="e.g. She/Her, He/Him, They/Them",
-            required=False,
+            required=True,
             default=default_pronouns or "",
             max_length=50
         )

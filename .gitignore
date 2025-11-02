@@ -16,6 +16,8 @@ google-creds.json
 .vscode/
 
 # Log files
+*.log
+logs/
 gal_bot.log
 
 # Data storage
@@ -25,11 +27,15 @@ dashboard.db
 api/dashboard.db
 dashboard/dashboard.db
 
-# Node.js
+# Node.js (only in dashboard directory)
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Build cache and temporary files
+*.tsbuildinfo
+*.har
 
 # Temp
 .claude

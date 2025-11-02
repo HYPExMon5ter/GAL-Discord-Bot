@@ -2,7 +2,9 @@
 
 import asyncio
 import os
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass
+from datetime import datetime
 
 import aiohttp
 
@@ -10,6 +12,16 @@ from utils.logging_utils import SecureLogger
 
 
 logger = SecureLogger(__name__)
+
+
+@dataclass
+class PlacementResult:
+    """Result of fetching placement for a single player."""
+    riot_id: str
+    placement: int
+    game_datetime: datetime
+    success: bool
+    error: Optional[str] = None
 
 
 class RiotAPIError(Exception):
@@ -262,6 +274,118 @@ class RiotAPI:
                 "riot_id": riot_id,
                 "region": region.upper()
             }
+
+    async def get_placements_batch(
+        self,
+        riot_ids: List[str],
+        region: str = "na",
+        batch_delay: float = 1.0,
+        batch_size: int = 10
+    ) -> Dict[str, PlacementResult]:
+        """
+        Fetch placements for multiple players with rate limiting.
+        
+        Args:
+            riot_ids: List of Riot IDs to fetch placements for
+            region: Riot API region (default: "na")
+            batch_delay: Delay between batches in seconds
+            batch_size: Number of players to process in each batch
+            
+        Returns:
+            Dictionary mapping riot_id to PlacementResult
+        """
+        results = {}
+        total_players = len(riot_ids)
+        
+        logger.info(f"Starting batch placement fetch for {total_players} players in region {region.upper()}")
+        
+        # Process in batches to respect rate limits
+        for i in range(0, len(riot_ids), batch_size):
+            batch = riot_ids[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (len(riot_ids) + batch_size - 1) // batch_size
+            
+            logger.info(f"Processing batch {batch_num}/{total_batches} with {len(batch)} players")
+            
+            # Create tasks for concurrent requests within the batch
+            tasks = []
+            for riot_id in batch:
+                task = self._get_single_placement_safe(riot_id, region)
+                tasks.append(task)
+            
+            # Wait for all tasks in this batch to complete
+            batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results from this batch
+            for j, result in enumerate(batch_results):
+                riot_id = batch[j]
+                
+                if isinstance(result, Exception):
+                    # Handle exceptions
+                    logger.warning(f"Exception fetching placement for {riot_id}: {result}")
+                    results[riot_id] = PlacementResult(
+                        riot_id=riot_id,
+                        placement=0,
+                        game_datetime=datetime.now(),
+                        success=False,
+                        error=str(result)
+                    )
+                else:
+                    results[riot_id] = result
+            
+            # Log batch progress
+            successful = sum(1 for r in results.values() if r.success)
+            logger.info(f"Batch {batch_num}/{total_batches} complete: {successful}/{len(batch)} successful")
+            
+            # Add delay between batches (except for the last batch)
+            if i + batch_size < len(riot_ids):
+                await asyncio.sleep(batch_delay)
+        
+        # Log final results
+        successful = sum(1 for r in results.values() if r.success)
+        logger.info(f"Batch placement fetch complete: {successful}/{total_players} successful overall")
+        
+        return results
+
+    async def _get_single_placement_safe(self, riot_id: str, region: str) -> PlacementResult:
+        """
+        Safely get placement for a single player, wrapped to handle all exceptions.
+        
+        Args:
+            riot_id: Riot ID of the player
+            region: Riot API region
+            
+        Returns:
+            PlacementResult with success/failure information
+        """
+        try:
+            result = await self.get_latest_placement(region, riot_id)
+            
+            if result["success"]:
+                return PlacementResult(
+                    riot_id=result["riot_id"],
+                    placement=result["placement"],
+                    game_datetime=result["game_datetime"],
+                    success=True
+                )
+            else:
+                return PlacementResult(
+                    riot_id=riot_id,
+                    placement=0,
+                    game_datetime=datetime.now(),
+                    success=False,
+                    error=result.get("error", "Unknown error")
+                )
+                
+        except Exception as e:
+            logger.error(f"Unexpected error fetching placement for {riot_id}: {e}")
+            return PlacementResult(
+                riot_id=riot_id,
+                placement=0,
+                game_datetime=datetime.now(),
+                success=False,
+                error=str(e)
+            )
 
 
 def validate_region(region: str) -> bool:

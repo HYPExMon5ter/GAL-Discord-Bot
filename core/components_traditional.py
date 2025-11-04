@@ -100,11 +100,301 @@ def create_management_embed(user_status: str, status_emoji: str, confirmation_me
     return embed
 
 
+class UnifiedChannelLayoutView(discord.ui.LayoutView):
+    """Modern unified channel using Components V2 LayoutView."""
+    
+    def __init__(self, guild: discord.Guild, user: Optional[discord.Member] = None):
+        super().__init__(timeout=None)  # Native persistence
+        self.guild = guild
+        self.guild_id = str(guild.id)
+        self.user = user
+    
+    async def build_view(self) -> 'UnifiedChannelLayoutView':
+        """Build the view with all components and return for sending."""
+        components = await self._build_all_components()
+        
+        # Clear existing items and add new container
+        self.clear_items()
+        self.container = discord.ui.Container(
+            *components,
+            accent_colour=discord.Colour(15762110)
+        )
+        self.add_item(self.container)
+        return self
+    
+    async def _build_all_components(self) -> list:
+        """Main orchestrator that builds all components based on current state."""
+        components = []
+        
+        # Get dynamic states
+        reg_open = persisted.get(self.guild_id, {}).get("registration_open", False)
+        ci_open = persisted.get(self.guild_id, {}).get("checkin_open", False)
+        
+        # Get scheduled times
+        reg_open_ts, reg_close_ts, ci_open_ts, ci_close_ts = ScheduleHelper.get_all_schedule_times(self.guild.id)
+        has_scheduled_events = reg_open_ts or reg_close_ts or ci_open_ts or ci_close_ts
+        
+        # Determine which sections to show
+        show_tournament_info = reg_open or ci_open or has_scheduled_events
+        show_registration = reg_open or reg_open_ts
+        show_checkin = ci_open or ci_open_ts
+        show_waitlist = show_tournament_info  # Waitlist shows with any tournament activity
+        
+        # Build sections
+        if show_tournament_info:
+            components.extend(await self._get_header_components())
+        
+        if show_registration:
+            components.extend(await self._get_registration_components())
+            if show_checkin or show_waitlist:
+                components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
+        
+        if show_checkin:
+            components.extend(await self._get_checkin_components())
+            if show_waitlist:
+                components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
+        
+        if show_waitlist:
+            components.extend(await self._get_waitlist_components())
+        
+        # Show "no events" message if nothing is active or scheduled
+        if not show_tournament_info:
+            components.extend(self._get_no_event_components())
+        
+        # Always add action buttons at the end
+        components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
+        components.extend(self._get_action_button_components())
+        
+        return components
+    
+    async def _get_header_components(self) -> list:
+        """Returns header and tournament format components."""
+        mode = get_event_mode_for_guild(self.guild_id)
+        cfg = get_sheet_settings(mode)
+        max_players = cfg.get("max_players", 32)
+        
+        # Get tournament name from config
+        tournament_config = _FULL_CFG.get("tournament", {})
+        tournament_name = tournament_config.get("current_name", "K.O. GALISEUM")
+        
+        components = [
+            discord.ui.Section(
+                discord.ui.TextDisplay(content="# 🏆 Tournament Hub"),
+                discord.ui.TextDisplay(content="Welcome to the Guardian Angel League tournament hub!"),
+                discord.ui.TextDisplay(content="Below you will see the options to **Register** and **Check In**."),
+                accessory=discord.ui.Thumbnail(
+                    media="attachment://GA_Logo_Black_Background.jpg",
+                ),
+            ),
+            discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
+            discord.ui.TextDisplay(content="### 🎮 Tournament format"),
+            discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.small),
+        ]
+        
+        # Mode-specific format info
+        if mode == "doubleup":
+            teams = await SheetOperations.get_teams_summary(self.guild_id)
+            complete_teams = sum(1 for members in teams.values() if len(members) >= 2)
+            format_text = f"**Event Name**: {tournament_name}\n**Mode**: Double-Up Teams\n**Teams**: {complete_teams} complete, {len(teams)} total\n**Max Teams**: {max_players // 2}"
+        else:
+            registered = await SheetOperations.count_by_criteria(self.guild_id, registered=True)
+            format_text = f"**Event Name**: {tournament_name}\n**Mode**: Individual Players\n**Players**: {registered} registered\n**Max Players**: {max_players}"
+        
+        components.append(discord.ui.TextDisplay(content=format_text))
+        components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
+        
+        return components
+    
+    async def _get_registration_components(self) -> list:
+        """Returns registration section components."""
+        reg_open = persisted.get(self.guild_id, {}).get("registration_open", False)
+        reg_close_ts = ScheduleHelper.get_all_schedule_times(self.guild.id)[1]
+        
+        mode = get_event_mode_for_guild(self.guild_id)
+        cfg = get_sheet_settings(mode)
+        max_players = cfg.get("max_players", 32)
+        registered = await SheetOperations.count_by_criteria(self.guild_id, registered=True)
+        spots_remaining = max(0, max_players - registered)
+        
+        components = [
+            discord.ui.TextDisplay(content="# 📝 Registration"),
+        ]
+        
+        if reg_open:
+            components.append(discord.ui.TextDisplay(content="### 🟢 Open"))
+            
+            # Add close time if scheduled
+            if reg_close_ts:
+                components.append(discord.ui.TextDisplay(content=f"> 🕒 **Closes at:** <t:{reg_close_ts}:F>"))
+            
+            # Capacity bar
+            cap_bar = EmbedHelper.create_progress_bar(registered, max_players)
+            components.append(discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large))
+            components.append(discord.ui.TextDisplay(content=f"📊 Capacity: {cap_bar}"))
+            components.append(discord.ui.TextDisplay(content=f"-# {registered}/{max_players} players • {spots_remaining} spots available"))
+        else:
+            components.append(discord.ui.TextDisplay(content="### 🔴 Closed"))
+            
+            # Show scheduled open time if available
+            reg_open_ts = ScheduleHelper.get_all_schedule_times(self.guild.id)[0]
+            if reg_open_ts:
+                components.append(discord.ui.TextDisplay(content=f"> 📅 **Registration opens:** <t:{reg_open_ts}:F>"))
+        
+        return components
+    
+    async def _get_checkin_components(self) -> list:
+        """Returns check-in section components."""
+        ci_open = persisted.get(self.guild_id, {}).get("checkin_open", False)
+        ci_close_ts = ScheduleHelper.get_all_schedule_times(self.guild.id)[3]
+        
+        registered = await SheetOperations.count_by_criteria(self.guild_id, registered=True)
+        checked_in = await SheetOperations.count_by_criteria(self.guild_id, registered=True, checked_in=True)
+        
+        components = [
+            discord.ui.TextDisplay(content="# ✔️ Check In"),
+        ]
+        
+        if ci_open:
+            components.append(discord.ui.TextDisplay(content="### 🟢 Open"))
+            
+            # Add close time if scheduled
+            if ci_close_ts:
+                components.append(discord.ui.TextDisplay(content=f"> 🕒 **Closes at:** <t:{ci_close_ts}:t>"))
+            
+            # Progress bar
+            progress_bar = EmbedHelper.create_progress_bar(checked_in, registered)
+            pct_checkin = (checked_in / registered * 100) if registered else 0.0
+            components.append(discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large))
+            components.append(discord.ui.TextDisplay(content=f"📊 Progress: {progress_bar}"))
+            components.append(discord.ui.TextDisplay(content=f"-# {pct_checkin:.0f}% ready • {checked_in}/{registered} players checked in"))
+        else:
+            components.append(discord.ui.TextDisplay(content="### 🔴 Closed"))
+            
+            # Show scheduled open time if available
+            ci_open_ts = ScheduleHelper.get_all_schedule_times(self.guild.id)[2]
+            if ci_open_ts:
+                components.append(discord.ui.TextDisplay(content=f"> 📅 **Check-in opens:** <t:{ci_open_ts}:F>"))
+        
+        return components
+    
+    async def _get_waitlist_components(self) -> list:
+        """Returns waitlist section components."""
+        waitlist_entries = await WaitlistManager.get_all_waitlist_entries(self.guild_id)
+        
+        if not waitlist_entries:
+            return []
+        
+        mode = get_event_mode_for_guild(self.guild_id)
+        components = [
+            discord.ui.TextDisplay(content=f"# 📋 Waitlisted Players ({len(waitlist_entries)} waiting)"),
+        ]
+        
+        # Format waitlist based on mode
+        if mode == "doubleup":
+            waitlist_text = "```css\n"
+            for i, entry in enumerate(waitlist_entries, 1):
+                ign = entry.get("ign", "Unknown")
+                team = entry.get("team_name", "No Team")
+                waitlist_text += f"{i}. {entry['discord_tag']} | {ign} | Team: {team}\n"
+            waitlist_text += "```"
+        else:
+            waitlist_text = "```css\n"
+            for i, entry in enumerate(waitlist_entries, 1):
+                ign = entry.get("ign", "Unknown")
+                waitlist_text += f"{i}. {entry['discord_tag']} | {ign}\n"
+            waitlist_text += "```"
+        
+        components.append(discord.ui.TextDisplay(content=waitlist_text))
+        return components
+    
+    def _get_no_event_components(self) -> list:
+        """Returns components for when no events are active or scheduled."""
+        hub_config = _FULL_CFG.get("embeds", {}).get("hub", {})
+        no_event_text = hub_config.get("no_event_message",
+                                       "🌙 **No active or scheduled event right now**\n> Check back soon for the next tournament!")
+        
+        return [
+            discord.ui.TextDisplay(content="# 🏆 Tournament Hub"),
+            discord.ui.Section(
+                discord.ui.TextDisplay(content=no_event_text),
+                accessory=discord.ui.Thumbnail(
+                    media="attachment://GA_Logo_Black_Background.jpg",
+                ),
+            ),
+        ]
+    
+    def _get_action_button_components(self) -> list:
+        """Returns action button components."""
+        reg_open = persisted.get(self.guild_id, {}).get("registration_open", False)
+        ci_open = persisted.get(self.guild_id, {}).get("checkin_open", False)
+        
+        buttons = []
+        
+        # Primary action buttons (conditional)
+        if reg_open:
+            if self.user and RoleManager.is_registered(self.user):
+                buttons.append(discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Update Registration",
+                    emoji="📝",
+                    custom_id="manage_registration",
+                ))
+            else:
+                buttons.append(discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="Register",
+                    emoji="📝",
+                    custom_id="manage_registration",
+                ))
+        
+        if ci_open:
+            buttons.append(discord.ui.Button(
+                style=discord.ButtonStyle.success,
+                label="Check In",
+                emoji="✔️",
+                custom_id="manage_checkin",
+            ))
+        
+        # Always include secondary buttons
+        buttons.extend([
+            discord.ui.Button(
+                style=discord.ButtonStyle.secondary,
+                label="View Players",
+                emoji="🎮",
+                custom_id="view_list",
+            ),
+            discord.ui.Button(
+                style=discord.ButtonStyle.danger,
+                label="Admin Panel",
+                emoji="🔧",
+                custom_id="admin_panel",
+            ),
+        ])
+        
+        # Organize into action rows (max 5 buttons per row, 2 buttons for our layout)
+        action_rows = []
+        for i in range(0, len(buttons), 2):
+            row_buttons = buttons[i:i+2]
+            action_rows.append(discord.ui.ActionRow(*row_buttons))
+        
+        return action_rows
+
+
+async def build_unified_view(guild: discord.Guild, user: Optional[discord.Member] = None) -> discord.ui.LayoutView:
+    """
+    Build the main unified view using Components V2 LayoutView.
+    Returns the fully built LayoutView ready to send.
+    """
+    view = UnifiedChannelLayoutView(guild, user)
+    return await view.build_view()
+
+
 async def build_unified_embed(guild: discord.Guild, user: Optional[discord.Member] = None) -> tuple[
     discord.Embed, discord.ui.View]:
     """
     Build the main unified embed with traditional embed format and buttons at bottom.
     Returns a tuple of (embed, view).
+    DEPRECATED: Use build_unified_view() for new Components V2 implementation.
     """
     guild_id = str(guild.id)
     mode = get_event_mode_for_guild(guild_id)
@@ -1670,7 +1960,7 @@ async def ensure_unified_channel(guild: discord.Guild) -> discord.TextChannel:
 
 
 async def setup_unified_channel(guild: discord.Guild) -> bool:
-    """Setup the unified channel with traditional embed, auto-creating if needed."""
+    """Setup the unified channel with Components V2 LayoutView, auto-creating if needed."""
     try:
         # Ensure channel exists
         channel = await ensure_unified_channel(guild)
@@ -1682,13 +1972,19 @@ async def setup_unified_channel(guild: discord.Guild) -> bool:
         if chan_id and msg_id and chan_id == channel.id:
             try:
                 existing_msg = await channel.fetch_message(msg_id)
-                # Try to update the existing message, if it fails due to Components V2, we'll recreate
+                # Try to update the existing message
                 return await update_unified_channel(guild)
             except discord.NotFound:
                 pass
 
-        embed, view = await build_unified_embed(guild)
-        msg = await channel.send(embed=embed, view=view)
+        # Build the new LayoutView
+        view = await build_unified_view(guild)
+        
+        # Prepare logo file for thumbnail
+        logo_file = discord.File("assets/GA_Logo_Black_Background.jpg")
+        
+        # Send the view with the logo attachment
+        msg = await channel.send(view=view, files=[logo_file])
         set_persisted_msg(guild.id, "unified", channel.id, msg.id)
 
         try:
@@ -1700,7 +1996,7 @@ async def setup_unified_channel(guild: discord.Guild) -> bool:
         except Exception:
             pass
 
-        logging.info(f"Setup unified traditional embed in {guild.name}")
+        logging.info(f"Setup unified LayoutView in {guild.name}")
         return True
     except Exception as e:
         logging.error(f"Failed to setup unified channel: {e}", exc_info=True)
@@ -1708,7 +2004,7 @@ async def setup_unified_channel(guild: discord.Guild) -> bool:
 
 
 async def update_unified_channel(guild: discord.Guild) -> bool:
-    """Update the unified channel with fresh data."""
+    """Update the unified channel with fresh LayoutView data."""
     try:
         chan_id, msg_id = get_persisted_msg(guild.id, "unified")
         if not chan_id or not msg_id:
@@ -1720,23 +2016,26 @@ async def update_unified_channel(guild: discord.Guild) -> bool:
 
         try:
             msg = await channel.fetch_message(msg_id)
-            embed, view = await build_unified_embed(guild)
-            await msg.edit(embed=embed, view=view)
+            
+            # Build fresh LayoutView
+            view = await build_unified_view(guild)
+            
+            # Update the message with new view
+            await msg.edit(view=view)
             return True
+            
         except discord.NotFound:
             return await setup_unified_channel(guild)
         except discord.HTTPException as e:
-            # If we get a Components V2 error, delete and recreate
-            if "MessageFlags.IS_COMPONENTS_V2" in str(e) or "IS_COMPONENTS_V2" in str(e):
-                logging.info(f"Detected Components V2 message, recreating as traditional embed")
-                try:
-                    msg = await channel.fetch_message(msg_id)
-                    await msg.delete()
-                except Exception:
-                    pass
-                return await setup_unified_channel(guild)
-            else:
-                raise
+            # Handle any other HTTP errors
+            logging.warning(f"HTTP error updating unified channel: {e}")
+            # Try to recreate the message
+            try:
+                msg = await channel.fetch_message(msg_id)
+                await msg.delete()
+            except Exception:
+                pass
+            return await setup_unified_channel(guild)
     except Exception as e:
         logging.error(f"Failed to update unified channel: {e}", exc_info=True)
         return False

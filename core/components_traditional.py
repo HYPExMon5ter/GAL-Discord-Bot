@@ -1864,9 +1864,28 @@ class ResetConfirmationView(discord.ui.View):
 
 # Persistent View Registration Functions
 async def register_persistent_views(client: discord.Client, guild: discord.Guild):
-    """Register persistent views with the client for the guild."""
+    """Register persistent views with the client for the guild.
+    
+    Note: With Components V2 LayoutView, views persist natively.
+    This function is kept for backward compatibility and handles
+    any legacy traditional views that might still be active.
+    """
     try:
-        # Create and register the unified view for persistence
+        # Check if there's an existing unified message and update it to LayoutView
+        chan_id, msg_id = get_persisted_msg(guild.id, "unified")
+        if chan_id and msg_id:
+            try:
+                channel = guild.get_channel(chan_id)
+                if channel:
+                    msg = await channel.fetch_message(msg_id)
+                    # If message exists, update it to use the new LayoutView
+                    await update_unified_channel(guild)
+                    logging.info(f"Updated unified channel to LayoutView for guild: {guild.name}")
+            except discord.NotFound:
+                # Message doesn't exist, will be created when needed
+                pass
+
+        # Register legacy UnifiedView for any remaining traditional messages
         unified_view = UnifiedView.create_persistent(guild)
         client.add_view(unified_view)
 
@@ -1876,7 +1895,11 @@ async def register_persistent_views(client: discord.Client, guild: discord.Guild
 
 
 async def register_all_persistent_views(client: discord.Client):
-    """Register persistent views for all guilds the bot is in."""
+    """Register persistent views for all guilds the bot is in.
+    
+    Note: Components V2 LayoutView handles persistence natively.
+    This function mainly handles migrating any existing traditional views.
+    """
     for guild in client.guilds:
         await register_persistent_views(client, guild)
 

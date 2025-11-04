@@ -146,8 +146,6 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         
         if show_registration:
             components.extend(self._get_registration_components())
-            if show_checkin or show_waitlist:
-                components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
         
         # Add separator before check-in only if there are sections before it
         if show_checkin and (show_registration or show_tournament_info):
@@ -237,7 +235,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                 ))
             
             # Capacity bar
-            cap_bar = EmbedHelper.create_progress_bar(self.data['registered'], self.data['max_players'])
+            cap_bar = EmbedHelper.create_progress_bar(self.data['registered'], self.data['max_players'], 10)
             spots_remaining = max(0, self.data['max_players'] - self.data['registered'])
             components.append(discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large))
             components.append(discord.ui.TextDisplay(content=f"📊 Capacity: {cap_bar}"))
@@ -271,7 +269,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                 ))
             
             # Progress bar
-            progress_bar = EmbedHelper.create_progress_bar(self.data['checked_in'], self.data['registered'])
+            progress_bar = EmbedHelper.create_progress_bar(self.data['checked_in'], self.data['registered'], 10)
             pct_checkin = (self.data['checked_in'] / self.data['registered'] * 100) if self.data['registered'] else 0.0
             components.append(discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large))
             components.append(discord.ui.TextDisplay(content=f"📊 Progress: {progress_bar}"))
@@ -335,30 +333,36 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         ]
     
     def _get_action_button_components(self) -> list:
-        """Returns action button components as ActionRow for LayoutView."""
-        buttons = []
+        """Returns action button components as ActionRows for LayoutView."""
+        row1_buttons = []  # Primary actions (Register, Check In)
+        row2_buttons = []  # Secondary actions (View Players, Admin Panel - always visible)
         
         # Primary action buttons (conditional)
         if self.data['reg_open']:
             if self.user and RoleManager.is_registered(self.user):
-                buttons.append(LayoutRegisterButton(label="Update Registration"))
+                row1_buttons.append(LayoutRegisterButton(label="Update Registration"))
             else:
-                buttons.append(LayoutRegisterButton(label="Register"))
+                row1_buttons.append(LayoutRegisterButton(label="Register"))
         
         if self.data['ci_open']:
-            buttons.append(LayoutCheckinButton())
+            row1_buttons.append(LayoutCheckinButton())
         
-        # Always include secondary buttons
-        buttons.extend([
+        # Always include secondary buttons in second row
+        row2_buttons.extend([
             LayoutViewPlayersButton(),
             LayoutAdminButton(),
         ])
         
-        # Put all buttons in a single ActionRow
-        if buttons:
-            return [discord.ui.ActionRow(*buttons)]
-        else:
-            return []
+        # Organize into action rows
+        action_rows = []
+        if row1_buttons:
+            action_rows.append(discord.ui.ActionRow(*row1_buttons))
+            action_rows.append(discord.ui.ActionRow(*row2_buttons))
+        elif row2_buttons:
+            # If no primary buttons, still show secondary buttons
+            action_rows.append(discord.ui.ActionRow(*row2_buttons))
+        
+        return action_rows
     
     # Note: Buttons are now handled in _get_action_button_components() method
 # and included in the container components for proper LayoutView display
@@ -2265,7 +2269,7 @@ async def setup_unified_channel(guild: discord.Guild) -> bool:
 
 
 async def update_unified_channel(guild: discord.Guild) -> bool:
-    """Update the unified channel by recreating the message."""
+    """Update the unified channel with fresh LayoutView data."""
     try:
         chan_id, msg_id = get_persisted_msg(guild.id, "unified")
         if not chan_id or not msg_id:
@@ -2278,16 +2282,23 @@ async def update_unified_channel(guild: discord.Guild) -> bool:
         try:
             msg = await channel.fetch_message(msg_id)
             
-            # Delete old message (LayoutView updates work better with recreation)
-            await msg.delete()
+            # Build fresh LayoutView with updated data
+            view = await build_unified_view(guild)
             
-            # Create fresh message
-            return await setup_unified_channel(guild)
+            # Edit the message in place
+            await msg.edit(view=view)
+            return True
             
         except discord.NotFound:
             return await setup_unified_channel(guild)
         except discord.HTTPException as e:
             logging.warning(f"HTTP error updating unified channel: {e}")
+            # Only recreate if edit fails
+            try:
+                msg = await channel.fetch_message(msg_id)
+                await msg.delete()
+            except:
+                pass
             return await setup_unified_channel(guild)
     except Exception as e:
         logging.error(f"Failed to update unified channel: {e}", exc_info=True)

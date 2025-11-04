@@ -7,7 +7,7 @@ class TestComponents(discord.ui.LayoutView):
     # Configuration toggles - change these to enable/disable sections
     SHOW_HEADER = True
     SHOW_REGISTRATION = True
-    SHOW_CHECKIN = False
+    SHOW_CHECKIN = True
     SHOW_ACTION_BUTTONS = True
     
     def __init__(self, **kwargs):
@@ -40,7 +40,7 @@ class TestComponents(discord.ui.LayoutView):
                 discord.ui.TextDisplay(content="Welcome to the Guardian Angel League tournament hub!"),
                 discord.ui.TextDisplay(content="Below you will see the options to **Register** and **Check In**."),
                 accessory=discord.ui.Thumbnail(
-                    media="https://media.discordapp.net/attachments/1400529171200999534/1421203430722113607/GA_Logo_Black_Background_-_Smaller.jpg?ex=68d82e56&is=68d6dcd6&hm=36df9a0841570eac40a1ef3922bc25beef773bb4f807f5e98b12fe564d369f2f&=&format=webp",
+                    media="attachment://GA_Logo_Black_Background.jpg",
                 ),
             ),
             discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
@@ -56,7 +56,7 @@ class TestComponents(discord.ui.LayoutView):
         """Returns registration section components."""
         return [
             discord.ui.TextDisplay(content="# 📝 Registration"),
-            discord.ui.TextDisplay(content="### 🟢 Registration Open / 🔴 Registration Closed"),
+            discord.ui.TextDisplay(content="### 🟢 Open / 🔴 Closed"),
             discord.ui.TextDisplay(content="> Scheduled time here, if present"),
             discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large),
             discord.ui.TextDisplay(content="📊 Capacity: ⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜"),
@@ -68,7 +68,7 @@ class TestComponents(discord.ui.LayoutView):
         """Returns check-in section components."""
         return [
             discord.ui.TextDisplay(content="# ✔️ Check In"),
-            discord.ui.TextDisplay(content="### 🟢 Check In Open / 🔴 Check In Closed"),
+            discord.ui.TextDisplay(content="**🟢 Open / 🔴 Closed**"),
             discord.ui.TextDisplay(content="> Scheduled time here, if present"),
             discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large),
             discord.ui.TextDisplay(content="📊 Capacity: ⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜"),

@@ -44,6 +44,11 @@ async def complete_registration(
     # 2) Resolve context
     guild = getattr(reg_modal, "guild", None) or interaction.guild
     member = getattr(reg_modal, "member", None) or interaction.user
+    
+    # Defensive check - ensure we have valid guild and member
+    if not guild or not member:
+        raise ValueError("Missing guild or member context for registration")
+    
     discord_tag = str(member)
     gid = str(guild.id)
 
@@ -755,7 +760,12 @@ class RegistrationModal(discord.ui.Modal):
         """Handle errors in the modal submission."""
         from helpers.embed_helpers import log_error
         guild = getattr(self, 'guild', None) or interaction.guild
-        await log_error(interaction.client, guild, f"RegistrationModal error: {error}")
+        # Defensive check for guild
+        if guild:
+            await log_error(interaction.client, guild, f"RegistrationModal error: {error}")
+        else:
+            # Log without guild context if guild is None
+            await log_error(interaction.client, None, f"RegistrationModal error (no guild): {error}")
 
         try:
             if not interaction.response.is_done():
@@ -907,7 +917,17 @@ class RegistrationModal(discord.ui.Modal):
             )
 
         except Exception as e:
-            await log_error(interaction.client, interaction.guild, f"[REGISTER-MODAL-ERROR] {e}")
+            # Add more context to the error for debugging
+            import traceback
+            error_context = f"[REGISTER-MODAL-ERROR] {e}\n\nContext:\n"
+            error_context += f"reg_modal.guild: {getattr(reg_modal, 'guild', 'MISSING')}\n"
+            error_context += f"interaction.guild: {getattr(interaction, 'guild', 'MISSING')}\n"
+            error_context += f"resolved guild: {getattr(reg_modal, 'guild', None) or getattr(interaction, 'guild', None)}\n"
+            error_context += f"reg_modal.member: {getattr(reg_modal, 'member', 'MISSING')}\n"
+            error_context += f"interaction.user: {getattr(interaction, 'user', 'MISSING')}\n"
+            error_context += f"Traceback: {traceback.format_exc()}"
+            
+            await log_error(interaction.client, interaction.guild, error_context)
 
 
 class TeamNameChoiceView(discord.ui.View):

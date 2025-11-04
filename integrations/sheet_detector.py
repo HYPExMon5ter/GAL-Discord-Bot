@@ -362,3 +362,50 @@ async def save_column_mapping(guild_id: str, mapping: ColumnMapping) -> None:
 
     update_guild_data(guild_id, {"column_mapping": mapping_dict})
     logging.info(f"Saved column mapping for guild {guild_id}")
+
+
+async def ensure_column_mappings_initialized(guild_id: str) -> bool:
+    """
+    Ensure column mappings are detected and saved for a guild.
+    Returns True if mappings exist or were created successfully.
+    """
+    # Check if mappings already exist
+    existing_mapping = await get_column_mapping(guild_id)
+    if existing_mapping and existing_mapping.discord_column:
+        logging.info(f"Column mappings already exist for guild {guild_id}")
+        return True
+    
+    logging.info(f"Detecting column mappings for guild {guild_id}")
+    
+    # Detect columns from sheet
+    detections = await detect_sheet_columns(guild_id, force_refresh=True)
+    
+    if not detections:
+        logging.error(f"Failed to detect columns for guild {guild_id}")
+        return False
+    
+    # Create mapping from detections
+    mapping = ColumnMapping()
+    if "discord" in detections:
+        mapping.discord_column = detections["discord"].column_letter
+    if "ign" in detections:
+        mapping.ign_column = detections["ign"].column_letter
+    if "registered" in detections:
+        mapping.registered_column = detections["registered"].column_letter
+    if "checkin" in detections:
+        mapping.checkin_column = detections["checkin"].column_letter
+    if "team" in detections:
+        mapping.team_column = detections["team"].column_letter
+    if "alt_ign" in detections:
+        mapping.alt_ign_column = detections["alt_ign"].column_letter
+    if "pronouns" in detections:
+        mapping.pronouns_column = detections["pronouns"].column_letter
+    
+    # Save the mapping
+    await save_column_mapping(guild_id, mapping)
+    
+    logging.info(f"Column mappings saved for guild {guild_id}: "
+                f"discord={mapping.discord_column}, ign={mapping.ign_column}, "
+                f"registered={mapping.registered_column}")
+    
+    return True

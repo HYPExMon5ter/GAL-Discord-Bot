@@ -305,15 +305,19 @@ async def complete_registration(
         # 10) Hyperlink IGN
         await hyperlink_lolchess_profile(discord_tag, gid)
 
-        # 11) Refresh embeds using helper - ALWAYS update main embed for registration
+        # 11) Force cache refresh to ensure fresh data for UI update
+        from integrations.sheets import refresh_sheet_cache
+        await refresh_sheet_cache(bot=interaction.client, force=True)
+
+        # 12) Refresh embeds using helper - ALWAYS update main embed for registration
         await update_unified_channel(guild)
 
-        # 12) Process waitlist to see if more people can be registered
+        # 13) Process waitlist to see if more people can be registered
         # This is important for team scenarios where one person registering
         # might open up a spot for their teammate on the waitlist
         await WaitlistManager.process_waitlist(guild)
 
-        # 13) Send success embed
+        # 14) Send success embed
         ok_key = f"register_success_{mode}"
         success_embed = embed_from_cfg(
             ok_key,
@@ -322,6 +326,11 @@ async def complete_registration(
         )
 
         print(f"[REGISTER SUCCESS] {discord_tag} in guild {guild.name}")
+        
+        # Log cache state for debugging
+        from helpers.sheet_helpers import SheetOperations
+        registered_count = await SheetOperations.count_by_criteria(gid, registered=True)
+        logging.info(f"Cache state after registration: {registered_count} users registered")
 
         # Create success result
         result = {

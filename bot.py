@@ -384,6 +384,26 @@ class GALBot(commands.Bot):
         # Verify commands are accessible
         await self.verify_commands()
 
+        # Initialize column mappings for all guilds
+        await self.initialize_column_mappings()
+
+    async def initialize_column_mappings(self):
+        """Initialize column mappings for all guilds the bot is in."""
+        logging.info("Initializing column mappings for all guilds...")
+        
+        for guild in self.guilds:
+            try:
+                from integrations.sheet_detector import ensure_column_mappings_initialized
+                success = await ensure_column_mappings_initialized(str(guild.id))
+                if success:
+                    logging.info(f"✅ Column mappings initialized for guild {guild.name} ({guild.id})")
+                else:
+                    logging.error(f"❌ Failed to initialize column mappings for guild {guild.name} ({guild.id})")
+            except Exception as e:
+                logging.error(f"❌ Error initializing column mappings for guild {guild.name} ({guild.id}): {e}")
+        
+        logging.info("Column mapping initialization completed")
+
     async def on_disconnect(self):
         """Called when the bot disconnects from Discord."""
         logging.warning("Bot disconnected from Discord")

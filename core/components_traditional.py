@@ -1939,8 +1939,7 @@ async def register_persistent_views(client: discord.Client, guild: discord.Guild
     """Register persistent views with the client for the guild.
     
     Note: With Components V2 LayoutView, views persist natively.
-    This function is kept for backward compatibility and handles
-    any legacy traditional views that might still be active.
+    This function registers button classes for LayoutView compatibility.
     """
     try:
         # Check if there's an existing unified message and update it to LayoutView
@@ -1956,6 +1955,14 @@ async def register_persistent_views(client: discord.Client, guild: discord.Guild
             except discord.NotFound:
                 # Message doesn't exist, will be created when needed
                 pass
+
+        # Register LayoutView button classes for persistence
+        button_view = discord.ui.View(timeout=None)
+        button_view.add_item(LayoutRegisterButton())
+        button_view.add_item(LayoutCheckinButton())
+        button_view.add_item(LayoutViewPlayersButton())
+        button_view.add_item(LayoutAdminButton())
+        client.add_view(button_view)
 
         # Register legacy UnifiedView for any remaining traditional messages
         unified_view = UnifiedView.create_persistent(guild)

@@ -109,17 +109,322 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         self.guild_id = str(guild.id)
         self.user = user
     
+    # Define all buttons with decorators for native Components V2 persistence
+    @discord.ui.button(
+        label="Register",
+        style=discord.ButtonStyle.primary,
+        emoji="📝",
+        custom_id="uc_register",
+        row=0  # All buttons in single row
+    )
+    async def register_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle registration button click."""
+        guild_id = str(interaction.guild.id)
+        reg_open = persisted.get(guild_id, {}).get("registration_open", False)
+
+        if not reg_open:
+            await interaction.response.send_message(
+                embed=embed_from_cfg("registration_closed"),
+                ephemeral=True
+            )
+            return
+
+        # Defer immediately since we'll do database lookups
+        await interaction.response.defer(ephemeral=True)
+
+        # Create ephemeral registration management interface
+        from helpers.waitlist_helpers import WaitlistManager
+        from helpers.validation_helpers import Validators
+
+        is_registered = RoleManager.is_registered(interaction.user)
+        waitlist_warning = None
+
+        # Check if user is on waitlist
+        waitlist_pos = await WaitlistManager.get_waitlist_position(guild_id, str(interaction.user))
+
+        if is_registered:
+            user_status = "You are currently registered for this tournament"
+            status_emoji = "✅"
+        elif waitlist_pos:
+            user_status = f"You are currently on the waitlist (position #{waitlist_pos})"
+            status_emoji = "⏳"
+        else:
+            user_status = "You are not registered for this tournament"
+            status_emoji = "❌"
+
+            # Check if registration is full to show waitlist notice
+            try:
+                capacity_error = await Validators.validate_registration_capacity(guild_id, None)
+                if capacity_error and capacity_error.embed_key in ["registration_full", "max_teams_reached"]:
+                    waitlist_warning = "⚠️ The tournament is currently full. If you register, you will be added to the waitlist and notified if a spot becomes available."
+            except:
+                pass  # Don't break if validation fails
+
+        embed = create_management_embed(
+            user_status=user_status,
+            status_emoji=status_emoji,
+            waitlist_warning=waitlist_warning
+        )
+
+        # Create appropriate view based on registration/waitlist status
+        from .views import RegistrationManagementView
+        view = RegistrationManagementView(interaction.user, is_registered, bool(waitlist_pos))
+        message = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+        # Store the message reference for editing later
+        view.original_message = message
+    
+    @discord.ui.button(
+        label="Check In",
+        style=discord.ButtonStyle.success,
+        emoji="✔️",
+        custom_id="uc_checkin",
+        row=0
+    )
+    async def checkin_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle check-in button click."""
+        guild_id = str(interaction.guild.id)
+        ci_open = persisted.get(guild_id, {}).get("checkin_open", False)
+
+        if not ci_open:
+            try:
+                embed = embed_from_cfg("checkin_closed")
+            except:
+                # Fallback if checkin_closed config doesn't exist
+                embed = discord.Embed(
+                    title="❌ Check-In Closed",
+                    description="Check-in is currently closed.",
+                    color=discord.Color.red()
+                )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        # Defer early since we'll be doing role checks
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Create ephemeral check-in management interface using check-in specific format
+            if not RoleManager.is_registered(interaction.user):
+                embed = create_management_embed(
+                    user_status="You must be registered before you can check in",
+                    status_emoji="⚠️",
+                    confirmation_message="Please register first using the **Register** button.",
+                    embed_type="checkin"
+                )
+                # Create an empty view instead of None
+                view = discord.ui.View(timeout=60)
+            else:
+                is_checked_in = RoleManager.is_checked_in(interaction.user)
+
+                if is_checked_in:
+                    embed = create_management_embed(
+                        user_status="You are currently checked in for this tournament",
+                        status_emoji="✅",
+                        embed_type="checkin"
+                    )
+                else:
+                    embed = create_management_embed(
+                        user_status="You are registered but not checked in yet",
+                        status_emoji="⏳",
+                        embed_type="checkin"
+                    )
+
+                from .views import CheckInManagementView
+                view = CheckInManagementView(interaction.user, is_checked_in)
+
+            message = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+            # Store the message reference for timeout handling
+            if hasattr(view, 'original_message'):
+                view.original_message = message
+
+        except Exception as e:
+            # Log the error for debugging
+            import logging
+            logging.error(f"Check-in button error: {e}", exc_info=True)
+
+            # If something goes wrong, send an error message
+            try:
+                await interaction.followup.send(
+                    embed=discord.Embed(
+                        title="❌ Error",
+                        description="An error occurred while opening the check-in interface. Please try again.",
+                        color=discord.Color.red()
+                    ),
+                    ephemeral=True
+                )
+            except:
+                pass  # If even this fails, there's nothing more we can do
+    
+    @discord.ui.button(
+        label="View Players",
+        style=discord.ButtonStyle.secondary,
+        emoji="🎮",
+        custom_id="uc_view_players",
+        row=0
+    )
+    async def view_players_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle view players button click."""
+        # Defer early since we'll be doing cache operations
+        await interaction.response.defer(ephemeral=True)
+
+        # Import here to avoid circular imports
+        from helpers.embed_helpers import EmbedHelper
+
+        try:
+            # Get tournament data
+            mode = get_event_mode_for_guild(interaction.guild.id)
+            cfg = get_sheet_settings(mode)
+            max_players = cfg.get("max_players", 32)
+
+            # Get registered players
+            registered_data = await SheetOperations.get_all_registered_players(interaction.guild.id)
+            registered = len(registered_data)
+            checked_in = await SheetOperations.count_by_criteria(
+                interaction.guild.id, registered=True, checked_in=True
+            )
+
+            # Create embed with player list
+            embed = discord.Embed(
+                title="📋 Tournament Players",
+                color=discord.Color.blue()
+            )
+
+            if registered == 0:
+                embed.description = "No players have registered yet."
+            else:
+                if mode == "doubleup":
+                    embed.description = f"**{checked_in}/{registered} teams checked in**"
+                else:
+                    embed.description = f"**{checked_in}/{registered} players checked in**"
+
+                # Create paginated player list
+                players_text = EmbedHelper.format_player_list(registered_data, mode)
+                
+                if len(players_text) > 1024:  # Discord field limit
+                    # Truncate with message about full list
+                    players_text = players_text[:1000] + "\n... *[list truncated]*"
+                
+                embed.add_field(
+                    name="Registered Players",
+                    value=players_text or "No registered players found.",
+                    inline=False
+                )
+
+                # Add waitlist if exists
+                waitlist_entries = await WaitlistManager.get_all_waitlist_entries(interaction.guild.id)
+                if waitlist_entries:
+                    waitlist_text = EmbedHelper.format_waitlist_list(waitlist_entries, mode)
+                    if len(waitlist_text) > 1024:
+                        waitlist_text = waitlist_text[:1000] + "\n... *[list truncated]*"
+                    
+                    embed.add_field(
+                        name=f"Waitlist ({len(waitlist_entries)} waiting)",
+                        value=waitlist_text,
+                        inline=False
+                    )
+
+            # Add footer with stats
+            embed.set_footer(
+                text=f"Tournament Mode: {mode.title()} | Max Players: {max_players}"
+            )
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            logging.error(f"Error viewing players: {e}", exc_info=True)
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="❌ Error",
+                    description="Failed to retrieve player list. Please try again.",
+                    color=discord.Color.red()
+                ),
+                ephemeral=True
+            )
+    
+    @discord.ui.button(
+        label="Admin Panel",
+        style=discord.ButtonStyle.danger,
+        emoji="🔧",
+        custom_id="uc_admin",
+        row=0
+    )
+    async def admin_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle admin panel button click."""
+        # Check if user has admin permissions
+        if not interaction.user.guild_permissions.manage_guild and not RoleManager.is_staff(interaction.user):
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Access Denied",
+                    description="You don't have permission to access the admin panel.",
+                    color=discord.Color.red()
+                ),
+                ephemeral=True
+            )
+            return
+
+        # Import admin view here to avoid circular imports
+        from .views import AdminManagementView
+
+        # Create admin management view
+        view = AdminManagementView(interaction.guild, interaction.user)
+        
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title="🔧 Admin Panel",
+                description="Use the buttons below to manage tournament settings.",
+                color=discord.Color.dark_grey()
+            ),
+            view=view,
+            ephemeral=True
+        )
+    
     async def build_view(self) -> 'UnifiedChannelLayoutView':
         """Build the view with all components and return for sending."""
         components = await self._build_all_components()
         
-        # Clear existing items and add new container
+        # Handle conditional button visibility
+        reg_open = persisted.get(self.guild_id, {}).get("registration_open", False)
+        ci_open = persisted.get(self.guild_id, {}).get("checkin_open", False)
+        
+        # Get current buttons (decorator buttons are already added to self.children)
+        buttons_to_remove = []
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                if item.custom_id == "uc_register":
+                    if not reg_open:
+                        # Mark button for removal
+                        buttons_to_remove.append(item)
+                    else:
+                        # Update label based on user status
+                        if self.user and RoleManager.is_registered(self.user):
+                            item.label = "Update Registration"
+                        else:
+                            item.label = "Register"
+                elif item.custom_id == "uc_checkin":
+                    if not ci_open:
+                        # Mark button for removal
+                        buttons_to_remove.append(item)
+        
+        # Remove buttons that shouldn't be shown
+        for button in buttons_to_remove:
+            self.remove_item(button)
+        
+        # Clear existing container items (but keep buttons)
+        items_to_preserve = [item for item in self.children if isinstance(item, discord.ui.Button)]
         self.clear_items()
+        
+        # Add back preserved buttons
+        for button in items_to_preserve:
+            self.add_item(button)
+        
+        # Add new container with content components
         self.container = discord.ui.Container(
             *components,
             accent_colour=discord.Colour(15762110)
         )
         self.add_item(self.container)
+        
         return self
     
     async def _build_all_components(self) -> list:
@@ -146,24 +451,32 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         
         if show_registration:
             components.extend(await self._get_registration_components())
-            if show_checkin or show_waitlist:
-                components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
+        
+        # Add separator before check-in only if there are sections before it
+        if show_checkin and (show_registration or show_tournament_info):
+            components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
         
         if show_checkin:
             components.extend(await self._get_checkin_components())
-            if show_waitlist:
-                components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
         
+        # Handle waitlist
         if show_waitlist:
-            components.extend(await self._get_waitlist_components())
+            waitlist_comps = await self._get_waitlist_components()
+            if waitlist_comps:  # Only add if waitlist has entries
+                # Add separator before waitlist if there are other sections
+                if show_checkin or show_registration or show_tournament_info:
+                    components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
+                components.extend(waitlist_comps)
         
         # Show "no events" message if nothing is active or scheduled
         if not show_tournament_info:
             components.extend(self._get_no_event_components())
         
-        # Always add action buttons at the end
-        components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
-        components.extend(self._get_action_button_components())
+        # Add separator before buttons only if there are content sections above
+        if show_tournament_info or show_registration or show_checkin:
+            components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
+        
+        # Note: Buttons are now handled by decorators, not in components list
         
         return components
     
@@ -323,61 +636,8 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
             ),
         ]
     
-    def _get_action_button_components(self) -> list:
-        """Returns action button components."""
-        reg_open = persisted.get(self.guild_id, {}).get("registration_open", False)
-        ci_open = persisted.get(self.guild_id, {}).get("checkin_open", False)
-        
-        buttons = []
-        
-        # Primary action buttons (conditional)
-        if reg_open:
-            if self.user and RoleManager.is_registered(self.user):
-                buttons.append(discord.ui.Button(
-                    style=discord.ButtonStyle.primary,
-                    label="Update Registration",
-                    emoji="📝",
-                    custom_id="manage_registration",
-                ))
-            else:
-                buttons.append(discord.ui.Button(
-                    style=discord.ButtonStyle.primary,
-                    label="Register",
-                    emoji="📝",
-                    custom_id="manage_registration",
-                ))
-        
-        if ci_open:
-            buttons.append(discord.ui.Button(
-                style=discord.ButtonStyle.success,
-                label="Check In",
-                emoji="✔️",
-                custom_id="manage_checkin",
-            ))
-        
-        # Always include secondary buttons
-        buttons.extend([
-            discord.ui.Button(
-                style=discord.ButtonStyle.secondary,
-                label="View Players",
-                emoji="🎮",
-                custom_id="view_list",
-            ),
-            discord.ui.Button(
-                style=discord.ButtonStyle.danger,
-                label="Admin Panel",
-                emoji="🔧",
-                custom_id="admin_panel",
-            ),
-        ])
-        
-        # Organize into action rows (max 5 buttons per row, 2 buttons for our layout)
-        action_rows = []
-        for i in range(0, len(buttons), 2):
-            row_buttons = buttons[i:i+2]
-            action_rows.append(discord.ui.ActionRow(*row_buttons))
-        
-        return action_rows
+    # Note: Action buttons are now handled by @discord.ui.button decorators in the class
+# for native Components V2 persistence and conditional visibility
 
 
 async def build_unified_view(guild: discord.Guild, user: Optional[discord.Member] = None) -> discord.ui.LayoutView:

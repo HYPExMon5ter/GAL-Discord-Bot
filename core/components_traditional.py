@@ -202,16 +202,16 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
             format_text = (
                 f"**Event Name**: {tournament_name}\n"
                 f"**Mode**: Double-Up Teams\n"
+                f"**Max Teams**: {self.data['max_players'] // 2}\n"
                 f"**Teams**: {self.data.get('complete_teams', 0)} complete, "
-                f"{len(self.data.get('teams', {}))} total\n"
-                f"**Max Teams**: {self.data['max_players'] // 2}"
+                f"{len(self.data.get('teams', {}))} total"
             )
         else:
             format_text = (
                 f"**Event Name**: {tournament_name}\n"
                 f"**Mode**: Individual Players\n"
-                f"**Players**: {self.data['registered']} registered\n"
-                f"**Max Players**: {self.data['max_players']}"
+                f"**Max Players**: {self.data['max_players']}\n"
+                f"**Players**: {self.data['registered']} registered"
             )
         
         components.append(discord.ui.TextDisplay(content=format_text))
@@ -226,7 +226,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         ]
         
         if self.data['reg_open']:
-            components.append(discord.ui.TextDisplay(content="### 🟢 Open"))
+            components.append(discord.ui.TextDisplay(content="**🟢 Open**"))
             
             # Add close time if scheduled
             if self.data.get('reg_close_ts'):
@@ -243,7 +243,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                 content=f"-# {self.data['registered']}/{self.data['max_players']} players • {spots_remaining} spots available"
             ))
         else:
-            components.append(discord.ui.TextDisplay(content="### 🔴 Closed"))
+            components.append(discord.ui.TextDisplay(content="**🔴 Closed**"))
             
             # Show scheduled open time if available
             if self.data.get('reg_open_ts'):
@@ -260,7 +260,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         ]
         
         if self.data['ci_open']:
-            components.append(discord.ui.TextDisplay(content="### 🟢 Open"))
+            components.append(discord.ui.TextDisplay(content="**🟢 Open**"))
             
             # Add close time if scheduled
             if self.data.get('ci_close_ts'):
@@ -277,7 +277,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                 content=f"-# {pct_checkin:.0f}% ready • {self.data['checked_in']}/{self.data['registered']} players checked in"
             ))
         else:
-            components.append(discord.ui.TextDisplay(content="### 🔴 Closed"))
+            components.append(discord.ui.TextDisplay(content="**🔴 Closed**"))
             
             # Show scheduled open time if available
             if self.data.get('ci_open_ts'):

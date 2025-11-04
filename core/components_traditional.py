@@ -108,6 +108,13 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         self.guild = guild
         self.guild_id = str(guild.id)
         self.user = user
+        
+        # Debug: Log initial button creation
+        import logging
+        logging.info(f"UnifiedChannelLayoutView initialized for guild {guild.id}")
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                logging.info(f"  Initial button: {item.label} ({item.custom_id})")
     
     # Define all buttons with decorators for native Components V2 persistence
     @discord.ui.button(
@@ -407,23 +414,26 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                         buttons_to_remove.append(item)
         
         # Remove buttons that shouldn't be shown
+        import logging
         for button in buttons_to_remove:
+            logging.info(f"Removing button: {button.label} ({button.custom_id})")
             self.remove_item(button)
         
-        # Clear existing container items (but keep buttons)
-        items_to_preserve = [item for item in self.children if isinstance(item, discord.ui.Button)]
-        self.clear_items()
-        
-        # Add back preserved buttons
-        for button in items_to_preserve:
-            self.add_item(button)
-        
-        # Add new container with content components
+        # Preserve existing buttons and only add container
         self.container = discord.ui.Container(
             *components,
             accent_colour=discord.Colour(15762110)
         )
         self.add_item(self.container)
+        
+        # Debug: Log what items are in the view
+        import logging
+        logging.info(f"View has {len(self.children)} items:")
+        for i, item in enumerate(self.children):
+            if isinstance(item, discord.ui.Button):
+                logging.info(f"  {i}: Button - {item.label} ({item.custom_id})")
+            elif isinstance(item, discord.ui.Container):
+                logging.info(f"  {i}: Container with {len(item.children)} components")
         
         return self
     

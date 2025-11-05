@@ -1,5 +1,6 @@
 # helpers/sheet_helpers.py
 
+import logging
 from typing import Dict, List, Optional, Tuple, Any
 
 from config import get_sheet_settings

@@ -356,11 +356,6 @@ async def complete_registration(
         
         # Log cache state for debugging
         from helpers.sheet_helpers import SheetOperations
-        import logging
-        
-        # Enable debug logging temporarily
-        logging.getLogger().setLevel(logging.DEBUG)
-        
         registered_count = await SheetOperations.count_by_criteria(gid, registered=True)
         logging.info(f"Cache state after registration: {registered_count} users registered")
         

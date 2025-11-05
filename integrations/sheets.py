@@ -499,10 +499,10 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
                 if old_registered and not new_registered:
                     unregistered_users.append(tag)
 
-            # Update cache atomically
-            async with cache_lock:
-                sheet_cache["users"] = new_map
-                cache_manager.mark_refresh()
+            # Update cache atomically (already inside outer cache_lock from line 359)
+            # NO nested lock acquisition - would cause deadlock!
+            sheet_cache["users"] = new_map
+            cache_manager.mark_refresh()
 
             total_changes = len(added) + len(removed) + len(changed)
             total_users = len(new_map)

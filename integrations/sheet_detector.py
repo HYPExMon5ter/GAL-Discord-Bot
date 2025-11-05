@@ -1,7 +1,12 @@
 # integrations/sheet_detector.py
 
+import asyncio
+import json
 import logging
+import os
 import re
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from rapidfuzz import fuzz, process
@@ -9,6 +14,9 @@ from rapidfuzz import fuzz, process
 from config import get_sheet_settings, col_to_index
 from core.persistence import get_event_mode_for_guild
 from utils.feature_flags import sheets_refactor_enabled
+
+# Column mapping cache file
+COLUMN_CACHE_FILE = "storage/column_mappings.json"
 
 
 @dataclass
@@ -306,11 +314,21 @@ async def detect_sheet_columns(guild_id: str, force_refresh: bool = False) -> Di
     return await detector.detect_columns(guild_id, force_refresh)
 
 
-async def get_column_mapping(guild_id: str) -> ColumnMapping:
+async def get_column_mapping(guild_id: str, force_redetect: bool = False) -> ColumnMapping:
     """
-    Get the complete column mapping for a guild, combining detection and persistence.
+    Get the complete column mapping for a guild, using cache when available.
+    
+    Args:
+        guild_id: Guild ID
+        force_redetect: If True, bypass cache and re-detect columns
     """
-    # First try to load from persistence
+    # Check file cache first (unless force redetect)
+    if not force_redetect:
+        cached = await load_cached_column_mapping(guild_id)
+        if cached:
+            return cached
+    
+    # Not in cache or force redetect - try persistence cache
     from core.persistence import get_guild_data
 
     guild_data = get_guild_data(guild_id)
@@ -342,6 +360,97 @@ async def get_column_mapping(guild_id: str) -> ColumnMapping:
     return mapping
 
 
+async def load_cached_column_mapping(guild_id: str) -> Optional[ColumnMapping]:
+    """Load column mapping from file cache."""
+    try:
+        if not os.path.exists(COLUMN_CACHE_FILE):
+            return None
+            
+        with open(COLUMN_CACHE_FILE, 'r') as f:
+            data = json.load(f)
+            
+        if guild_id not in data:
+            return None
+            
+        cached = data[guild_id]
+        mapping = ColumnMapping()
+        mapping.discord_column = cached.get("discord_column")
+        mapping.ign_column = cached.get("ign_column")
+        mapping.pronouns_column = cached.get("pronouns_column")
+        mapping.alt_ign_column = cached.get("alt_ign_column")
+        mapping.registered_column = cached.get("registered_column")
+        mapping.checkin_column = cached.get("checkin_column")
+        mapping.team_column = cached.get("team_column")
+        
+        # Verify we have required columns
+        if not mapping.discord_column or not mapping.ign_column:
+            logging.warning(f"Cached mapping for guild {guild_id} missing required columns")
+            return None
+        
+        logging.info(f"✅ Loaded cached column mapping for guild {guild_id}")
+        return mapping
+        
+    except Exception as e:
+        logging.warning(f"Failed to load cached column mapping for guild {guild_id}: {e}")
+        return None
+
+
+async def save_cached_column_mapping(guild_id: str, mapping: ColumnMapping, sheet_url: str):
+    """Save column mapping to file cache."""
+    try:
+        # Ensure storage directory exists
+        Path("storage").mkdir(exist_ok=True)
+        
+        # Load existing data
+        data = {}
+        if os.path.exists(COLUMN_CACHE_FILE):
+            with open(COLUMN_CACHE_FILE, 'r') as f:
+                data = json.load(f)
+        
+        # Update with new mapping
+        data[guild_id] = {
+            "discord_column": mapping.discord_column,
+            "ign_column": mapping.ign_column,
+            "pronouns_column": mapping.pronouns_column,
+            "alt_ign_column": mapping.alt_ign_column,
+            "registered_column": mapping.registered_column,
+            "checkin_column": mapping.checkin_column,
+            "team_column": mapping.team_column,
+            "last_updated": datetime.utcnow().isoformat(),
+            "sheet_url": sheet_url
+        }
+        
+        # Write back to file
+        with open(COLUMN_CACHE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+            
+        logging.info(f"✅ Saved cached column mapping for guild {guild_id}")
+        
+    except Exception as e:
+        logging.error(f"Failed to save cached column mapping for guild {guild_id}: {e}")
+
+
+async def clear_cached_column_mapping(guild_id: str):
+    """Clear cached column mapping (for /gal cache command)."""
+    try:
+        if not os.path.exists(COLUMN_CACHE_FILE):
+            return
+            
+        with open(COLUMN_CACHE_FILE, 'r') as f:
+            data = json.load(f)
+        
+        if guild_id in data:
+            del data[guild_id]
+            
+        with open(COLUMN_CACHE_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+            
+        logging.info(f"✅ Cleared cached column mapping for guild {guild_id}")
+        
+    except Exception as e:
+        logging.error(f"Failed to clear cached column mapping for guild {guild_id}: {e}")
+
+
 async def save_column_mapping(guild_id: str, mapping: ColumnMapping) -> None:
     """
     Save column mapping to persistence.
@@ -360,6 +469,13 @@ async def save_column_mapping(guild_id: str, mapping: ColumnMapping) -> None:
     }
 
     update_guild_data(guild_id, {"column_mapping": mapping_dict})
+    
+    # Also save to file cache for persistence across restarts
+    mode = get_event_mode_for_guild(guild_id)
+    cfg = get_sheet_settings(mode)
+    sheet_url = cfg.get("sheet_url_dev") or cfg.get("sheet_url_prod")
+    await save_cached_column_mapping(guild_id, mapping, sheet_url)
+    
     logging.info(f"Saved column mapping for guild {guild_id}")
 
 

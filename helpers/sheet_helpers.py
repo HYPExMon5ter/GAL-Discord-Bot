@@ -106,25 +106,103 @@ class SheetOperations:
                 cache_data = dict(sheet_cache["users"])
 
         for tag, tpl in cache_data.items():
-            # Safely unpack with defaults
-            parts = list(tpl) + [None] * (6 - len(tpl))
-            _, _, reg, ci, team, _ = parts[:6]
+            # Handle both 6-element (old format) and 7-element (new format with pronouns)
+            try:
+                if len(tpl) >= 7:
+                    row, ign, reg, ci, team, alt_ign, pronouns = tpl[:7]
+                elif len(tpl) >= 6:
+                    row, ign, reg, ci, team, alt_ign = tpl[:6]
+                    pronouns = None
+                else:
+                    # Pad to minimum required elements
+                    parts = list(tpl) + [None] * (6 - len(tpl))
+                    row, ign, reg, ci, team, alt_ign = parts[:6]
+                    pronouns = None
 
-            if registered is not None:
-                if (str(reg).upper() == "TRUE") != registered:
-                    continue
+                # Debug logging for cache access
+                reg_bool = str(reg).upper() == "TRUE" if reg is not None else False
+                ci_bool = str(ci).upper() == "TRUE" if ci is not None else False
+                
+                if registered is not None:
+                    if reg_bool != registered:
+                        continue
 
-            if checked_in is not None:
-                if (str(ci).upper() == "TRUE") != checked_in:
-                    continue
+                if checked_in is not None:
+                    if ci_bool != checked_in:
+                        continue
 
-            if team_name is not None and len(tpl) > 4:
-                if tpl[4] != team_name:
-                    continue
+                if team_name is not None and len(tpl) > 4:
+                    if team != team_name:
+                        continue
 
-            count += 1
+                count += 1
+                
+            except Exception as unpack_error:
+                logging.warning(f"Failed to unpack cache entry for {tag}: {tpl} - {unpack_error}")
+                continue
 
         return count
+
+    @staticmethod
+    async def get_cache_snapshot(guild_id: str) -> Dict[str, int]:
+        """
+        Get a comprehensive snapshot of cache statistics in a single operation.
+        This is more efficient than multiple count_by_criteria calls.
+        """
+        snapshot = {
+            'total_users': 0,
+            'registered_count': 0,
+            'checked_in_count': 0,
+            'unregistered_count': 0,
+            'users': []
+        }
+
+        try:
+            # Make a snapshot of the cache data to avoid holding the lock
+            cache_data = dict(sheet_cache["users"])
+        except:
+            # If we can't access it, try with the lock
+            async with cache_lock:
+                cache_data = dict(sheet_cache["users"])
+
+        for tag, tpl in cache_data.items():
+            snapshot['total_users'] += 1
+            
+            try:
+                # Handle both 6-element and 7-element tuples
+                if len(tpl) >= 7:
+                    row, ign, reg, ci, team, alt_ign, pronouns = tpl[:7]
+                elif len(tpl) >= 6:
+                    row, ign, reg, ci, team, alt_ign = tpl[:6]
+                    pronouns = None
+                else:
+                    # Skip malformed entries
+                    continue
+                
+                reg_bool = str(reg).upper() == "TRUE" if reg is not None else False
+                ci_bool = str(ci).upper() == "TRUE" if ci is not None else False
+
+                if reg_bool:
+                    snapshot['registered_count'] += 1
+                else:
+                    snapshot['unregistered_count'] += 1
+
+                if ci_bool:
+                    snapshot['checked_in_count'] += 1
+                    
+                # Add user info for debugging
+                snapshot['users'].append({
+                    'tag': tag,
+                    'ign': ign,
+                    'registered': reg_bool,
+                    'checked_in': ci_bool
+                })
+                
+            except Exception as unpack_error:
+                logging.warning(f"Failed to unpack cache entry in snapshot for {tag}: {tpl} - {unpack_error}")
+                continue
+
+        return snapshot
 
     @staticmethod
     async def get_teams_summary(guild_id: str) -> Dict[str, List[str]]:

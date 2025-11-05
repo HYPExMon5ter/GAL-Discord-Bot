@@ -331,9 +331,15 @@ async def complete_registration(
             logging.warning(f"⚠️ Hyperlink creation failed for {discord_tag}: {link_error}")
             # Don't fail registration for hyperlink issues
 
-        # 11) Force cache refresh to ensure fresh data for UI update
-        from integrations.sheets import refresh_sheet_cache
-        await refresh_sheet_cache(bot=interaction.client, force=True)
+        # 11) Verify cache update was successful before UI update
+        from integrations.sheets import sheet_cache
+        if discord_tag not in sheet_cache.get("users", {}):
+            # Only refresh if local cache update failed
+            logging.warning(f"Cache update verification failed for {discord_tag}, forcing refresh")
+            from integrations.sheets import refresh_sheet_cache
+            await refresh_sheet_cache(bot=interaction.client, force=True)
+        else:
+            logging.info(f"✅ Cache update verified for {discord_tag}, skipping full refresh")
 
         # 12) Refresh embeds using helper - ALWAYS update main embed for registration
         await update_unified_channel(guild)
@@ -357,6 +363,19 @@ async def complete_registration(
         from helpers.sheet_helpers import SheetOperations
         registered_count = await SheetOperations.count_by_criteria(gid, registered=True)
         logging.info(f"Cache state after registration: {registered_count} users registered")
+        
+        # Debug: Check what's actually in the cache
+        try:
+            from integrations.sheets import sheet_cache
+            cache_users = dict(sheet_cache.get("users", {}))
+            registered_in_cache = sum(1 for _, _, reg, *_ in cache_users.values() if str(reg).upper() == "TRUE")
+            logging.info(f"Cache debug: {len(cache_users)} total users in cache, {registered_in_cache} registered")
+            
+            # Show first few users in cache
+            for i, (tag, data) in enumerate(list(cache_users.items())[:3]):
+                logging.info(f"Cache user {i+1}: {tag} -> reg={data[2] if len(data) > 2 else 'None'}")
+        except Exception as cache_debug_error:
+            logging.error(f"Cache debug error: {cache_debug_error}")
 
         # Create success result
         result = {

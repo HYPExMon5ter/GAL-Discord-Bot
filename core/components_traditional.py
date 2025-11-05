@@ -381,9 +381,10 @@ async def fetch_tournament_data(guild: discord.Guild) -> dict:
         'ci_open': persisted.get(guild_id, {}).get("checkin_open", False),
     }
     
-    # Get player counts
-    data['registered'] = await SheetOperations.count_by_criteria(guild_id, registered=True)
-    data['checked_in'] = await SheetOperations.count_by_criteria(guild_id, registered=True, checked_in=True)
+    # Get player counts using optimized cache snapshot
+    cache_snapshot = await SheetOperations.get_cache_snapshot(guild_id)
+    data['registered'] = cache_snapshot['registered_count']
+    data['checked_in'] = cache_snapshot['checked_in_count']
     
     # Get waitlist data
     data['waitlist_entries'] = await WaitlistManager.get_all_waitlist_entries(guild_id)

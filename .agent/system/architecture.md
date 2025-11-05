@@ -13,7 +13,7 @@ tags: [system, architecture, unified-data-flow, api-backend, event-system]
 - **Data**: Unified data flow architecture with database-first (SQLite for dev, Postgres-ready). Google Sheets serves as a **view**
 - **Events**: Event-driven architecture with prioritized handling and real-time updates
 - **Security**: Comprehensive token masking, secure logging, and JWT-based API authentication
-- **Documentation**: `.agent` auto-maintained via scripts/documentation_manager.py script
+- **Documentation**: `.agent` auto-maintained via scripts/scripts\documentation_manager.py script
 
 ## Unified Data Flow Architecture
 
@@ -139,7 +139,7 @@ The Guardian Angel League system now implements a unified data flow architecture
 
 ### Scripts (`scripts/`)
 - `scripts/generate_snapshot.py` (9,208 lines) - Context snapshot generator for AI sessions
-- `scripts/scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\documentation_manager.py` (18,492 lines) - Unified documentation audit and fix tool
+- `scripts/scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\scripts\documentation_manager.py` (18,492 lines) - Unified documentation audit and fix tool
 - `scripts/migrate_columns.py` (2,905 lines) - Column migration and database schema updates
 
 ## Data Flow Architecture

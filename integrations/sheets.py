@@ -342,13 +342,18 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
             logger.debug("[CACHE] Cache is fresh; skipping refresh")
             return 0, len(sheet_cache.get("users", {}))
     
-    # Phase 2: Initialize DAL integration
+    # Phase 2: Legacy adapter DISABLED for cache consistency
     try:
-        adapter = await get_legacy_adapter()
+        # Legacy adapter was replacing the global cache - DISABLED to prevent cache replacement
         if hasattr(sheet_cache, "_skip_waitlist_processing"):
-            logger.debug("[CACHE] Using DAL integration for cache refresh")
+            logger.debug("[CACHE] Legacy adapter integration disabled")
+        else:
+            # Temporarily disable legacy adapter to prevent cache replacement
+            logger.warning("[CACHE] Legacy adapter found but disabled - preventing cache replacement")
+        # adapter = await get_legacy_adapter()  # DISABLED TO PREVENT CACHE REPLACEMENT
+        logger.info("[CACHE] Legacy adapter integration fully disabled for cache consistency")
     except Exception as e:
-        logger.debug(f"[CACHE] DAL integration not available: {e}")
+        logger.debug(f"[CACHE] Legacy adapter not available: {e}")
         adapter = None
 
     # Store guild reference for later use

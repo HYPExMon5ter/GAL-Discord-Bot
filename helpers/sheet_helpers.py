@@ -98,65 +98,61 @@ class SheetOperations:
         """
         count = 0
 
-        try:
-            # Make a snapshot of the cache data to avoid holding the lock
-            cache_data = dict(sheet_cache["users"])
-        except:
-            # If we can't access it, try with the lock
-            async with cache_lock:
-                cache_data = dict(sheet_cache["users"])
-
-        logging.debug(f"count_by_criteria: {len(cache_data)} users in cache, filtering by registered={registered}, checked_in={checked_in}")
+        # Simple and safe cache access
+        async with cache_lock:
+            users = sheet_cache.get("users", {})
         
-        if len(cache_data) == 0:
+        logging.debug(f"count_by_criteria for guild {guild_id}: {len(users)} total users in cache")
+        
+        if len(users) == 0:
             logging.warning(f"count_by_criteria: Cache is EMPTY for guild {guild_id}!")
             return 0
         
-        for tag, tpl in cache_data.items():
-            # Handle both 6-element (old format) and 7-element (new format with pronouns)
+        for discord_tag, user_data in users.items():
+            # Unpack user data (expecting consistent 7-element format)
             try:
-                if len(tpl) >= 7:
-                    row, ign, reg, ci, team, alt_ign, pronouns = tpl[:7]
-                elif len(tpl) >= 6:
-                    row, ign, reg, ci, team, alt_ign = tpl[:6]
+                if len(user_data) >= 7:
+                    row, ign, reg, ci, team, alt_ign, pronouns = user_data[:7]
+                elif len(user_data) >= 4:
+                    row, ign, reg, ci = user_data[:4]
+                    team = None
+                    alt_ign = None
                     pronouns = None
                 else:
-                    # Pad to minimum required elements
-                    parts = list(tpl) + [None] * (6 - len(tpl))
-                    row, ign, reg, ci, team, alt_ign = parts[:6]
-                    pronouns = None
+                    # Skip malformed entries
+                    logging.warning(f"Skipping malformed user data for {discord_tag}: {user_data}")
+                    continue
 
-                # Proper conversion that handles strings correctly
+                # Convert to boolean properly
                 if isinstance(reg, bool):
-                    reg_bool = reg
+                    is_registered = reg
                 elif isinstance(reg, str):
-                    reg_bool = reg.upper() == "TRUE"
+                    is_registered = reg.upper() == "TRUE"
                 else:
-                    reg_bool = bool(reg) if reg is not None else False
+                    is_registered = False
                     
                 if isinstance(ci, bool):
-                    ci_bool = ci
+                    is_checked_in = ci
                 elif isinstance(ci, str):
-                    ci_bool = ci.upper() == "TRUE"
+                    is_checked_in = ci.upper() == "TRUE"
                 else:
-                    ci_bool = bool(ci) if ci is not None else False
+                    is_checked_in = False
                 
-                logging.debug(f"  Checking {tag}: reg={reg} ({type(reg).__name__}) -> reg_bool={reg_bool}")
-                
+                # Apply filters
                 if registered is not None:
-                    if reg_bool != registered:
+                    if is_registered != registered:
                         continue
 
                 if checked_in is not None:
-                    if ci_bool != checked_in:
+                    if is_checked_in != checked_in:
                         continue
 
-                if team_name is not None and len(tpl) > 4:
+                if team_name is not None and len(user_data) > 4:
                     if team != team_name:
                         continue
 
                 count += 1
-                logging.debug(f"  ✅ {tag} matches criteria")
+                logging.debug(f"  ✅ {discord_tag} matches criteria (registered={is_registered}, checked_in={is_checked_in})")
                 
             except Exception as unpack_error:
                 logging.warning(f"Failed to unpack cache entry for {tag}: {tpl} - {unpack_error}")
@@ -201,7 +197,7 @@ class SheetOperations:
                     # Skip malformed entries
                     continue
                 
-                # Proper conversion that handles strings correctly
+                # Convert to boolean properly
                 if isinstance(reg, bool):
                     reg_bool = reg
                 elif isinstance(reg, str):

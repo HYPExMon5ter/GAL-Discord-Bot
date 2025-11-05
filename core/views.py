@@ -351,12 +351,21 @@ async def complete_registration(
         
         logging.info(f"✅ Cache verified: {registered_count} users registered")
         
-        # Debug: Direct cache inspection
+        # Debug: Direct cache inspection and verification
         from integrations.sheets import sheet_cache
         cache_users = dict(sheet_cache.get("users", {}))
         logging.info(f"🔍 Direct cache check: {len(cache_users)} users in cache")
-        for tag, data in list(cache_users.items())[:3]:
-            logging.info(f"  User: {tag}, reg_value={data[2] if len(data) > 2 else 'None'}, reg_type={type(data[2]).__name__ if len(data) > 2 else 'None'}")
+        
+        if len(cache_users) == 0:
+            logging.error(f"❌ Cache is EMPTY after refresh for guild {gid}!")
+        else:
+            for tag, data in list(cache_users.items())[:3]:
+                logging.info(f"  User: {tag}, reg_value={data[2] if len(data) > 2 else 'None'}, reg_type={type(data[2]).__name__ if len(data) > 2 else 'None'}")
+        
+        # Show first few cache entries for debugging
+        logging.debug(f"🔍 Cache contents (first 3):")
+        for i, (tag, data) in enumerate(list(cache_users.items())[:3]):
+            logging.debug(f"  Entry {i+1}: {tag} -> {data}")
 
         # 12) Refresh embeds using helper - ALWAYS update main embed for registration
         if await update_unified_channel(guild):

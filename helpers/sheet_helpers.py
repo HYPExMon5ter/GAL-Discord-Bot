@@ -108,6 +108,10 @@ class SheetOperations:
 
         logging.debug(f"count_by_criteria: {len(cache_data)} users in cache, filtering by registered={registered}, checked_in={checked_in}")
         
+        if len(cache_data) == 0:
+            logging.warning(f"count_by_criteria: Cache is EMPTY for guild {guild_id}!")
+            return 0
+        
         for tag, tpl in cache_data.items():
             # Handle both 6-element (old format) and 7-element (new format with pronouns)
             try:
@@ -122,9 +126,20 @@ class SheetOperations:
                     row, ign, reg, ci, team, alt_ign = parts[:6]
                     pronouns = None
 
-                # Cache now stores booleans consistently, but handle any type for robustness
-                reg_bool = bool(reg) if reg is not None else False
-                ci_bool = bool(ci) if ci is not None else False
+                # Proper conversion that handles strings correctly
+                if isinstance(reg, bool):
+                    reg_bool = reg
+                elif isinstance(reg, str):
+                    reg_bool = reg.upper() == "TRUE"
+                else:
+                    reg_bool = bool(reg) if reg is not None else False
+                    
+                if isinstance(ci, bool):
+                    ci_bool = ci
+                elif isinstance(ci, str):
+                    ci_bool = ci.upper() == "TRUE"
+                else:
+                    ci_bool = bool(ci) if ci is not None else False
                 
                 logging.debug(f"  Checking {tag}: reg={reg} ({type(reg).__name__}) -> reg_bool={reg_bool}")
                 
@@ -186,9 +201,20 @@ class SheetOperations:
                     # Skip malformed entries
                     continue
                 
-                # Cache now stores booleans consistently, but handle any type for robustness
-                reg_bool = bool(reg) if reg is not None else False
-                ci_bool = bool(ci) if ci is not None else False
+                # Proper conversion that handles strings correctly
+                if isinstance(reg, bool):
+                    reg_bool = reg
+                elif isinstance(reg, str):
+                    reg_bool = reg.upper() == "TRUE"
+                else:
+                    reg_bool = bool(reg) if reg is not None else False
+                    
+                if isinstance(ci, bool):
+                    ci_bool = ci
+                elif isinstance(ci, str):
+                    ci_bool = ci.upper() == "TRUE"
+                else:
+                    ci_bool = bool(ci) if ci is not None else False
 
                 if reg_bool:
                     snapshot['registered_count'] += 1

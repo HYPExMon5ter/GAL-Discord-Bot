@@ -373,12 +373,8 @@ async def complete_registration(
         else:
             logging.warning(f"⚠️ Failed to update main embed for guild {guild.name}")
 
-        # 13) Process waitlist to see if more people can be registered
-        # This is important for team scenarios where one person registering
-        # might open up a spot for their teammate on the waitlist
-        await WaitlistManager.process_waitlist(guild)
-
-        # 14) Send success embed
+        # 13) Send success embed
+        # Note: Waitlist processing already happens during cache refresh in integrations/sheets.py
         ok_key = f"register_success_{mode}"
         success_embed = embed_from_cfg(
             ok_key,

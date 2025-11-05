@@ -311,21 +311,6 @@ async def retry_until_successful(fn, *args, **kwargs):
     raise SheetsError(f"All {MAX_RETRIES} retries exhausted. Last error: {last_error}")
 
 
-# Integration with new DAL (Phase 2 migration)
-_legacy_adapter = None
-
-async def get_legacy_adapter():
-    """Get the legacy adapter for DAL integration."""
-    global _legacy_adapter
-    if _legacy_adapter is None:
-        from core.data_access.legacy_adapter import get_legacy_adapter as get_adapter
-        _legacy_adapter = await get_adapter()
-        # Replace the global cache with the adapter's cache for consistency
-        global sheet_cache
-        sheet_cache = _legacy_adapter.get_legacy_sheet_cache()
-    return _legacy_adapter
-
-
 async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, int]:
     """
     Refresh the sheet cache with comprehensive error handling.
@@ -342,19 +327,8 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
             logger.debug("[CACHE] Cache is fresh; skipping refresh")
             return 0, len(sheet_cache.get("users", {}))
     
-    # Phase 2: Legacy adapter DISABLED for cache consistency
-    try:
-        # Legacy adapter was replacing the global cache - DISABLED to prevent cache replacement
-        if hasattr(sheet_cache, "_skip_waitlist_processing"):
-            logger.debug("[CACHE] Legacy adapter integration disabled")
-        else:
-            # Temporarily disable legacy adapter to prevent cache replacement
-            logger.warning("[CACHE] Legacy adapter found but disabled - preventing cache replacement")
-        # adapter = await get_legacy_adapter()  # DISABLED TO PREVENT CACHE REPLACEMENT
-        logger.info("[CACHE] Legacy adapter integration fully disabled for cache consistency")
-    except Exception as e:
-        logger.debug(f"[CACHE] Legacy adapter not available: {e}")
-        adapter = None
+    # Legacy adapter completely removed - using direct cache access only
+    adapter = None
 
     # Store guild reference for later use
     guild = None

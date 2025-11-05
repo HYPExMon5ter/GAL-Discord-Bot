@@ -386,6 +386,9 @@ async def fetch_tournament_data(guild: discord.Guild) -> dict:
     data['registered'] = cache_snapshot['registered_count']
     data['checked_in'] = cache_snapshot['checked_in_count']
     
+    # DEBUG: Log what data we're giving to LayoutView
+    logging.info(f"📊 fetch_tournament_data for guild {guild_id}: registered={data['registered']}, checked_in={data['checked_in']}, max_players={data['max_players']}")
+    
     # Get waitlist data
     data['waitlist_entries'] = await WaitlistManager.get_all_waitlist_entries(guild_id)
     

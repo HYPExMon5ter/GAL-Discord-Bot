@@ -338,8 +338,25 @@ async def complete_registration(
 
         # 11b) Immediately verify cache state after refresh
         from helpers.sheet_helpers import SheetOperations
+        import logging
+        
+        # Force debug logging temporarily to see what's happening
+        old_level = logging.getLogger().level
+        logging.getLogger().setLevel(logging.DEBUG)
+        
         registered_count = await SheetOperations.count_by_criteria(gid, registered=True)
+        
+        # Restore log level
+        logging.getLogger().setLevel(old_level)
+        
         logging.info(f"✅ Cache verified: {registered_count} users registered")
+        
+        # Debug: Direct cache inspection
+        from integrations.sheets import sheet_cache
+        cache_users = dict(sheet_cache.get("users", {}))
+        logging.info(f"🔍 Direct cache check: {len(cache_users)} users in cache")
+        for tag, data in list(cache_users.items())[:3]:
+            logging.info(f"  User: {tag}, reg_value={data[2] if len(data) > 2 else 'None'}, reg_type={type(data[2]).__name__ if len(data) > 2 else 'None'}")
 
         # 12) Refresh embeds using helper - ALWAYS update main embed for registration
         if await update_unified_channel(guild):

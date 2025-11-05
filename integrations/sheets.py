@@ -486,16 +486,21 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
             # Check if any registered users were removed (indicating unregistrations)
             unregistered_users = []
             for tag in removed:
-                if old_map[tag][2] and str(old_map[tag][2]).upper() == "TRUE":
+                old_reg = old_map[tag][2]
+                # Handle both boolean and string consistently
+                was_registered = old_reg if isinstance(old_reg, bool) else str(old_reg).upper() == "TRUE"
+                if was_registered:
                     unregistered_users.append(tag)
 
             # Also check for users who changed from registered to not registered
             for tag in changed:
                 old_data = old_map[tag]
                 new_data = new_map[tag]
-                # Check if registration status changed from True to False
-                old_registered = str(old_data[2]).upper() == "TRUE" if len(old_data) > 2 else False
-                new_registered = str(new_data[2]).upper() == "TRUE" if len(new_data) > 2 else False
+                # Consistent boolean handling for both old and new data
+                old_reg = old_data[2]
+                new_reg = new_data[2]
+                old_registered = old_reg if isinstance(old_reg, bool) else str(old_reg).upper() == "TRUE"
+                new_registered = new_reg if isinstance(new_reg, bool) else str(new_reg).upper() == "TRUE"
                 if old_registered and not new_registered:
                     unregistered_users.append(tag)
 

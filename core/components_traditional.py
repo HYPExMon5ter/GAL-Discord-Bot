@@ -2287,12 +2287,12 @@ async def update_unified_channel(guild: discord.Guild) -> bool:
             view = await build_unified_view(guild)
             
             # CRITICAL FIX: Must explicitly clear all parameters when updating LayoutView
-            # Per Discord.py docs: "you must explicitly set content, embed, embeds, and 
+            # Per Discord.py docs: "you must explicitly set content, embeds, and 
             # attachments parameters to None if the previous message had any"
+            # NOTE: Cannot use both embed and embeds parameters - use embeds=[] to clear all
             await msg.edit(
                 content=None,      # Clear content
-                embed=None,        # Clear embed
-                embeds=None,       # Clear embeds list  
+                embeds=[],         # Clear all embeds (LayoutView generates its own)
                 attachments=[],    # Clear attachments (logo was attached during setup)
                 view=view          # Set new LayoutView
             )

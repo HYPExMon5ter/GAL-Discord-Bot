@@ -449,7 +449,6 @@ async def complete_registration(
         await interaction.edit_original_response(
             content=None,       # Clear content
             embed=mgmt_embed,   # Use traditional embed
-            embeds=None,        # Clear embeds list
             view=mgmt_view      # Add management buttons
         )
         logging.info(f"✅ Updated ephemeral response for {interaction.user}")

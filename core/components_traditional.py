@@ -2290,10 +2290,11 @@ async def update_unified_channel(guild: discord.Guild) -> bool:
             # Per Discord.py docs: "you must explicitly set content, embeds, and 
             # attachments parameters to None if the previous message had any"
             # NOTE: Cannot use both embed and embeds parameters - use embeds=[] to clear all
+            # IMPORTANT: Don't clear attachments - LayoutView components reference logo attachment
             await msg.edit(
                 content=None,      # Clear content
                 embeds=[],         # Clear all embeds (LayoutView generates its own)
-                attachments=[],    # Clear attachments (logo was attached during setup)
+                # Note: NOT clearing attachments to preserve logo referenced by LayoutView components
                 view=view          # Set new LayoutView
             )
             

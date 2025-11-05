@@ -292,23 +292,42 @@ async def complete_registration(
         await WaitlistManager.remove_from_waitlist(gid, discord_tag)
 
         # 7) Upsert user row in sheet
-        row = await find_or_register_user(
-            discord_tag,
-            ign,
-            guild_id=gid,
-            team_name=(team_name if mode == "doubleup" else None),
-            alt_igns=alt_igns,
-            pronouns=pronouns
-        )
+        logging.info(f"🔄 Starting sheet registration for {discord_tag}")
+        try:
+            row = await find_or_register_user(
+                discord_tag,
+                ign,
+                guild_id=gid,
+                team_name=(team_name if mode == "doubleup" else None),
+                alt_igns=alt_igns,
+                pronouns=pronouns
+            )
+            logging.info(f"✅ Sheet registration completed for {discord_tag} - row {row}")
+        except Exception as sheet_error:
+            logging.error(f"❌ Sheet registration failed for {discord_tag}: {sheet_error}")
+            raise
 
         # Note: Alt IGNs, pronouns, and team are now handled by find_or_register_user
         # No need for separate sheet updates - they're already done and cached properly
 
         # 9) Assign role using RoleManager
-        await RoleManager.add_role(member, get_registered_role())
+        try:
+            registered_role = get_registered_role()
+            logging.info(f"🔄 Assigning role '{registered_role}' to {discord_tag}")
+            await RoleManager.add_role(member, registered_role)
+            logging.info(f"✅ Role assigned successfully to {discord_tag}")
+        except Exception as role_error:
+            logging.error(f"❌ Role assignment failed for {discord_tag}: {role_error}")
+            raise
 
         # 10) Hyperlink IGN
-        await hyperlink_lolchess_profile(discord_tag, gid)
+        try:
+            logging.info(f"🔄 Creating lolchess hyperlink for {discord_tag}")
+            await hyperlink_lolchess_profile(discord_tag, gid)
+            logging.info(f"✅ Hyperlink created for {discord_tag}")
+        except Exception as link_error:
+            logging.warning(f"⚠️ Hyperlink creation failed for {discord_tag}: {link_error}")
+            # Don't fail registration for hyperlink issues
 
         # 11) Force cache refresh to ensure fresh data for UI update
         from integrations.sheets import refresh_sheet_cache
@@ -920,14 +939,25 @@ class RegistrationModal(discord.ui.Modal):
             # Add more context to the error for debugging
             import traceback
             error_context = f"[REGISTER-MODAL-ERROR] {e}\n\nContext:\n"
-            error_context += f"reg_modal.guild: {getattr(reg_modal, 'guild', 'MISSING')}\n"
+            
+            # Check if reg_modal exists in local scope (it should, but be defensive)
+            try:
+                reg_modal_exists = 'reg_modal' in locals()
+                error_context += f"reg_modal exists: {reg_modal_exists}\n"
+                if reg_modal_exists:
+                    error_context += f"reg_modal.guild: {getattr(reg_modal, 'guild', 'MISSING')}\n"
+                    error_context += f"reg_modal.member: {getattr(reg_modal, 'member', 'MISSING')}\n"
+            except:
+                error_context += "reg_modal: SCOPE ERROR\n"
+            
             error_context += f"interaction.guild: {getattr(interaction, 'guild', 'MISSING')}\n"
-            error_context += f"resolved guild: {getattr(reg_modal, 'guild', None) or getattr(interaction, 'guild', None)}\n"
-            error_context += f"reg_modal.member: {getattr(reg_modal, 'member', 'MISSING')}\n"
             error_context += f"interaction.user: {getattr(interaction, 'user', 'MISSING')}\n"
+            error_context += f"ign: {ign!r}\n"
+            error_context += f"pronouns: {pronouns!r}\n"
+            error_context += f"team_name: {team_name!r}\n"
             error_context += f"Traceback: {traceback.format_exc()}"
             
-            await log_error(interaction.client, interaction.guild, error_context)
+            await log_error(interaction.client, getattr(interaction, 'guild', None), error_context)
 
 
 class TeamNameChoiceView(discord.ui.View):

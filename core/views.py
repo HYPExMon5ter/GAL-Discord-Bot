@@ -64,6 +64,7 @@ async def complete_registration(
 
     # 4) Get mode for context
     mode = get_event_mode_for_guild(gid)
+    logging.info(f"🎮 Tournament mode: {mode} for guild {gid}")
 
     # 5) Check if user is already in waitlist (for updating their info)
     existing_waitlist_position = await WaitlistManager.get_waitlist_position(gid, discord_tag)
@@ -954,7 +955,10 @@ class RegistrationModal(discord.ui.Modal):
             error_context += f"interaction.user: {getattr(interaction, 'user', 'MISSING')}\n"
             error_context += f"ign: {ign!r}\n"
             error_context += f"pronouns: {pronouns!r}\n"
-            error_context += f"team_name: {team_name!r}\n"
+            try:
+                error_context += f"team_name: {team_name!r}\n"
+            except NameError:
+                error_context += f"team_name: NOT_DEFINED\n"
             error_context += f"Traceback: {traceback.format_exc()}"
             
             await log_error(interaction.client, getattr(interaction, 'guild', None), error_context)

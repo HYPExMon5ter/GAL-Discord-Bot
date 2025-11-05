@@ -36,6 +36,7 @@ async def complete_registration(
     Returns: {'success': bool, 'embed': discord.Embed, 'view': discord.ui.View|None, 'ign': str, 'team_name': str|None}
     """
     # Import here to avoid circular import
+    import logging
     from utils.utils import hyperlink_lolchess_profile
     from helpers.waitlist_helpers import WaitlistManager
 

@@ -336,6 +336,11 @@ async def complete_registration(
         from integrations.sheets import refresh_sheet_cache
         await refresh_sheet_cache(bot=interaction.client, force=True)
 
+        # 11b) Immediately verify cache state after refresh
+        from helpers.sheet_helpers import SheetOperations
+        registered_count = await SheetOperations.count_by_criteria(gid, registered=True)
+        logging.info(f"✅ Cache verified: {registered_count} users registered")
+
         # 12) Refresh embeds using helper - ALWAYS update main embed for registration
         await update_unified_channel(guild)
 
@@ -353,24 +358,6 @@ async def complete_registration(
         )
 
         print(f"[REGISTER SUCCESS] {discord_tag} in guild {guild.name}")
-        
-        # Log cache state for debugging
-        from helpers.sheet_helpers import SheetOperations
-        registered_count = await SheetOperations.count_by_criteria(gid, registered=True)
-        logging.info(f"Cache state after registration: {registered_count} users registered")
-        
-        # Debug: Check what's actually in the cache
-        try:
-            from integrations.sheets import sheet_cache
-            cache_users = dict(sheet_cache.get("users", {}))
-            registered_in_cache = sum(1 for _, _, reg, *_ in cache_users.values() if str(reg).upper() == "TRUE")
-            logging.info(f"Cache debug: {len(cache_users)} total users in cache, {registered_in_cache} registered")
-            
-            # Show first few users in cache
-            for i, (tag, data) in enumerate(list(cache_users.items())[:3]):
-                logging.info(f"Cache user {i+1}: {tag} -> reg={data[2] if len(data) > 2 else 'None'}")
-        except Exception as cache_debug_error:
-            logging.error(f"Cache debug error: {cache_debug_error}")
 
         # Create success result
         result = {

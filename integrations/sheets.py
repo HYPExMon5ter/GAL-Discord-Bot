@@ -466,9 +466,13 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
                 ign = ign_col[offset].strip() if offset < len(ign_col) else ""
                 alt = alt_col[offset].strip() if offset < len(alt_col) else ""
                 pronouns = pronouns_col[offset].strip() if offset < len(pronouns_col) else ""
-                reg = reg_col[offset] if offset < len(reg_col) else ""
-                ci = ci_col[offset] if offset < len(ci_col) else ""
+                reg_raw = reg_col[offset] if offset < len(reg_col) else ""
+                ci_raw = ci_col[offset] if offset < len(ci_col) else ""
                 team = team_col[offset].strip() if tc and offset < len(team_col) else ""
+
+                # Standardize to boolean for cache consistency
+                reg = str(reg_raw).upper() == "TRUE" if reg_raw else False
+                ci = str(ci_raw).upper() == "TRUE" if ci_raw else False
 
                 # Store as tuple: (row, ign, registered, checked_in, team, alt_ign, pronouns)
                 new_map[tag] = (idx, ign, reg, ci, team, alt, pronouns)
@@ -495,9 +499,10 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
                 if old_registered and not new_registered:
                     unregistered_users.append(tag)
 
-            # Update cache
-            sheet_cache["users"] = new_map
-            cache_manager.mark_refresh()
+            # Update cache atomically
+            async with cache_lock:
+                sheet_cache["users"] = new_map
+                cache_manager.mark_refresh()
 
             total_changes = len(added) + len(removed) + len(changed)
             total_users = len(new_map)
@@ -629,16 +634,9 @@ async def refresh_sheet_cache(bot=None, *, force: bool = False) -> Tuple[int, in
             logger.debug(f"[CACHE] Waitlist processing failed: {e}")
             logger.warning(f"Failed to process waitlist: {e}")
 
-    # Update unified channel only after the final cache refresh
-    if guild and not hasattr(sheet_cache, "_skip_waitlist_processing"):
-        logger.debug("[CACHE] Updating unified channel...")
-        try:
-            from core.components_traditional import update_unified_channel
-            await update_unified_channel(guild)
-            logger.debug("[CACHE] Updated unified channel")
-        except Exception as e:
-            logger.debug(f"[CACHE] Failed to update unified channel: {e}")
-            logger.warning(f"Failed to update unified channel after cache refresh: {e}")
+    # NOTE: Removed duplicate UI update - let callers handle UI updates
+    # This prevents race conditions where cache refresh triggers UI update
+    # before the calling function completes its operations
 
     # Only print completion message if not a recursive call
     if not hasattr(sheet_cache, "_skip_waitlist_processing"):

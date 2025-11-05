@@ -122,20 +122,9 @@ class SheetOperations:
                     row, ign, reg, ci, team, alt_ign = parts[:6]
                     pronouns = None
 
-                # Convert to boolean with proper type handling for both string and boolean
-                if reg is None:
-                    reg_bool = False
-                elif isinstance(reg, bool):
-                    reg_bool = reg
-                else:
-                    reg_bool = str(reg).upper() == "TRUE"
-                    
-                if ci is None:
-                    ci_bool = False
-                elif isinstance(ci, bool):
-                    ci_bool = ci
-                else:
-                    ci_bool = str(ci).upper() == "TRUE"
+                # Cache now stores booleans consistently, but handle any type for robustness
+                reg_bool = bool(reg) if reg is not None else False
+                ci_bool = bool(ci) if ci is not None else False
                 
                 logging.debug(f"  Checking {tag}: reg={reg} ({type(reg).__name__}) -> reg_bool={reg_bool}")
                 
@@ -197,20 +186,9 @@ class SheetOperations:
                     # Skip malformed entries
                     continue
                 
-                # Convert to boolean with proper type handling
-                if reg is None:
-                    reg_bool = False
-                elif isinstance(reg, bool):
-                    reg_bool = reg
-                else:
-                    reg_bool = str(reg).upper() == "TRUE"
-                    
-                if ci is None:
-                    ci_bool = False
-                elif isinstance(ci, bool):
-                    ci_bool = ci
-                else:
-                    ci_bool = str(ci).upper() == "TRUE"
+                # Cache now stores booleans consistently, but handle any type for robustness
+                reg_bool = bool(reg) if reg is not None else False
+                ci_bool = bool(ci) if ci is not None else False
 
                 if reg_bool:
                     snapshot['registered_count'] += 1

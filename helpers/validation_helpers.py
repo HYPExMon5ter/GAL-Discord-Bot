@@ -1,5 +1,6 @@
 # helpers/validation_helpers.py
 
+import logging
 from typing import Optional
 
 import discord

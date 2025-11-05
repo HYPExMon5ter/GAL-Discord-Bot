@@ -887,31 +887,38 @@ async def unregister_user(
         row, _ign, _reg, _ci, _team, _alt, _pronouns = user_data
         gid = str(guild_id) if guild_id else "unknown"
         mode = get_event_mode_for_guild(gid)
-        cfg = get_sheet_settings(mode)
+        
+        # Get column mappings
+        from integrations.sheet_detector import get_column_mapping
+        col_mapping = await get_column_mapping(gid)
+        
         # FIX: await the async function
         sheet = await get_sheet_for_guild(gid, "GAL Database")
 
         # Verify user is still in the sheet at expected location
+        if not col_mapping.discord_column:
+            raise SheetsError("Discord column not found in sheet configuration")
+            
         try:
-            cell = await retry_until_successful(sheet.acell, f"{cfg['discord_col']}{row}")
+            cell = await retry_until_successful(sheet.acell, f"{col_mapping.discord_column}{row}")
             if cell.value.strip() != discord_tag:
                 logger.warning(f"User {discord_tag} not found at expected row {row}")
                 return False
         except Exception as e:
             raise SheetsError(f"Failed to verify user location: {e}")
 
-        # Clear all user data
+        # Clear all user data using column mappings
         clear_operations = [
-            (cfg['discord_col'], ""),
-            (cfg['ign_col'], ""),
-            (cfg['pronouns_col'], ""),
-            (cfg['alt_ign_col'], ""),
-            (cfg['registered_col'], False),
-            (cfg['checkin_col'], False)
+            (col_mapping.discord_column, ""),
+            (col_mapping.ign_column, ""),
+            (col_mapping.pronouns_column, ""),
+            (col_mapping.alt_ign_column, ""),
+            (col_mapping.registered_column, False),
+            (col_mapping.checkin_column, False)
         ]
 
-        if mode == "doubleup" and "team_col" in cfg:
-            clear_operations.append((cfg['team_col'], ""))
+        if mode == "doubleup" and col_mapping.team_column:
+            clear_operations.append((col_mapping.team_column, ""))
 
         # Execute all clear operations
         for col, value in clear_operations:

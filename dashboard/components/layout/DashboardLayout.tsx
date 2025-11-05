@@ -27,7 +27,7 @@ export function DashboardLayout({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <img 
-                src="/assets/Logo2.png" 
+                src="/assets/GA_Logo_Transparent_Background_White_Text.png" 
                 alt="Guardian Angel League Logo" 
                 className="w-20 h-20 rounded-xl gal-glow-primary object-cover"
               />

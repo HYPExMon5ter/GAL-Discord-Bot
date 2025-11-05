@@ -50,7 +50,7 @@ export function LoginForm() {
         <CardHeader className="space-y-4 text-center">
           <div className="flex justify-center mb-4">
             <img 
-              src="/assets/Logo2.png" 
+              src="/assets/GA_Logo_Transparent_Background_White_Text.png" 
               alt="Guardian Angel League Logo" 
               className="w-32 h-32 rounded-xl gal-glow-primary object-cover"
             />

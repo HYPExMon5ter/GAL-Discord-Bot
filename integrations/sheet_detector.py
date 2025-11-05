@@ -46,16 +46,15 @@ class SheetColumnDetector:
     # Detection patterns for different column types
     COLUMN_PATTERNS = {
         "discord": [
-            "discord", "user", "player", "name", "tag", "username", "discord_tag",
-            "discord name", "discord user", "discord username"
+            "discord", "discord:", "discord tag", "discord name", "discord user", "discord username"
         ],
         "ign": [
-            "ign", "game_name", "summoner", "username", "riot_id", "riot id",
+            "username", "ign", "game_name", "summoner", "riot_id", "riot id",
             "game name", "summoner name", "in game name", "player name"
         ],
         "alt_ign": [
-            "alt", "backup", "secondary", "smurf", "alt ign", "alternative",
-            "secondary ign", "backup ign", "smurf ign"
+            "alt", "alternative", "alt ign", "alternative ign", "alt username", "alternative username",
+            "alt usernames", "alternative usernames", "backup", "secondary", "smurf"
         ],
         "pronouns": [
             "pronouns", "prefs", "gender", "they/them", "he/him", "she/her",

@@ -36,7 +36,7 @@ class ErrorHandler:
             f"Error: {type(error).__name__}: {str(error)}"
         ]
 
-        if hasattr(interaction, 'command'):
+        if hasattr(interaction, 'command') and interaction.command:
             log_parts.append(f"Command: {interaction.command.name}")
 
         if log_full_trace:

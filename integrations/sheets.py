@@ -800,10 +800,10 @@ async def find_or_register_user(
 
         if discord_col:
             writes[discord_col] = discord_tag
-            logging.info(f"✅ Writing Discord tag to column {discord_col}: {discord_tag}")
+            logger.info(f"✅ Writing Discord tag to column {discord_col}: {discord_tag}")
         else:
-            logging.error(f"❌ discord_col is None! Cannot write Discord tag for {discord_tag}")
-            logging.error(f"Column config: {await SheetIntegrationHelper.get_column_config(gid)}")
+            logger.error(f"❌ discord_col is None! Cannot write Discord tag for {discord_tag}")
+            logger.error(f"Column config: {await SheetIntegrationHelper.get_column_config(gid)}")
         if ign_col:
             writes[ign_col] = ign
         if reg_col:

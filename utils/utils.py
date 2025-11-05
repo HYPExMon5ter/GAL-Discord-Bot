@@ -228,16 +228,24 @@ async def hyperlink_lolchess_profile(discord_tag: str, guild_id: str) -> None:
 
         # Update sheet with hyperlink
         from integrations.sheets import get_sheet_for_guild, retry_until_successful
+        from integrations.sheet_detector import get_column_mapping
+
+        # Get column mapping for IGN column
+        col_mapping = await get_column_mapping(guild_id)
+        ign_col = col_mapping.ign_column
+
+        if not ign_col:
+            logging.warning(f"No IGN column found for guild {guild_id}")
+            return
 
         mode = get_event_mode_for_guild(guild_id)
-        settings = get_sheet_settings(mode)
         sheet = await get_sheet_for_guild(guild_id, "GAL Database")
 
         formula = f'=HYPERLINK("{profile_url}","{ign_clean}")'
 
         await retry_until_successful(
             sheet.update_acell,
-            f"{settings['ign_col']}{row}",
+            f"{ign_col}{row}",
             formula
         )
 

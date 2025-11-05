@@ -331,15 +331,10 @@ async def complete_registration(
             logging.warning(f"⚠️ Hyperlink creation failed for {discord_tag}: {link_error}")
             # Don't fail registration for hyperlink issues
 
-        # 11) Verify cache update was successful before UI update
-        from integrations.sheets import sheet_cache
-        if discord_tag not in sheet_cache.get("users", {}):
-            # Only refresh if local cache update failed
-            logging.warning(f"Cache update verification failed for {discord_tag}, forcing refresh")
-            from integrations.sheets import refresh_sheet_cache
-            await refresh_sheet_cache(bot=interaction.client, force=True)
-        else:
-            logging.info(f"✅ Cache update verified for {discord_tag}, skipping full refresh")
+        # 11) Always refresh cache after registration to ensure UI updates correctly
+        logging.info(f"🔄 Refreshing cache after registration for {discord_tag}")
+        from integrations.sheets import refresh_sheet_cache
+        await refresh_sheet_cache(bot=interaction.client, force=True)
 
         # 12) Refresh embeds using helper - ALWAYS update main embed for registration
         await update_unified_channel(guild)
@@ -361,6 +356,11 @@ async def complete_registration(
         
         # Log cache state for debugging
         from helpers.sheet_helpers import SheetOperations
+        import logging
+        
+        # Enable debug logging temporarily
+        logging.getLogger().setLevel(logging.DEBUG)
+        
         registered_count = await SheetOperations.count_by_criteria(gid, registered=True)
         logging.info(f"Cache state after registration: {registered_count} users registered")
         

@@ -105,6 +105,8 @@ class SheetOperations:
             async with cache_lock:
                 cache_data = dict(sheet_cache["users"])
 
+        logging.debug(f"count_by_criteria: {len(cache_data)} users in cache, filtering by registered={registered}, checked_in={checked_in}")
+        
         for tag, tpl in cache_data.items():
             # Handle both 6-element (old format) and 7-element (new format with pronouns)
             try:
@@ -119,9 +121,22 @@ class SheetOperations:
                     row, ign, reg, ci, team, alt_ign = parts[:6]
                     pronouns = None
 
-                # Debug logging for cache access
-                reg_bool = str(reg).upper() == "TRUE" if reg is not None else False
-                ci_bool = str(ci).upper() == "TRUE" if ci is not None else False
+                # Convert to boolean with proper type handling for both string and boolean
+                if reg is None:
+                    reg_bool = False
+                elif isinstance(reg, bool):
+                    reg_bool = reg
+                else:
+                    reg_bool = str(reg).upper() == "TRUE"
+                    
+                if ci is None:
+                    ci_bool = False
+                elif isinstance(ci, bool):
+                    ci_bool = ci
+                else:
+                    ci_bool = str(ci).upper() == "TRUE"
+                
+                logging.debug(f"  Checking {tag}: reg={reg} ({type(reg).__name__}) -> reg_bool={reg_bool}")
                 
                 if registered is not None:
                     if reg_bool != registered:
@@ -136,11 +151,13 @@ class SheetOperations:
                         continue
 
                 count += 1
+                logging.debug(f"  ✅ {tag} matches criteria")
                 
             except Exception as unpack_error:
                 logging.warning(f"Failed to unpack cache entry for {tag}: {tpl} - {unpack_error}")
                 continue
 
+        logging.debug(f"count_by_criteria result: {count} users matched")
         return count
 
     @staticmethod
@@ -179,8 +196,20 @@ class SheetOperations:
                     # Skip malformed entries
                     continue
                 
-                reg_bool = str(reg).upper() == "TRUE" if reg is not None else False
-                ci_bool = str(ci).upper() == "TRUE" if ci is not None else False
+                # Convert to boolean with proper type handling
+                if reg is None:
+                    reg_bool = False
+                elif isinstance(reg, bool):
+                    reg_bool = reg
+                else:
+                    reg_bool = str(reg).upper() == "TRUE"
+                    
+                if ci is None:
+                    ci_bool = False
+                elif isinstance(ci, bool):
+                    ci_bool = ci
+                else:
+                    ci_bool = str(ci).upper() == "TRUE"
 
                 if reg_bool:
                     snapshot['registered_count'] += 1

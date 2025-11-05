@@ -342,7 +342,10 @@ async def complete_registration(
         logging.info(f"✅ Cache verified: {registered_count} users registered")
 
         # 12) Refresh embeds using helper - ALWAYS update main embed for registration
-        await update_unified_channel(guild)
+        if await update_unified_channel(guild):
+            logging.info(f"✅ Main embed updated successfully for guild {guild.name}")
+        else:
+            logging.warning(f"⚠️ Failed to update main embed for guild {guild.name}")
 
         # 13) Process waitlist to see if more people can be registered
         # This is important for team scenarios where one person registering
@@ -442,7 +445,20 @@ async def complete_registration(
         )
 
     # Always update to management interface
-    await interaction.edit_original_response(embed=mgmt_embed, view=mgmt_view)
+    try:
+        await interaction.edit_original_response(
+            content=None,       # Clear content
+            embed=mgmt_embed,   # Use traditional embed
+            embeds=None,        # Clear embeds list
+            view=mgmt_view      # Add management buttons
+        )
+        logging.info(f"✅ Updated ephemeral response for {interaction.user}")
+    except discord.NotFound:
+        logging.warning(f"Interaction expired for {interaction.user}")
+    except discord.HTTPException as e:
+        logging.error(f"Failed to update ephemeral response: {e}")
+    except Exception as e:
+        logging.error(f"Unexpected error updating ephemeral response: {e}", exc_info=True)
 
 
 class SystemControlModal(discord.ui.Modal):

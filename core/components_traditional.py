@@ -2286,8 +2286,18 @@ async def update_unified_channel(guild: discord.Guild) -> bool:
             # Build fresh LayoutView with updated data
             view = await build_unified_view(guild)
             
-            # Edit the message in place
-            await msg.edit(view=view)
+            # CRITICAL FIX: Must explicitly clear all parameters when updating LayoutView
+            # Per Discord.py docs: "you must explicitly set content, embed, embeds, and 
+            # attachments parameters to None if the previous message had any"
+            await msg.edit(
+                content=None,      # Clear content
+                embed=None,        # Clear embed
+                embeds=None,       # Clear embeds list  
+                attachments=[],    # Clear attachments (logo was attached during setup)
+                view=view          # Set new LayoutView
+            )
+            
+            logging.info(f"✅ Updated unified channel for guild {guild.name}")
             return True
             
         except discord.NotFound:

@@ -193,9 +193,7 @@ pytest  # Should still pass (only removed unused test file)
 Actions:
 - DELETE `scripts/add_session_id_to_canvas_locks.py` (one-time migration, completed)
 - DELETE `scripts/migrate_json_to_database.py` (one-time migration, completed)
-- EVALUATE `scripts/migrate_columns.py`:
-  - If one-time migration: DELETE
-  - If reusable utility: KEEP
+- COMPLETED: `scripts/migrate_columns.py` - DELETED (one-time migration completed)
 
 Keep:
 - ✅ `scripts/update_system_docs.py` (documentation maintenance)

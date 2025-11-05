@@ -15,7 +15,7 @@ The `scripts/` directory contains automation and maintenance utilities for the G
 scripts/
 ├── documentation_manager.py    # Unified documentation audit and fix tool
 ├── generate_snapshot.py        # AI session context snapshot generator  
-├── migrate_columns.py          # Database schema migration utility
+
 ├── launch_services.py          # Service launch and management utility
 ├── launch_services.bat         # Windows batch file for service launching
 └── run_quality_checks.py       # Code quality and health checks
@@ -94,40 +94,7 @@ python scripts/generate_snapshot.py
 - **Encoding Support**: Handles UTF-8 file encoding
 - **Error Handling**: Graceful handling of unreadable files
 
-### 3. Database Migration Utility (`scripts/migrate_columns.py`)
-**Purpose**: Migrates configuration from config.yaml to persistence system  
-**Size**: 2,905 lines  
-**Dependencies**: asyncio, logging, os, sys, core.migration  
-
-#### Functionality
-- **Schema Migration**: Transitions from YAML-based to database storage
-- **Configuration Transfer**: Moves column assignments to persistence layer
-- **Data Validation**: Ensures migration integrity and completeness
-- **Error Handling**: Comprehensive error reporting and rollback capabilities
-- **Progress Tracking**: Detailed migration status and results reporting
-
-#### Key Features
-- **Async Operations**: Uses asyncio for efficient database operations
-- **Batch Processing**: Handles multiple guild configurations
-- **Validation Checks**: Ensures data integrity during migration
-- **Rollback Support**: Ability to undo failed migrations
-- **Status Reporting**: Detailed success/failure statistics
-
-#### Usage
-```bash
-python scripts/migrate_columns.py
-```
-
-#### Output
-- Migration progress reports
-- Success/failure statistics
-- Validation error details
-- Configuration cleanup confirmation
-
-#### Configuration
-- **Project Root Setup**: Automatically configures Python path
-- **Logging Configuration**: Configurable log levels and formatting
-- **Error Recovery**: Comprehensive error handling and reporting
+### 3. Launch Services (`scripts/launch_services.py`)
 
 ### 4. Launch Services (`scripts/launch_services.py`)
 **Purpose**: Service launch and management utility  
@@ -150,14 +117,14 @@ python scripts/migrate_columns.py
 
 #### Usage
 ```bash
-python scripts/documentation_manager.py
+python scripts/launch_services.py
 ```
 
 #### Output
-- Updated .agent/system documentation files
-- Version increment reports
-- Cross-reference validation results
-- File metadata updates
+- Service launch status reports
+- Health check results
+- Error recovery logs
+- Performance metrics
 
 #### Configuration
 - **Path Management**: Automatic project root detection
@@ -207,13 +174,13 @@ python scripts/documentation_manager.py
 1. **Daily**: Run `scripts/documentation_manager.py` to audit and fix documentation
 2. **Weekly**: Execute `scripts/documentation_manager.py` after major code changes
 3. **On Demand**: Use `scripts/generate_snapshot.py` for AI session preparation
-4. **One-time**: Run `scripts/migrate_columns.py` for system upgrades
+4. **One-time**: Run `scripts/launch_services.py` for system initialization
 
 ### Development Workflows
 1. **Before Commit**: Run documentation audit to ensure completeness
 2. **After Feature**: Update system documentation to reflect changes
 3. **Before Release**: Generate full snapshot for release documentation
-4. **During Migration**: Use migration utilities for system upgrades
+4. **During Initialization**: Use launch utilities for system startup
 
 ### CI/CD Integration
 1. **Pre-commit Hooks**: Automated documentation quality checks
@@ -307,6 +274,6 @@ python scripts/documentation_manager.py
 
 **Version**: 1.0  
 **Last Updated**: 2025-11-02  
-**Total Scripts**: 6 utilities  
+**Total Scripts**: 5 utilities  
 **Combined Size**: ~42,000 lines of code  
 **Maintained By**: Guardian Angel League Development Team

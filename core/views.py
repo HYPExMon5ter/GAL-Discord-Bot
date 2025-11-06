@@ -1057,6 +1057,19 @@ class WaitlistRegistrationDMView(discord.ui.View):
             item.disabled = True
 
 
+class PollNotificationView(discord.ui.View):
+    """View for poll notification with a button linking to the poll."""
+    
+    def __init__(self, poll_url: str):
+        super().__init__(timeout=None)
+        self.add_item(discord.ui.Button(
+            label="Go to Poll",
+            url=poll_url,
+            style=discord.ButtonStyle.link,
+            emoji="📊"
+        ))
+
+
 async def update_live_embeds(guild):
     """Update all live embeds for a guild."""
     await update_unified_channel(guild)

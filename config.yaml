@@ -32,7 +32,7 @@ sheet_configuration:
     # Production sheet URL
     sheet_url_prod: "https://docs.google.com/spreadsheets/d/1Ba07_3Tdv7Z2HwHdSyJYGVSxJGJRGVzF6pI2mi_cxWA/edit"
     # Development sheet URL (for testing)
-    sheet_url_dev: "https://docs.google.com/spreadsheets/d/11HCjgHxIpJ8yBFShMkaDVdLnjRx9v59G8Qqj47f74Fo/edit"
+    sheet_url_dev: "https://docs.google.com/spreadsheets/d/13RCwqnFkdSvMSotrhob5BG5gLJnWxurefZxLkutuK40/edit"
     # Line number the header is located at
     header_line_num: 2
     # Max players allowed for the next tournament
@@ -298,3 +298,19 @@ embeds:
       registeredlist: "📋 Show the current registration list."
       reminder: "✉️ Send a DM reminder to all unchecked-in users."
       cache: "🔄 Re-cache the data from the sheet."
+      poll: "📊 Send a poll notification via DM to users with a specific role."
+
+  poll_notification:
+    title: ""
+    description: |
+      # 🌟 Hello Angel! 
+      
+      ### We need your input! 📊
+      
+      Please take a moment to vote on when you'd like our next **Guardian Angel League** tournament to be held. Your schedule matters, and we want to pick the best time for everyone! 🏆
+      
+      ### 🔗 How to vote:
+      Click the **"Go to Poll"** button below to access the voting form. It only takes a few seconds! ⏱️
+      
+      -# 💙 **Thank you for helping make GAL tournaments even better!**
+    color: "#3498db"

@@ -29,6 +29,7 @@ from integrations.sheets import (
 )
 from utils.utils import (
     send_reminder_dms,
+    clear_user_dms,
 )
 
 
@@ -1563,6 +1564,101 @@ async def help_cmd(interaction: discord.Interaction):
         await ErrorHandler.handle_interaction_error(interaction, e, "Help Command")
 
 
+@gal.command(name="poll", description="Send a poll notification via DM to users with a specific role.")
+@app_commands.describe(
+    poll_url="The URL to the external poll",
+    role="The role to send the poll notification to (defaults to Angels)"
+)
+async def poll(interaction: discord.Interaction, poll_url: str, role: str = None):
+    """Send poll notifications to users with a specific role."""
+    # Validate staff permissions
+    if not await Validators.validate_and_respond(
+            interaction,
+            Validators.validate_staff_permission(interaction)
+    ):
+        return
+
+    # Default to "Angels" role if not specified
+    if role is None:
+        role = "Angels"
+
+    try:
+        # Get the role object
+        target_role = discord.utils.get(interaction.guild.roles, name=role)
+        if not target_role:
+            await interaction.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Role Not Found",
+                    description=f"Role '{role}' not found in this server.",
+                    color=discord.Color.red()
+                ),
+                ephemeral=True
+            )
+            return
+
+        # Create embed for poll notification
+        embed = embed_from_cfg("poll_notification")
+        
+        # Create view with poll link button
+        from core.views import PollNotificationView
+        view = PollNotificationView(poll_url)
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Get all members with the target role
+        members_with_role = [member for member in interaction.guild.members if target_role in member.roles]
+        
+        if not members_with_role:
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    title="⚠️ No Members Found",
+                    description=f"No members found with the '{role}' role.",
+                    color=discord.Color.orange()
+                ),
+                ephemeral=True
+            )
+            return
+
+        # Send DMs to all members with the role
+        sent_count = 0
+        failed_count = 0
+        
+        for member in members_with_role:
+            try:
+                # Clear previous DMs first
+                await clear_user_dms(member, interaction.client.user)
+                
+                # Send new poll notification DM
+                await member.send(embed=embed, view=view)
+                sent_count += 1
+            except discord.Forbidden:
+                failed_count += 1
+            except Exception as e:
+                logging.warning(f"Failed to send poll DM to {member}: {e}")
+                failed_count += 1
+
+        # Send result to staff member
+        result_embed = discord.Embed(
+            title="📊 Poll Notifications Sent",
+            description=(
+                f"Successfully sent poll notifications to **{sent_count}** members "
+                f"with the '{role}' role."
+            ),
+            color=discord.Color.green()
+        )
+        
+        if failed_count > 0:
+            result_embed.add_field(
+                name="⚠️ Failed Deliveries",
+                value=f"{failed_count} members couldn't be reached (likely due to DMs being disabled)"
+            )
+
+        await interaction.followup.send(embed=result_embed, ephemeral=True)
+
+    except Exception as e:
+        await ErrorHandler.handle_interaction_error(interaction, e, "Poll Command")
+
+
 # Error handlers for the command group
 @toggle.error
 @event.error
@@ -1571,6 +1667,7 @@ async def help_cmd(interaction: discord.Interaction):
 @cache.error
 @config_cmd.error
 @help_cmd.error
+@poll.error
 async def command_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
     """Global error handler for all GAL commands."""
     try:

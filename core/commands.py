@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+import asyncio
 from datetime import timezone, datetime
 from typing import Optional, Dict, Any
 
@@ -1564,6 +1565,36 @@ async def help_cmd(interaction: discord.Interaction):
         await ErrorHandler.handle_interaction_error(interaction, e, "Help Command")
 
 
+async def send_dm_with_retry(member: discord.Member, embed: Any, view: discord.ui.View, max_retries: int = 3) -> None:
+    """
+    Send a DM to a member with retry logic for handling rate limits and temporary failures.
+    """
+    for attempt in range(max_retries):
+        try:
+            await member.send(embed=embed, view=view)
+            return  # Success
+        except discord.Forbidden:
+            # User has DMs disabled or blocked the bot - no point in retrying
+            raise
+        except discord.HTTPException as e:
+            if e.status == 429:  # Rate limited
+                retry_after = e.response.headers.get('Retry-After', 5)
+                await asyncio.sleep(float(retry_after) + 1)  # Add buffer
+                if attempt == max_retries - 1:
+                    raise
+                continue
+            else:
+                # Other HTTP errors, retry
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+        except Exception as e:
+            # Unexpected errors
+            if attempt == max_retries - 1:
+                raise
+            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+
+
 @gal.command(name="poll", description="Send a poll notification via DM to users with a specific role.")
 @app_commands.describe(
     poll_url="The URL to the external poll",
@@ -1619,27 +1650,54 @@ async def poll(interaction: discord.Interaction, poll_url: str, role: str = None
             )
             return
 
-        # Send DMs to all members with the role
+        # Send DMs to all members with the role using batch processing to avoid rate limits
         sent_count = 0
         failed_count = 0
+        batch_size = 10
+        delay_between_batches = 10  # seconds between batches to respect Discord rate limits
         
-        for member in members_with_role:
-            try:
-                # Clear previous DMs first
-                await clear_user_dms(member, interaction.client.user)
-                
-                # Send new poll notification DM
-                await member.send(embed=embed, view=view)
-                sent_count += 1
-            except discord.Forbidden:
-                failed_count += 1
-            except Exception as e:
-                logging.warning(f"Failed to send poll DM to {member}: {e}")
-                failed_count += 1
+        # Initialize progress message
+        progress_embed = discord.Embed(
+            title="📤 Sending Poll Notifications...",
+            description=f"Preparing to send notifications to {len(members_with_role)} members...",
+            color=discord.Color.blue()
+        )
+        progress_message = await interaction.followup.send(embed=progress_embed, ephemeral=True)
+        
+        # Process members in batches
+        for i in range(0, len(members_with_role), batch_size):
+            batch = members_with_role[i:i + batch_size]
+            
+            # Send to batch concurrently with error handling
+            tasks = []
+            for member in batch:
+                tasks.append(send_dm_with_retry(member, embed, view))
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Count successes/failures
+            for j, result in enumerate(results):
+                if isinstance(result, Exception):
+                    failed_count += 1
+                    logging.warning(f"Failed to send poll DM to {batch[j]}: {result}")
+                else:
+                    sent_count += 1
+            
+            # Update progress every 5 batches
+            if (i // batch_size) % 5 == 0:
+                progress_embed.description = (
+                    f"Progress: {sent_count + failed_count}/{len(members_with_role)} members processed\n"
+                    f"✅ Sent: {sent_count} | ❌ Failed: {failed_count}"
+                )
+                await progress_message.edit(embed=progress_embed)
+            
+            # Wait before next batch unless it's the last one
+            if i + batch_size < len(members_with_role):
+                await asyncio.sleep(delay_between_batches)
 
-        # Send result to staff member
+        # Send final result to staff member
         result_embed = discord.Embed(
-            title="📊 Poll Notifications Sent",
+            title="📊 Poll Notifications Complete",
             description=(
                 f"Successfully sent poll notifications to **{sent_count}** members "
                 f"with the '{role}' role."
@@ -1652,8 +1710,10 @@ async def poll(interaction: discord.Interaction, poll_url: str, role: str = None
                 name="⚠️ Failed Deliveries",
                 value=f"{failed_count} members couldn't be reached (likely due to DMs being disabled)"
             )
+        
+        result_embed.set_footer(text=f"Total processed: {len(members_with_role)} members")
 
-        await interaction.followup.send(embed=result_embed, ephemeral=True)
+        await progress_message.edit(embed=result_embed)
 
     except Exception as e:
         await ErrorHandler.handle_interaction_error(interaction, e, "Poll Command")

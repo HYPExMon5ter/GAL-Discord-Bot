@@ -101,13 +101,16 @@ async def get_sheet_for_guild(guild_id: str, worksheet: str | None = None):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                spreadsheet = client.open_by_key(key)
-                return spreadsheet.worksheet(worksheet_name)
+                # Wrap synchronous Google Sheets API call in a thread executor to avoid blocking
+                import asyncio
+                loop = asyncio.get_event_loop()
+                spreadsheet = await loop.run_in_executor(None, client.open_by_key, key)
+                worksheet = await loop.run_in_executor(None, spreadsheet.worksheet, worksheet_name)
+                return worksheet
             except gspread.exceptions.APIError as e:
                 if e.response.status_code == 429 and attempt < max_retries - 1:
-                    # Rate limited, wait and retry
-                    import asyncio
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    # Rate limited, wait and retry with exponential backoff
+                    await asyncio.sleep(2 ** attempt)
                     continue
                 raise
 
@@ -142,7 +145,15 @@ async def retry_until_successful(fn, *args, **kwargs):
 
     while attempts < MAX_RETRIES:
         try:
-            result = await fn(*args, **kwargs) if asyncio.iscoroutinefunction(fn) else fn(*args, **kwargs)
+            # Wrap synchronous calls in executor to avoid blocking the event loop
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            if asyncio.iscoroutinefunction(fn):
+                result = await fn(*args, **kwargs)
+            else:
+                # Synchronous call - run in thread pool to avoid blocking
+                result = await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
 
             # Successful call - adjust base delay if it was increased
             if delay > SHEETS_BASE_DELAY:

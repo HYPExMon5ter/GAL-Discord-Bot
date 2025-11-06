@@ -24,7 +24,7 @@ cache_refresh_seconds: 600
 
 # Tournament settings
 tournament:
-  current_name: "K.O. GALISEUM"  # Name of the current tournament
+  current_name: "GALs Giving"  # Name of the current tournament
 
 # Sheet Configuration
 sheet_configuration:
@@ -36,7 +36,7 @@ sheet_configuration:
     # Line number the header is located at
     header_line_num: 2
     # Max players allowed for the next tournament
-    max_players: 24
+    max_players: 32
     discord_col: "B"
     pronouns_col: "C"
     ign_col: "D"

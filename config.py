@@ -561,23 +561,4 @@ async def export_configuration_enhanced(guild_id: str = None) -> Dict[str, Any]:
     }
 
 
-# Phase 2: Log DAL integration status
-async def log_dal_integration_status():
-    """Log the current DAL integration status."""
-    adapter = await get_dal_adapter()
-    if adapter:
-        logging.info("Phase 2 DAL integration: ACTIVE")
-    else:
-        logging.info("Phase 2 DAL integration: NOT AVAILABLE - using legacy configuration")
-
-# Schedule status check (don't await here as this is module-level)
-try:
-    loop = asyncio.get_running_loop()
-except RuntimeError:
-    loop = None
-
-if loop and loop.is_running():
-    loop.create_task(log_dal_integration_status())
-
-
 logging.info("Configuration loaded and validated successfully")

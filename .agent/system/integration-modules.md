@@ -1,7 +1,7 @@
 ---
 id: system.integration-modules
-version: 1.3
-last_updated: 2025-01-18
+version: 1.4
+last_updated: 2025-11-07
 tags: [system, integrations, modules, documentation]
 ---
 
@@ -17,7 +17,7 @@ The `integrations/` and `services/` directories contain modules that handle exte
 - **Key Functions**: Module imports and package setup
 - **Dependencies**: External integration modules
 
-### `integrations/sheets.py`
+### `integrations/sheets.py` (Updated 2025-11-06)
 - **Purpose**: Google Sheets integration and data synchronization (43,741 lines)
 - **Key Functions**:
   - `get_sheet_for_guild()` - Open correct Google Sheet with error handling
@@ -29,9 +29,13 @@ The `integrations/` and `services/` directories contain modules that handle exte
   - Multi-source authentication (file and environment)
 - **Dependencies**: gspread, oauth2client, asyncio, threading, sheet_optimizer
 - **Used By**: Core commands, tournament management, all data operations
-- **Caching**: 10-minute refresh cycle with thread-safe operations using cache_lock
+- **Caching**: Always uses SheetCacheManager (removed legacy cache manager)
 - **Security**: Multiple authentication methods with proper error handling
-- **Recent Changes**: Enhanced async support, improved caching, better error recovery
+- **Recent Changes**: 
+  - Removed legacy cache manager (_LegacySheetCacheManager)
+  - Removed legacy functions (_legacy_fetch_required_columns, _legacy_update_cells)
+  - Simplified to always use new SheetCacheManager implementation
+  - Fixed sheet registration to find next available row instead of overwriting
 
 ### `integrations/riot_api.py`
 - **Purpose**: Riot Games API integration for player verification (9,454 lines)

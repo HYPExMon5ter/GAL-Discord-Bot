@@ -1,7 +1,7 @@
 ---
 id: system.data_access_layer
-version: 1.0
-last_updated: 2025-01-11
+version: 1.1
+last_updated: 2025-11-07
 tags: [data-access, repository, caching, database, dal]
 ---
 
@@ -26,7 +26,6 @@ core/data_access/
 ├── cache_manager.py               # Multi-level caching system
 ├── connection_manager.py          # Database connection pooling
 ├── configuration_repository.py    # Configuration data operations
-├── legacy_adapter.py              # Legacy system compatibility layer
 ├── persistence_repository.py      # Database persistence operations
 └── sheets_repository.py           # Google Sheets integration
 ```
@@ -161,28 +160,7 @@ core/data_access/
 - Validation and schema management
 - Environment-specific handling
 
-### 5. Legacy Adapter (`legacy_adapter.py`)
-**Purpose**: Legacy system compatibility layer for gradual migration
-
-**Key Features**:
-- **Backward Compatibility**: Support for legacy data formats
-- **Gradual Migration**: Phased migration approach
-- **Data Transformation**: Automatic format conversion
-- **Fallback Support**: Graceful degradation to legacy systems
-
-**Migration Strategies**:
-- **Big Bang**: Complete system replacement
-- **Phased**: Gradual component migration
-- **Parallel**: Run legacy and new systems in parallel
-- **Hybrid**: Mix of legacy and new components
-
-**For Implementation Details**: See `core/data_access/legacy_adapter.py` for:
-- Legacy data format handling
-- Migration pattern implementations
-- Compatibility layer design
-- Fallback mechanisms
-
-### 6. Persistence Repository (`persistence_repository.py`)
+### 5. Persistence Repository (`persistence_repository.py`)
 **Purpose**: Database persistence operations with ORM integration
 
 **Key Features**:

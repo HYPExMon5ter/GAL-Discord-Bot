@@ -1,7 +1,7 @@
 ---
 id: system.core-modules
-version: 1.1
-last_updated: 2025-10-10
+version: 1.2
+last_updated: 2025-11-07
 tags: [system, core, modules, documentation]
 ---
 
@@ -30,13 +30,15 @@ The `core/` directory contains the primary bot functionality including command h
 - **Integration Points**: All bot functionality flows through commands
 - **Recent Changes**: Fixed syntax errors in send_reminder_dms function
 
-### `core/components_traditional.py`
+### `core/components_traditional.py` (Updated 2025-11-06)
 - **Purpose**: Traditional Discord components (buttons, modals, select menus)
 - **Key Functions**:
   - Component state management
   - Traditional UI element handlers
-  - Legacy component support
+  - UI component registration and lifecycle management
+  - **Deprecated**: Removed `build_unified_embed()` function - use `build_unified_view()` instead
 - **Dependencies**: discord.py components system
+- **Recent Changes**: Removed deprecated `build_unified_embed()` function as it was unused and marked as DEPRECATED
 
 ### `core/views.py`
 - **Purpose**: View classes and persistent view management
@@ -54,15 +56,21 @@ The `core/` directory contains the primary bot functionality including command h
   - UI state management
 - **Dependencies**: discord.py, config management
 
-### `core/persistence.py`
+### `core/persistence.py` (Updated 2025-11-06)
 - **Purpose**: Data persistence layer and database operations
 - **Key Functions**:
   - Database connection management
   - Data CRUD operations
-  - Caching layer
-  - Migration support
-- **Dependencies**: SQLite/PostgreSQL, database drivers
+  - Event mode management per guild
+  - Guild data persistence and retrieval
+  - Message persistence for cross-session tracking
+  - Async compatibility functions
+- **Dependencies**: SQLite/PostgreSQL, database drivers, storage_service
 - **Integration Points**: All modules requiring data persistence
+- **Recent Changes**: 
+  - Removed legacy adapter integration code
+  - Simplified async functions without unnecessary DAL layer
+  - Fixed asyncio import issue
 
 ### `core/events/event_bus.py`
 - **Purpose**: Discord event handlers and bot lifecycle management (639 lines)
@@ -76,14 +84,16 @@ The `core/` directory contains the primary bot functionality including command h
 - **Dependencies**: discord.py event system, rapidfuzz, zoneinfo
 - **Recent Changes**: Enhanced event scheduling with timezone support
 
-### `core/onboard.py`
+### `core/onboard.py` (Updated 2025-11-05)
 - **Purpose**: User onboarding system and approval workflow
 - **Key Functions**:
   - New user registration process
-  - Approval workflow management
+  - Approval workflow management with supporter role
   - Onboarding UI components
   - Role assignment for new users
+  - Rejection DM functionality
 - **Dependencies**: discord.py, persistence, helpers
+- **Recent Changes**: Added supporter role support and rejection DM functionality
 
 ### `core/migration.py`
 - **Purpose**: Database migration and schema management

@@ -1,7 +1,7 @@
 ---
 id: system.architecture
-version: 2.1
-last_updated: 2025-01-24
+version: 2.2
+last_updated: 2025-11-07
 tags: [system, architecture, unified-data-flow, api-backend, event-system]
 ---
 
@@ -66,7 +66,6 @@ The Guardian Angel League system now implements a unified data flow architecture
 - `core/data_access/cache_manager.py` (657 lines) - Multi-level caching system (Redis + Memory)
 - `core/data_access/connection_manager.py` (710 lines) - Database connection pooling and management
 - `core/data_access/configuration_repository.py` (523 lines) - Configuration data operations
-- `core/data_access/legacy_adapter.py` (412 lines) - Legacy system compatibility layer
 - `core/data_access/persistence_repository.py` (587 lines) - Database persistence operations
 - `core/data_access/sheets_repository.py` (493 lines) - Google Sheets integration
 

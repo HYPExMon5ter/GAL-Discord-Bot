@@ -47,73 +47,18 @@ class AuthenticationError(SheetsError):
 logger = SecureLogger(__name__)
 
 
-class _LegacySheetCacheManager:
-    """Fallback cache manager that mimics legacy behaviour."""
-
-    def __init__(self) -> None:
-        self.data: Dict[str, Any] = {"users": {}, "last_refresh": 0.0}
-        self.lock = asyncio.Lock()
-
-    def is_stale(self) -> bool:
-        # Legacy path always refreshes to mirror pre-refactor behaviour
-        return True
-
-    def mark_refresh(self) -> None:
-        self.data["last_refresh"] = time.time()
-
-
-if sheets_refactor_enabled():
-    cache_manager = SheetCacheManager(
-        ttl_seconds=int(os.getenv("SHEET_CACHE_TTL", "600"))
-    )
-    logger.info(
-        "Sheet refactor flag enabled (stage=%s, flags=%s)",
-        deployment_stage(),
-        rollout_flags_snapshot(),
-    )
-else:
-    cache_manager = _LegacySheetCacheManager()
-    logger.warning(
-        "Sheet refactor flag disabled – using legacy cache path (stage=%s)",
-        deployment_stage(),
-    )
+# Use the new SheetCacheManager for all environments
+cache_manager = SheetCacheManager(
+    ttl_seconds=int(os.getenv("SHEET_CACHE_TTL", "600"))
+)
+logger.info(
+    "Using SheetCacheManager (stage=%s, flags=%s)",
+    deployment_stage(),
+    rollout_flags_snapshot(),
+)
 
 sheet_cache = cache_manager.data
 cache_lock = cache_manager.lock
-
-
-async def _legacy_fetch_required_columns(
-    sheet,
-    column_indexes: Dict[str, int],
-    header_row: int,
-    max_players: int,
-) -> Dict[str, List[str]]:
-    """Fallback fetching that mirrors pre-refactor behaviour."""
-    result: Dict[str, List[str]] = {}
-    start_index = header_row  # col_values is 1-indexed, slicing handles header skip
-
-    for column_type, col_idx in column_indexes.items():
-        column_data = await retry_until_successful(sheet.col_values, col_idx)
-        # Drop header row entries
-        data_slice = column_data[start_index:start_index + max_players]
-        # Pad to maintain consistent length
-        if len(data_slice) < max_players:
-            data_slice.extend([""] * (max_players - len(data_slice)))
-        result[column_type] = data_slice
-
-    return result
-
-
-async def _legacy_update_cells(sheet, updates: List[Tuple[str, Any]]) -> bool:
-    """Update cells individually to emulate legacy flow."""
-    success = True
-    for cell_range, value in updates:
-        try:
-            await retry_until_successful(sheet.update_acell, cell_range, value)
-        except Exception as exc:  # pragma: no cover - network edge case
-            logger.warning("Legacy update failed for %s: %s", cell_range, exc)
-            success = False
-    return success
 
 
 async def fetch_required_columns(
@@ -122,17 +67,13 @@ async def fetch_required_columns(
     header_row: int,
     max_players: int,
 ) -> Dict[str, List[str]]:
-    """Dispatch between refactored batch fetch and legacy behaviour."""
-    if sheets_refactor_enabled():
-        return await fetch_required_columns_batch(sheet, column_indexes, header_row, max_players)
-    return await _legacy_fetch_required_columns(sheet, column_indexes, header_row, max_players)
+    """Fetch required columns using the new batch implementation."""
+    return await fetch_required_columns_batch(sheet, column_indexes, header_row, max_players)
 
 
 async def apply_sheet_updates(sheet, updates: List[Tuple[str, Any]]) -> bool:
-    """Dispatch between batch updates and legacy individual updates."""
-    if sheets_refactor_enabled():
-        return await update_cells_batch(sheet, updates)
-    return await _legacy_update_cells(sheet, updates)
+    """Apply sheet updates using the new batch implementation."""
+    return await update_cells_batch(sheet, updates)
 
 
 def initialize_credentials():

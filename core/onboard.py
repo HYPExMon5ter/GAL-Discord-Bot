@@ -9,7 +9,7 @@ from discord import app_commands
 from config import (
     onboard_embed_from_cfg, get_onboard_main_channel,
     get_onboard_review_channel, get_onboard_approval_role,
-    get_log_channel_name
+    get_onboard_denial_role, get_log_channel_name
 )
 from helpers.onboard_helpers import (
     OnboardManager, ensure_onboard_channels,
@@ -436,41 +436,65 @@ class DenyButton(discord.ui.Button):
 
             # Get the member
             member = interaction.guild.get_member(user_id)
-            member_mention = member.mention if member else f"<@{user_id}>"
+            if not member:
+                await interaction.response.send_message(
+                    "Error: User is no longer in the server.",
+                    ephemeral=True
+                )
+                return
 
             # Remove from pending submissions
             submission_data = OnboardManager.remove_pending_submission(user_id)
 
-            # Update embed to show denied
-            embed = interaction.message.embeds[0]
-            embed.color = discord.Color.red()
-            embed.add_field(
-                name="❌ Status",
-                value=f"Denied by {interaction.user.mention}",
-                inline=False
-            )
+            # Assign denial role (Supporter)
+            denial_role = get_onboard_denial_role()
+            success = await RoleManager.add_role(member, denial_role)
 
-            # Disable buttons
-            for item in view.children:
-                item.disabled = True
-
-            await interaction.response.edit_message(embed=embed, view=view)
-
-            # Log to bot log (silent denial - no DM to user)
-            log_channel = discord.utils.get(
-                interaction.guild.text_channels,
-                name=get_log_channel_name()
-            )
-            if log_channel:
-                log_embed = discord.Embed(
-                    title="❌ Onboarding Denied",
-                    description=f"{member_mention} was denied onboarding by {interaction.user.mention}",
-                    color=discord.Color.red(),
-                    timestamp=discord.utils.utcnow()
+            if success:
+                # Update embed to show denied
+                embed = interaction.message.embeds[0]
+                embed.color = discord.Color.red()
+                embed.add_field(
+                    name="❌ Status",
+                    value=f"Denied by {interaction.user.mention}",
+                    inline=False
                 )
-                await log_channel.send(embed=log_embed)
 
-            logging.info(f"Denied onboarding for user {user_id} by {interaction.user}")
+                # Disable buttons
+                for item in view.children:
+                    item.disabled = True
+
+                await interaction.response.edit_message(embed=embed, view=view)
+
+                # Send DM to user with customizable embed
+                try:
+                    dm_embed = onboard_embed_from_cfg("denied")
+                    await member.send(embed=dm_embed)
+                    logging.info(f"Sent denial DM to {member}")
+                except discord.Forbidden:
+                    logging.warning(f"Could not DM denial to {member}")
+
+                # Log to bot log
+                log_channel = discord.utils.get(
+                    interaction.guild.text_channels,
+                    name=get_log_channel_name()
+                )
+                if log_channel:
+                    log_embed = discord.Embed(
+                        title="❌ Onboarding Denied",
+                        description=f"{member.mention} was denied onboarding by {interaction.user.mention}",
+                        color=discord.Color.red(),
+                        timestamp=discord.utils.utcnow()
+                    )
+                    await log_channel.send(embed=log_embed)
+
+                logging.info(f"Denied onboarding for {member} by {interaction.user}")
+
+            else:
+                await interaction.response.send_message(
+                    f"Error: Could not assign '{denial_role}' role to {member.mention}.",
+                    ephemeral=True
+                )
 
         except Exception as e:
             logging.error(f"Error denying onboard submission: {e}")

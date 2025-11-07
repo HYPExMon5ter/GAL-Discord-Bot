@@ -122,6 +122,11 @@ def get_onboard_approval_role() -> str:
     return get_onboard_config().get("role_on_approve", "Angels")
 
 
+def get_onboard_denial_role() -> str:
+    """Get role to assign on onboard denial from config."""
+    return get_onboard_config().get("role_on_deny", "Supporter")
+
+
 def onboard_embed_from_cfg(key: str, **kwargs) -> discord.Embed:
     """
     Create Discord embed from onboard configuration.

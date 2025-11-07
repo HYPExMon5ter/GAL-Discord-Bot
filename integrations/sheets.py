@@ -759,17 +759,45 @@ async def find_or_register_user(
         discord_data = await fetch_required_columns(sheet, discord_column_indexes, hline, maxp)
         discord_vals = discord_data.get("discord_idx", [])
 
-        # Find first empty slot - check from header+1 to header+max_players for empty text content
+        # Find first empty slot in the discord column
         target_row = None
-        start_row = hline + 1  # Start from header + 1 (skip header row)
-        end_row = hline + maxp  # End at header + max_players
 
-        for i in range(start_row - 1, end_row):  # -1 because array is 0-indexed, check full range
-            # Convert to string and strip, then check if empty (matches cache refresh logic)
-            cell_content = str(discord_vals[i]).strip() if i < len(discord_vals) else ""
+        # discord_vals is already post-header, 0-indexed array
+        # discord_vals[0] corresponds to row (hline + 1)
+        # discord_vals[i] corresponds to row (hline + 1 + i)
+
+        for array_idx in range(len(discord_vals)):
+            cell_content = str(discord_vals[array_idx]).strip()
             if not cell_content:
-                target_row = i + 1  # Row numbers are 1-indexed
+                # Found empty slot - convert array index to actual sheet row number
+                target_row = hline + 1 + array_idx
+                logger.debug(f"Found empty slot at row {target_row} (array index {array_idx})")
                 break
+
+        # Verify the target row is actually empty (safety check for race conditions)
+        if target_row:
+            try:
+                # Read just the discord column cell for this row to verify
+                verify_cell = await retry_until_successful(
+                    sheet.acell, 
+                    f"{await SheetIntegrationHelper.get_column_letter(gid, 'discord_col')}{target_row}"
+                )
+                
+                if verify_cell.value and str(verify_cell.value).strip():
+                    # Row is not actually empty, scan for next empty row
+                    logger.warning(f"Row {target_row} verification failed, scanning for next empty row")
+                    target_row = None
+                    
+                    # Scan again from where we left off to find next empty row
+                    for continue_idx in range(array_idx + 1, len(discord_vals)):
+                        cell_content = str(discord_vals[continue_idx]).strip()
+                        if not cell_content:
+                            target_row = hline + 1 + continue_idx
+                            logger.info(f"Found alternative empty slot at row {target_row}")
+                            break
+                    
+            except Exception as e:
+                logger.warning(f"Row verification failed: {e}, proceeding with target row {target_row}")
 
         # Prepare data to write
         writes = {}
@@ -981,13 +1009,17 @@ async def _update_checkin_status(
 
         gid = str(guild_id) if guild_id else "unknown"
         mode = get_event_mode_for_guild(gid)
-        cfg = get_sheet_settings(mode)
         sheet = await get_sheet_for_guild(gid, "GAL Database")
+
+        # Get checkin column using helper
+        checkin_col = await SheetIntegrationHelper.get_column_letter(gid, "checkin_col")
+        if not checkin_col:
+            raise SheetsError(f"Check-in column not configured for guild {gid}")
 
         # Update sheet
         await retry_until_successful(
             sheet.update_acell,
-            f"{cfg['checkin_col']}{row}",
+            f"{checkin_col}{row}",
             checked_in
         )
 
@@ -1118,11 +1150,15 @@ async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
     try:
         gid = str(guild.id)
         mode = get_event_mode_for_guild(gid)
-        cfg = get_sheet_settings(mode)
         # FIX: await the async function
         sheet = await get_sheet_for_guild(gid, "GAL Database")
 
-        col = cfg["checkin_col"]
+        # Get checkin column using helper
+        checkin_col = await SheetIntegrationHelper.get_column_letter(gid, "checkin_col")
+        if not checkin_col:
+            raise SheetsError(f"Check-in column not configured for guild {gid}")
+
+        cfg = get_sheet_settings(mode)
         header_line = cfg["header_line_num"]
         max_players = cfg.get("max_players", 32)
 
@@ -1132,7 +1168,7 @@ async def reset_checked_in_roles_and_sheet(guild, channel) -> int:
 
         # Build range from start_row to end_row
         if start_row <= end_row:  # Ensure valid range
-            cell_range = f"{col}{start_row}:{col}{end_row}"
+            cell_range = f"{checkin_col}{start_row}:{checkin_col}{end_row}"
             cell_list = await retry_until_successful(sheet.range, cell_range)
 
             # Set all to boolean False

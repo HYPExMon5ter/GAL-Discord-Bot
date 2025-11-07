@@ -181,7 +181,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         """Returns header and tournament format components."""
         # Get tournament name from config
         tournament_config = _FULL_CFG.get("tournament", {})
-        tournament_name = tournament_config.get("current_name", "K.O. GALISEUM")
+        tournament_name = tournament_config.get("current_name", "")
         
         components = [
             discord.ui.Section(
@@ -193,7 +193,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                 ),
             ),
             discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.small),
-            discord.ui.TextDisplay(content="### 🎮 Tournament format"),
+            discord.ui.TextDisplay(content="# 🎮 Tournament Format"),
             discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.small),
         ]
         
@@ -202,16 +202,13 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
             format_text = (
                 f"**Event Name**: {tournament_name}\n"
                 f"**Mode**: Double-Up Teams\n"
-                f"**Max Teams**: {self.data['max_players'] // 2}\n"
-                f"**Teams**: {self.data.get('complete_teams', 0)} complete, "
-                f"{len(self.data.get('teams', {}))} total"
+                f"**Max Teams**: {self.data['max_players'] // 2}"
             )
         else:
             format_text = (
                 f"**Event Name**: {tournament_name}\n"
                 f"**Mode**: Individual Players\n"
-                f"**Max Players**: {self.data['max_players']}\n"
-                f"**Players**: {self.data['registered']} registered"
+                f"**Max Players**: {self.data['max_players']}"
             )
         
         components.append(discord.ui.TextDisplay(content=format_text))
@@ -320,7 +317,7 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         """Returns components for when no events are active or scheduled."""
         hub_config = _FULL_CFG.get("embeds", {}).get("hub", {})
         no_event_text = hub_config.get("no_event_message",
-                                       "🌙 **No active or scheduled event right now**\n> Check back soon for the next tournament!")
+                                       "\n🌙 **No active or scheduled event right now**> Check back soon for the next tournament!")
         
         return [
             discord.ui.TextDisplay(content="# 🏆 Tournament Hub"),
@@ -669,23 +666,22 @@ async def build_unified_embed(guild: discord.Guild, user: Optional[discord.Membe
 
         if mode == "doubleup":
             teams = await SheetOperations.get_teams_summary(guild_id)
-            complete_teams = sum(1 for members in teams.values() if len(members) >= 2)
-
+            
             embed.add_field(
                 name=f"🎮 {tournament_name} Tournament Format",
-                value=f"**Mode:** Double‑Up Teams\n**Teams:** {complete_teams} complete, {len(teams)} total\n**Max Teams:** {max_players // 2}",
+                value=f"**Mode:** Double‑Up Teams\n**Max Teams:** {max_players // 2}",
                 inline=False
             )
         else:  # normal mode
             embed.add_field(
                 name=f"🎮 {tournament_name} Tournament Format",
-                value=f"**Mode:** Individual Players\n**Players:** {registered} registered\n**Max Players:** {max_players}",
+                value=f"**Mode:** Individual Players\n**Max Players:** {max_players}",
                 inline=False
             )
         embed.add_field(name="\u200b", value="~~────────────────────────────────────────~~", inline=False)
 
     # Registration Section
-    cap_bar = EmbedHelper.create_progress_bar(registered, max_players)
+    cap_bar = EmbedHelper.create_progress_bar(registered, max_players, 10)
 
     reg_config = hub_config.get("registration", {})
 
@@ -753,7 +749,7 @@ async def build_unified_embed(guild: discord.Guild, user: Optional[discord.Membe
         embed.add_field(name="\u200b", value="~~────────────────────────────────────────~~", inline=False)
 
         # Check-In Section  
-        progress_bar = EmbedHelper.create_progress_bar(checked_in, registered)
+        progress_bar = EmbedHelper.create_progress_bar(checked_in, registered, 10)
 
         checkin_config = hub_config.get("checkin", {})
 

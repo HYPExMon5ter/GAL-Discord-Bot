@@ -16,6 +16,7 @@ onboard:
 
   # Role settings
   role_on_approve: Angels                  # Role granted after approval
+  role_on_deny: Supporter                  # Role granted after denial
 
   # Embed configurations for onboarding flow
   embeds:
@@ -31,13 +32,21 @@ onboard:
       color: '#3498db'
 
     approved:
-      title: ✅ Welcome to the Community!
-      description: Your onboarding has been approved! You now have access to the server. Welcome to Guardian Angel League! 🌸
+      title: ✅ Welcome to Guardian Angel League!
+      description: |
+        Congratulations! Your onboarding has been approved. 🌸
+        
+        You've been assigned the **Angels** role and now have full access to our community. Feel free to introduce yourself in the welcome channel and join our events!
+        
+        We're so glad to have you as part of our community. Welcome home, Angel! 💜
       color: '#27ae60'
 
     denied:
       title: ❌ Onboarding Not Approved
-      description: Your submission was reviewed but not approved at this time.
+      description: |
+        Thank you for your interest in Guardian Angel League. After careful review, we're unable to approve your onboarding application at this time.
+        
+        You've been assigned the **Supporter** role, which provides limited access to our community. We appreciate your understanding and welcome you to stay connected with our events and streams.
       color: '#e74c3c'
 
     already_approved:
@@ -80,7 +89,7 @@ sheet_configuration:
     sheet_url_prod: https://docs.google.com/spreadsheets/d/1Ba07_3Tdv7Z2HwHdSyJYGVSxJGJRGVzF6pI2mi_cxWA/edit
     sheet_url_dev: https://docs.google.com/spreadsheets/d/13RCwqnFkdSvMSotrhob5BG5gLJnWxurefZxLkutuK40/edit
     header_line_num: 2                     # Row number where headers start
-    max_players: 24                        # Maximum players for normal tournament
+    max_players: 32                        # Maximum players for normal tournament
 
   doubleup:
     sheet_url_prod: https://docs.google.com/spreadsheets/d/1Mr-wr0AhiaFdW3Lu_l9U9eaEL-Qn_crMD-iQHiW8oWI/edit

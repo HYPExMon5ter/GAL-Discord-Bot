@@ -561,7 +561,7 @@ class LayoutAdminButton(discord.ui.Button):
         """Returns components for when no events are active or scheduled."""
         hub_config = _FULL_CFG.get("embeds", {}).get("hub", {})
         no_event_text = hub_config.get("no_event_message",
-                                       "🌙 **No active or scheduled event right now**\n> Check back soon for the next tournament!")
+                                       "\n🌙 **No active or scheduled event right now**\n> Check back soon for the next tournament!")
         
         return [
             discord.ui.TextDisplay(content="# 🏆 Tournament Hub"),

@@ -150,10 +150,7 @@ embeds:
   # Tournament hub main interface
   hub:
     title: 🌟 Guardian Angel League Tournament Hub
-    no_event_message: |
-      🌙 **No active or scheduled event right now**
-      
-      > Check back soon for the next tournament!
+    no_event_message: "\n🌙 **No active or scheduled event right now**\n> Check back soon for the next tournament!"
 
     registration:
       open_text: ✨ Click **Manage Registration** below to register or update your info!

@@ -285,10 +285,43 @@ class RiotAPI:
         return await self._make_request(url)
 
     async def get_summoner_by_puuid(self, region: str, puuid: str) -> Dict[str, Any]:
-        """Get summoner information by PUUID."""
+        """Get summoner information by PUUID (tries TFT, falls back to LoL)."""
         platform = self._get_platform_endpoint(region)
-        url = f"https://{platform}.api.riotgames.com/tft/summoner/v1/summoners/by-puuid/{puuid}"
-        return await self._make_request(url)
+        
+        # Try TFT API first
+        tft_url = f"https://{platform}.api.riotgames.com/tft/summoner/v1/summoners/by-puuid/{puuid}"
+        try:
+            logger.debug(f"🔍 Trying TFT API: {tft_url}")
+            result = await self._make_request(tft_url)
+            if result and (result.get("id") or result.get("summonerId")):  # Check both possible field names
+                logger.debug(f"✅ Got summoner data from TFT API for {puuid[:8]}... in {region}")
+                return result
+            else:
+                logger.warning(f"⚠️ TFT API returned empty/incomplete data for {puuid[:8]}... in {region}")
+                logger.debug(f"TFT API response: {result}")
+        except RiotAPIError as e:
+            logger.warning(f"TFT Summoner API failed for {puuid[:8]}... in {region}: {e}")
+        except Exception as e:
+            logger.warning(f"Unexpected error with TFT Summoner API for {puuid[:8]}... in {region}: {e}")
+        
+        # Fallback to LoL endpoint (might work for TFT players too)
+        lol_url = f"https://{platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
+        try:
+            logger.info(f"🔍 Trying LoL API fallback: {lol_url}")
+            result = await self._make_request(lol_url)
+            if result and (result.get("id") or result.get("summonerId")):  # Check both possible field names
+                logger.info(f"✅ Got summoner data from LoL API fallback for {puuid[:8]}... in {region}")
+                return result
+            else:
+                logger.error(f"❌ LoL API also returned empty data for {puuid[:8]}... in {region}")
+                logger.error(f"LoL API response: {result}")
+                raise RiotAPIError("Both TFT and LoL Summoner APIs returned empty data")
+        except RiotAPIError as e:
+            logger.error(f"❌ Both TFT and LoL Summoner APIs failed for {puuid[:8]}... in {region}: {e}")
+            raise RiotAPIError(f"Summoner not found: {e}")
+        except Exception as e:
+            logger.error(f"❌ Unexpected error with LoL Summoner API for {puuid[:8]}... in {region}: {e}")
+            raise RiotAPIError(f"Unexpected error in summoner lookup: {e}")
 
     async def get_league_entries(self, region: str, summoner_id: str) -> List[Dict[str, Any]]:
         """Get TFT league (rank) entries for a summoner."""
@@ -518,8 +551,24 @@ class RiotAPI:
                     # Get summoner info
                     try:
                         summoner_data = await self.get_summoner_by_puuid(region, puuid)
-                        summoner_id = summoner_data.get("id")  # Use .get() for safety
+                        
+                        # ADD DEBUG LOGGING to understand what API returns
+                        logger.info(f"🔍 DEBUG: Summoner API response for {riot_id_display} in {region.upper()}: {summoner_data}")
+                        if isinstance(summoner_data, dict):
+                            logger.info(f"🔍 DEBUG: Response keys: {list(summoner_data.keys())}")
+                            logger.info(f"🔍 DEBUG: Response type: {type(summoner_data)}")
+                            logger.info(f"🔍 DEBUG: 'id' field value: {summoner_data.get('id')}")
+                            logger.info(f"🔍 DEBUG: 'summonerId' field value: {summoner_data.get('summonerId')}")
+                        else:
+                            logger.error(f"🔍 DEBUG: Response is not a dictionary: {type(summoner_data)}")
+                        
+                        summoner_id = summoner_data.get("id") or summoner_data.get("summonerId")  # Try both field names
+                        
+                        if not summoner_id:
+                            logger.error(f"🔍 DEBUG: No summoner ID found in response. Full response: {summoner_data}")
+                        
                     except Exception as summoner_error:
+                        logger.error(f"🔍 DEBUG: Summoner API exception for {riot_id_display} in {region.upper()}: {type(summoner_error).__name__}: {summoner_error}")
                         logger.warning(f"Failed to get summoner data for {riot_id_display} in {region.upper()}: {summoner_error}")
                         continue
                     

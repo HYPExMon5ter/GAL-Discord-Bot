@@ -611,7 +611,8 @@ async def find_or_register_user(
         guild_id: str | None = None,
         team_name: str | None = None,
         alt_igns: str | None = None,
-        pronouns: str | None = None
+        pronouns: str | None = None,
+        rank: str | None = None
 ) -> int:
     """
     Find existing user or register new user with comprehensive error handling.
@@ -631,7 +632,12 @@ async def find_or_register_user(
 
         # Update existing user
         if existing:
-            row, old_ign, old_reg, old_ci, old_team, old_alt, old_pronouns = existing
+            # Handle both old (7-element) and new (8-element) cache format
+            if len(existing) >= 8:
+                row, old_ign, old_reg, old_ci, old_team, old_alt, old_pronouns, old_rank = existing[:8]
+            else:
+                row, old_ign, old_reg, old_ci, old_team, old_alt, old_pronouns = existing
+                old_rank = "Unranked"  # Default for legacy cache entries
 
             updates_needed = []
 
@@ -670,6 +676,13 @@ async def find_or_register_user(
                     batch_updates.append((f"{pronouns_col}{row}", pronouns))
                     updates_needed.append("pronouns")
 
+            # Update rank if provided and different
+            if rank is not None and rank != old_rank:
+                rank_col = await SheetIntegrationHelper.get_column_letter(gid, "rank_col")
+                if rank_col:
+                    batch_updates.append((f"{rank_col}{row}", rank))
+                    updates_needed.append("rank")
+
             # Execute all updates in a single batch
             if batch_updates:
                 success = await apply_sheet_updates(sheet, batch_updates)
@@ -679,7 +692,7 @@ async def find_or_register_user(
             # Update cache with NEW values (not old ones!)
             sheet_cache["users"][discord_tag] = (
                 row, ign, True, old_ci, team_name or old_team, alt_igns if alt_igns is not None else old_alt,
-                pronouns if pronouns is not None else old_pronouns
+                pronouns if pronouns is not None else old_pronouns, rank if rank is not None else old_rank
             )
 
             if updates_needed:
@@ -776,6 +789,11 @@ async def find_or_register_user(
         if pronouns_col:
             writes[pronouns_col] = pronouns or ""
 
+        # Add rank if column exists
+        rank_col = await SheetIntegrationHelper.get_column_letter(gid, "rank_col")
+        if rank_col:
+            writes[rank_col] = rank or "Unranked"
+
         if target_row:
             # Write to existing formatted row using batch update
             updates = [(f"{col}{target_row}", val) for col, val in writes.items()]
@@ -805,7 +823,7 @@ async def find_or_register_user(
 
         # Update cache
         sheet_cache["users"][discord_tag] = (
-            row, ign, True, False, team_name or "", alt_igns or "", pronouns or ""
+            row, ign, True, False, team_name or "", alt_igns or "", pronouns or "", rank or "Unranked"
         )
 
         logger.info(f"Registered new user {discord_tag} as {ign} in row {row}")

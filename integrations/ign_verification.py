@@ -6,6 +6,7 @@ service into the existing registration process.
 
 import os
 import sys
+import asyncio
 from typing import Dict, Optional, Tuple, Any
 
 from utils.logging_utils import SecureLogger
@@ -17,10 +18,13 @@ dashboard_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'live-
 if dashboard_path not in sys.path:
     sys.path.append(dashboard_path)
 
+# All regions for auto-detection
+ALL_REGIONS = ["na", "euw", "eune", "kr", "br", "lan", "las", "oce", "jp", "tr", "ru"]
+
 
 async def verify_ign_for_registration(ign: str, region: str = "na") -> Tuple[bool, str, Optional[Dict]]:
     """
-    Verify IGN for registration flow with graceful fallback.
+    Verify IGN for registration flow with multi-region detection and graceful fallback.
 
     Returns:
         (is_valid, message, riot_data)
@@ -33,12 +37,17 @@ async def verify_ign_for_registration(ign: str, region: str = "na") -> Tuple[boo
         from services.ign_verification import verification_service
 
         if verification_service is None:
-            # Service not initialized - allow registration with warning
-            logger.warning("IGN verification service not available - allowing registration")
-            return True, "⚠️ IGN verification temporarily unavailable - registration allowed", None
+            # Service not initialized - use RiotAPI directly for multi-region support
+            logger.info("IGN verification service not available - using RiotAPI with multi-region detection")
+            return await _verify_ign_with_riot_api(ign, region)
 
-        # Use the verification service
+        # Use the verification service first
         is_valid, message, riot_data = await verification_service.verify_ign(ign, region)
+
+        # If not found in default region, try multi-region detection
+        if not is_valid and ("not found" in message.lower() or "404" in message):
+            logger.info(f"IGN {ign} not found in {region}, trying multi-region detection")
+            return await _verify_ign_with_riot_api(ign, region)
 
         # Add appropriate emoji to the message
         if is_valid and riot_data:
@@ -49,13 +58,86 @@ async def verify_ign_for_registration(ign: str, region: str = "na") -> Tuple[boo
             return False, f"❌ {message}", None
 
     except ImportError:
-        # Dashboard service not available - graceful fallback
-        logger.info("Live graphics dashboard not available - IGN verification disabled")
-        return True, "IGN verification not available - registration allowed", None
+        # Dashboard service not available - use RiotAPI directly
+        logger.info("Live graphics dashboard not available - using RiotAPI with multi-region detection")
+        return await _verify_ign_with_riot_api(ign, region)
     except Exception as e:
         # Any other error - allow registration but log the issue
         logger.error(f"IGN verification error: {e}")
         return True, f"⚠️ IGN verification error - registration allowed", None
+
+
+async def _verify_ign_with_riot_api(ign: str, default_region: str = "na") -> Tuple[bool, str, Optional[Dict]]:
+    """
+    Verify IGN using RiotAPI with multi-region detection.
+    
+    This is a fallback when the dashboard verification service is not available
+    or when we need multi-region support.
+    """
+    try:
+        from integrations.riot_api import RiotAPI, RiotAPIError
+        
+        # Regions to try (default first, then others)
+        regions_to_try = [default_region] + [r for r in ALL_REGIONS if r != default_region]
+        
+        for region in regions_to_try:
+            try:
+                logger.debug(f"Verifying {ign} in {region.upper()}")
+                
+                # Use RiotAPI context manager
+                async with RiotAPI() as riot_client:
+                    # Parse riot_id into game_name and tag_line
+                    game_name, tag_line = riot_client._parse_riot_id(ign, region)
+                    
+                    # Try to get account info - this validates the IGN exists
+                    account_data = await riot_client.get_account_by_riot_id(region, game_name, tag_line)
+                    
+                    # If we get here, the IGN is valid
+                    found_ign = f"{account_data['gameName']}#{account_data['tagLine']}"
+                    puuid = account_data['puuid']
+                    
+                    # Get basic summoner info for additional data
+                    summoner_data = await riot_client.get_summoner_by_puuid(region, puuid)
+                    
+                    riot_data = {
+                        "ign": found_ign,
+                        "gameName": account_data['gameName'],
+                        "tagLine": account_data['tagLine'],
+                        "puuid": puuid,
+                        "summonerId": summoner_data['id'],
+                        "summonerLevel": summoner_data.get('summonerLevel', 0),
+                        "region": region.upper(),
+                        "accountId": account_data.get('accountId'),
+                        "profileIconId": summoner_data.get('profileIconId', 0)
+                    }
+                    
+                    logger.info(f"✅ Verified IGN {ign} as {found_ign} in {region.upper()}")
+                    return True, f"✅ Verified in {region.upper()}", riot_data
+                    
+            except RiotAPIError as e:
+                if "404" in str(e) or "not found" in str(e).lower():
+                    # Account not found in this region, try next
+                    logger.debug(f"IGN {ign} not found in {region.upper()}")
+                    continue
+                else:
+                    # Other API error (rate limit, etc.)
+                    logger.warning(f"RiotAPI error verifying {ign} in {region.upper()}: {e}")
+                    # Try next region for rate limit errors too
+                    if "429" in str(e):
+                        await asyncio.sleep(1)  # Brief pause for rate limit
+                        continue
+                    break
+            except Exception as e:
+                logger.error(f"Unexpected error verifying {ign} in {region.upper()}: {e}")
+                continue
+        
+        # If we've tried all regions and didn't find the IGN
+        return False, f"❌ IGN '{ign}' not found in any region", None
+        
+    except Exception as e:
+        logger.error(f"Error in _verify_ign_with_riot_api: {e}")
+        # Allow registration to continue even if verification fails
+        return True, f"⚠️ IGN verification failed - registration allowed", None
 
 
 async def is_verification_available() -> bool:

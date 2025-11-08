@@ -39,6 +39,7 @@ class ColumnMapping:
     registered_column: Optional[str] = None
     checkin_column: Optional[str] = None
     team_column: Optional[str] = None
+    rank_column: Optional[str] = None
     custom_columns: Dict[str, str] = None
 
     def __post_init__(self):
@@ -79,6 +80,10 @@ class SheetColumnDetector:
         "team": [
             "team", "squad", "group", "partner", "team name", "duo", "pair",
             "teammate", "partner name"
+        ],
+        "rank": [
+            "rank", "ranked", "tier", "rating", "elo", "current rank", "player rank", "current_rank",
+            "tft rank", "summoner rank", "game rank", "player tier"
         ]
     }
 
@@ -218,7 +223,8 @@ class SheetColumnDetector:
             "pronouns": "pronouns_col",
             "registered": "registered_col",
             "checkin": "checkin_col",
-            "team": "team_col"
+            "team": "team_col",
+            "rank": "rank_col"
         }
 
         for column_type, config_key in mapping.items():
@@ -381,6 +387,7 @@ async def load_cached_column_mapping(guild_id: str) -> Optional[ColumnMapping]:
         mapping.registered_column = cached.get("registered_column")
         mapping.checkin_column = cached.get("checkin_column")
         mapping.team_column = cached.get("team_column")
+        mapping.rank_column = cached.get("rank_column")
         
         # Verify we have required columns
         if not mapping.discord_column or not mapping.ign_column:
@@ -416,6 +423,7 @@ async def save_cached_column_mapping(guild_id: str, mapping: ColumnMapping, shee
             "registered_column": mapping.registered_column,
             "checkin_column": mapping.checkin_column,
             "team_column": mapping.team_column,
+            "rank_column": mapping.rank_column,
             "last_updated": datetime.utcnow().isoformat(),
             "sheet_url": sheet_url
         }
@@ -465,6 +473,7 @@ async def save_column_mapping(guild_id: str, mapping: ColumnMapping) -> None:
         "registered_column": mapping.registered_column,
         "checkin_column": mapping.checkin_column,
         "team_column": mapping.team_column,
+        "rank_column": mapping.rank_column,
         "custom_columns": mapping.custom_columns
     }
 
@@ -515,6 +524,8 @@ async def ensure_column_mappings_initialized(guild_id: str) -> bool:
         mapping.alt_ign_column = detections["alt_ign"].column_letter
     if "pronouns" in detections:
         mapping.pronouns_column = detections["pronouns"].column_letter
+    if "rank" in detections:
+        mapping.rank_column = detections["rank"].column_letter
     
     # Save the mapping
     await save_column_mapping(guild_id, mapping)

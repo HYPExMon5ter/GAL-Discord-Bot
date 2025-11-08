@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import discord
+import re
 from rapidfuzz import process, fuzz
 
 from config import (
@@ -293,6 +294,44 @@ async def complete_registration(
         # Remove from waitlist if they were on it (they're being registered now)
         await WaitlistManager.remove_from_waitlist(gid, discord_tag)
 
+        # Parse comma-separated alternate IGNs for rank fetching
+        alt_igns_list = []
+        if alt_igns and alt_igns.strip():
+            alt_igns_list = [
+                name.strip() 
+                for name in re.split(r'\s*,\s*', alt_igns) 
+                if name.strip()
+            ]
+        
+        # Collect all IGNs for rank fetching (main + alternates)
+        all_igns_for_rank = [ign] + alt_igns_list
+        
+        # 6.5) Fetch rank data for all IGNs
+        rank_data = None
+        try:
+            logging.info(f"🎖️ Fetching rank data for {discord_tag} with IGNs: {all_igns_for_rank}")
+            
+            from integrations.riot_api import RiotAPI
+            async with RiotAPI() as riot_client:
+                rank_data = await riot_client.get_highest_rank_across_accounts(
+                    ign_list=all_igns_for_rank,
+                    default_region="na"
+                )
+            
+            if rank_data and rank_data.get("success"):
+                logging.info(f"✅ Rank found for {discord_tag}: {rank_data['highest_rank']} "
+                          f"(IGN: {rank_data['found_ign']}, Region: {rank_data['region']})")
+            else:
+                logging.warning(f"⚠️ No rank found for {discord_tag}, defaulting to Unranked")
+                rank_data = {"highest_rank": "Unranked"}
+                
+        except Exception as e:
+            logging.error(f"❌ Rank fetch error for {discord_tag}: {e}")
+            rank_data = {"highest_rank": "Unranked"}  # Graceful fallback
+
+        # Extract rank string for storage
+        player_rank = rank_data.get("highest_rank", "Unranked")
+
         # 7) Upsert user row in sheet
         logging.info(f"🔄 Starting sheet registration for {discord_tag}")
         try:
@@ -302,7 +341,8 @@ async def complete_registration(
                 guild_id=gid,
                 team_name=(team_name if mode == "doubleup" else None),
                 alt_igns=alt_igns,
-                pronouns=pronouns
+                pronouns=pronouns,
+                rank=player_rank  # NEW: Pass rank data
             )
             logging.info(f"✅ Sheet registration completed for {discord_tag} - row {row}")
         except Exception as sheet_error:
@@ -866,41 +906,84 @@ class RegistrationModal(discord.ui.Modal):
             await interaction.edit_original_response(embed=embed, view=None)
             return
 
-        # IGN Verification - check if the IGN is valid with Riot API
+        # Parse comma-separated alternate IGNs
+        alt_igns_raw = self.alt_ign_input.value.strip() if self.alt_ign_input else ""
+        alt_igns_list = []
+
+        if alt_igns_raw:
+            # Split by comma with flexible whitespace handling
+            alt_igns_list = [
+                name.strip() 
+                for name in re.split(r'\s*,\s*', alt_igns_raw) 
+                if name.strip()
+            ]
+
+        # Collect all IGNs to validate (main + alternates)
+        all_igns_to_validate = [ign] + alt_igns_list
+        
+        # IGN Verification - check if ALL IGNs are valid with multi-region support
         try:
-            from integrations.ign_verification import verify_ign_for_registration, get_verification_embed_field
+            from integrations.ign_verification import verify_ign_for_registration
 
-            # Verify the IGN
-            is_valid, verification_message, riot_data = await verify_ign_for_registration(ign, "na")
+            validation_results = []
+            
+            # Validate each IGN
+            for ign_to_check in all_igns_to_validate:
+                is_valid, verification_message, riot_data = await verify_ign_for_registration(ign_to_check, "na")
+                
+                validation_results.append({
+                    "ign": ign_to_check,
+                    "valid": is_valid,
+                    "message": verification_message,
+                    "riot_data": riot_data
+                })
+                
+                # Log verification result for admin reference
+                if "⚠️" in verification_message:
+                    logging.warning(f"IGN verification warning for {discord_tag} ({ign_to_check}): {verification_message}")
+                elif "✅" in verification_message:
+                    logging.info(f"IGN verification successful for {discord_tag} ({ign_to_check})")
 
-            if not is_valid:
-                # IGN verification failed - show error message
+            # Check if any IGNs failed validation
+            failed_igns = [r for r in validation_results if not r["valid"]]
+            
+            if failed_igns:
+                # Build detailed error message
+                error_descriptions = []
+                for failed in failed_igns:
+                    # Extract clean error message
+                    error_msg = failed["message"]
+                    if "❌" in error_msg:
+                        error_msg = error_msg.replace("❌", "").strip()
+                    error_descriptions.append(f"• **{failed['ign']}**: {error_msg}")
+                
                 error_embed = discord.Embed(
                     title="❌ IGN Verification Failed",
-                    description=f"**{ign}** could not be verified.\n\n{verification_message}",
+                    description=f"The following IGNs could not be verified:\n" + 
+                                "\n".join(error_descriptions),
                     color=discord.Color.red()
                 )
                 error_embed.add_field(
                     name="💡 Tips",
                     value="• Make sure your IGN is spelled correctly\n"
                           "• Include your tag if you have one (e.g., `Player#TAG`)\n"
-                          "• Try again after checking your Riot account",
+                          "• Players can be in different regions (NA, EUW, KR, etc.)\n"
+                          "• Check each name individually to ensure they're all valid",
                     inline=False
                 )
 
                 await interaction.edit_original_response(embed=error_embed, view=None)
                 return
 
-            # Log verification result for admin reference
-            if "⚠️" in verification_message:
-                logging.warning(f"IGN verification warning for {discord_tag}: {verification_message}")
-            elif "✅" in verification_message:
-                logging.info(f"IGN verification successful for {discord_tag}: {ign}")
+            # If we got here, all IGNs validated successfully
+            successful_igns = [r["ign"] for r in validation_results if r["valid"]]
+            logging.info(f"✅ All {len(successful_igns)} IGNs validated for {discord_tag}: {successful_igns}")
 
         except Exception as e:
             # IGN verification error - log but allow registration to continue
             logging.error(f"IGN verification error for {discord_tag} ({ign}): {e}")
             verification_message = "⚠️ IGN verification error - registration allowed"
+            # Continue with registration even if verification failed
 
         try:
             if mode == "doubleup" and team_value and not getattr(self, "bypass_similarity", False):
@@ -971,7 +1054,7 @@ class RegistrationModal(discord.ui.Modal):
                 ign,
                 pronouns,
                 team_value,
-                alt_igns,
+                alt_igns_raw,  # Pass the raw alt_igns string (will be parsed in complete_registration)
                 self
             )
 

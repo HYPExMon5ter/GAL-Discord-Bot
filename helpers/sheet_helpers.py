@@ -66,20 +66,21 @@ class SheetOperations:
         if not cache_data:
             return None
 
-        # Safely unpack with defaults
-        parts = list(cache_data) + [None] * (7 - len(cache_data))
-        row, ign, registered, checked_in, team, alt_ign, pronouns = parts[:7]
+        # Safely unpack with defaults (updated from 7 to 8 elements)
+        parts = list(cache_data) + [None] * (8 - len(cache_data))
+        row, ign, registered, checked_in, team, alt_ign, pronouns, rank = parts[:8]
 
         mode = get_event_mode_for_guild(guild_id)
         cfg = get_sheet_settings(mode)
 
-        # Pronouns are now cached, no need to fetch from sheet
+        # Rank is now cached, no need to fetch from sheet
 
         return {
             "row": row,
             "ign": ign or "",
             "alt_ign": alt_ign or "",
             "pronouns": pronouns or "",
+            "rank": rank or "Unranked",  # NEW
             "registered": str(registered).upper() == "TRUE",
             "checked_in": str(checked_in).upper() == "TRUE",
             "team": team if mode == "doubleup" else None,
@@ -187,12 +188,16 @@ class SheetOperations:
             snapshot['total_users'] += 1
             
             try:
-                # Handle both 6-element and 7-element tuples
-                if len(tpl) >= 7:
+                # Handle both 6-element, 7-element, and 8-element tuples
+                if len(tpl) >= 8:
+                    row, ign, reg, ci, team, alt_ign, pronouns, rank = tpl[:8]
+                elif len(tpl) >= 7:
                     row, ign, reg, ci, team, alt_ign, pronouns = tpl[:7]
+                    rank = "Unranked"
                 elif len(tpl) >= 6:
                     row, ign, reg, ci, team, alt_ign = tpl[:6]
                     pronouns = None
+                    rank = "Unranked"
                 else:
                     # Skip malformed entries
                     continue
@@ -224,6 +229,7 @@ class SheetOperations:
                 snapshot['users'].append({
                     'tag': tag,
                     'ign': ign,
+                    'rank': rank,  # Add rank to debug info
                     'registered': reg_bool,
                     'checked_in': ci_bool
                 })

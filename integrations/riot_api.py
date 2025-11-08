@@ -516,8 +516,17 @@ class RiotAPI:
                     riot_id_display = f"{account_data['gameName']}#{account_data['tagLine']}"
                     
                     # Get summoner info
-                    summoner_data = await self.get_summoner_by_puuid(region, puuid)
-                    summoner_id = summoner_data["id"]
+                    try:
+                        summoner_data = await self.get_summoner_by_puuid(region, puuid)
+                        summoner_id = summoner_data.get("id")  # Use .get() for safety
+                    except Exception as summoner_error:
+                        logger.warning(f"Failed to get summoner data for {riot_id_display} in {region.upper()}: {summoner_error}")
+                        continue
+                    
+                    # Skip if we couldn't get summoner ID
+                    if not summoner_id:
+                        logger.warning(f"No summoner ID available for {riot_id_display} in {region.upper()}")
+                        continue
                     
                     # Get league entries (rank info)
                     league_entries = await self.get_league_entries(region, summoner_id)

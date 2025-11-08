@@ -96,19 +96,28 @@ async def _verify_ign_with_riot_api(ign: str, default_region: str = "na") -> Tup
                     found_ign = f"{account_data['gameName']}#{account_data['tagLine']}"
                     puuid = account_data['puuid']
                     
-                    # Get basic summoner info for additional data
-                    summoner_data = await riot_client.get_summoner_by_puuid(region, puuid)
+                    # Try to get basic summoner info for additional data (optional for verification)
+                    try:
+                        summoner_data = await riot_client.get_summoner_by_puuid(region, puuid)
+                        summoner_id = summoner_data.get('id')  # Use .get() to be safe
+                        summoner_level = summoner_data.get('summonerLevel', 0)
+                        profile_icon_id = summoner_data.get('profileIconId', 0)
+                    except Exception as summoner_error:
+                        logger.warning(f"Failed to get summoner data for {found_ign} in {region.upper()}: {summoner_error}")
+                        summoner_id = None
+                        summoner_level = 0
+                        profile_icon_id = 0
                     
                     riot_data = {
                         "ign": found_ign,
                         "gameName": account_data['gameName'],
                         "tagLine": account_data['tagLine'],
                         "puuid": puuid,
-                        "summonerId": summoner_data['id'],
-                        "summonerLevel": summoner_data.get('summonerLevel', 0),
+                        "summonerId": summoner_id,  # May be None if summoner API fails
+                        "summonerLevel": summoner_level,
                         "region": region.upper(),
                         "accountId": account_data.get('accountId'),
-                        "profileIconId": summoner_data.get('profileIconId', 0)
+                        "profileIconId": profile_icon_id
                     }
                     
                     logger.info(f"✅ Verified IGN {ign} as {found_ign} in {region.upper()}")

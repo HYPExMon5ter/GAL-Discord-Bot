@@ -300,22 +300,86 @@ def register(gal: app_commands.Group) -> None:
     
 
     @gal.command(
-        name="cache", description="Forces a manual refresh of the user cache from the Google Sheet."
+        name="cache", description="Forces a complete refresh of user data and column mappings from the Google Sheet."
     )
     @command_tracer("gal.cache")
     async def cache_refresh(interaction: discord.Interaction):
-        """Force a cache refresh from Google Sheets."""
+        """Force a complete cache refresh including column mappings."""
         if not await ensure_staff(interaction, context="Cache Command"):
             return
 
         try:
             await interaction.response.defer(ephemeral=True)
-
+            
+            guild_id = str(interaction.guild.id)
+            
+            # Step 1: Clear cached column mappings for this guild
+            from integrations.sheet_detector import clear_cached_column_mapping
+            await clear_cached_column_mapping(guild_id)
+            logging.info(f"Cleared cached column mappings for guild {guild_id}")
+            
+            # Step 2: Re-detect column mappings from the sheet
+            from integrations.sheet_detector import ensure_column_mappings_initialized
+            mappings_detected = await ensure_column_mappings_initialized(guild_id)
+            
+            if not mappings_detected:
+                logging.warning(f"Failed to re-detect column mappings for guild {guild_id}")
+            
+            # Step 3: Refresh user data cache from the sheet
             await refresh_sheet_cache(force=True)
-            await interaction.followup.send(
-                "✅ Sheet cache refresh triggered.",
-                ephemeral=True,
-            )
+            logging.info(f"Refreshed user data cache for guild {guild_id}")
+            
+            # Step 4: Get the detected mappings for reporting
+            from integrations.sheet_detector import get_column_mapping
+            try:
+                mapping = await get_column_mapping(guild_id)
+                
+                detected_columns = []
+                if mapping.discord_column:
+                    detected_columns.append(f"Discord: {mapping.discord_column}")
+                if mapping.ign_column:
+                    detected_columns.append(f"IGN: {mapping.ign_column}")
+                if mapping.alt_ign_column:
+                    detected_columns.append(f"Alt IGNs: {mapping.alt_ign_column}")
+                if mapping.pronouns_column:
+                    detected_columns.append(f"Pronouns: {mapping.pronouns_column}")
+                if mapping.registered_column:
+                    detected_columns.append(f"Registered: {mapping.registered_column}")
+                if mapping.checkin_column:
+                    detected_columns.append(f"Checkin: {mapping.checkin_column}")
+                if mapping.team_column:
+                    detected_columns.append(f"Team: {mapping.team_column}")
+                if mapping.rank_column:
+                    detected_columns.append(f"Rank: {mapping.rank_column}")
+                
+                column_info = "\n• " + "\n• ".join(detected_columns) if detected_columns else "No columns detected"
+                
+                logging.info(f"Detected columns for guild {guild_id}: {', '.join(detected_columns)}")
+                
+            except Exception as mapping_error:
+                logging.error(f"Error getting column mapping for guild {guild_id}: {mapping_error}")
+                column_info = "Error getting column info"
+            
+            # Provide detailed feedback based on results
+            if mappings_detected:
+                await interaction.followup.send(
+                    "✅ **Complete cache refresh successful:**\n\n"
+                    "• Column mappings re-detected and updated\n"
+                    "• User data refreshed from Google Sheet\n"
+                    "• Cache cleared and rebuilt\n\n"
+                    f"**Detected columns:**{column_info}",
+                    ephemeral=True,
+                )
+            else:
+                await interaction.followup.send(
+                    "⚠️ **Cache refresh completed with issues:**\n\n"
+                    "• User data refreshed from Google Sheet\n"
+                    "• Column mapping re-detection had problems\n"
+                    "• Check the logs for details\n\n"
+                    f"**Current columns:**{column_info}",
+                    ephemeral=True,
+                )
+                
         except Exception as exc:
             await handle_command_exception(interaction, exc, "Cache Command")
 

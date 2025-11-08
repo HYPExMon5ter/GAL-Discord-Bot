@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import discord
 import re
+import logging
 from rapidfuzz import process, fuzz
 
 from config import (

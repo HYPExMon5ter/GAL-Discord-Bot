@@ -398,15 +398,25 @@ class RiotAPI:
                 for entry in entries:
                     entry_name = entry.get("summonerName", "").lower()
                     
-                    # Match by game name (case-insensitive, flexible matching)
-                    # Check if game_name is in entry_name OR entry_name is in game_name
-                    if game_name in entry_name or entry_name in game_name or game_name == entry_name:
+                    # Match by game name (case-insensitive, more precise matching)
+                    # Extract name without spaces for comparison
+                    clean_game_name = game_name.replace(" ", "").lower()
+                    clean_entry_name = entry_name.replace(" ", "").lower()
+                    
+                    # More precise matching: exact match, or with very similar substrings
+                    is_exact_match = clean_game_name == clean_entry_name
+                    is_close_match = (
+                        (clean_game_name in clean_entry_name and len(clean_entry_name) < len(clean_game_name) + 5) or
+                        (clean_entry_name in clean_game_name and len(clean_game_name) < len(clean_entry_name) + 5)
+                    )
+                    
+                    if is_exact_match or is_close_match:
                         tier_display = tier.upper() if tier not in ["challenger", "grandmaster", "master"] else tier.capitalize()
                         lp = entry.get("leaguePoints", 0)
                         wins = entry.get("wins", 0)
                         losses = entry.get("losses", 0)
                         
-                        logger.info(f"✅ Found '{riot_id}' in {tier_display} {division or ''}: {lp} LP ({wins}W/{losses}L)")
+                        logger.info(f"✅ Found '{riot_id}' (matched as '{entry_name}') in {tier_display} {division or ''}: {lp} LP ({wins}W/{losses}L)")
                         
                         return {
                             "tier": tier_display,
@@ -673,13 +683,10 @@ class RiotAPI:
                                     if wins == 0 and losses == 0:
                                         continue
                                     
-                                    numeric_rank = get_rank_numeric_value(tier, division, lp)
+                                    logger.info(f"Found rank: {tier} {division} {lp} LP for {riot_id_display}")
                                     
-                                    logger.info(f"Found rank: {tier} {division} {lp} LP for {riot_id_display} "
-                                              f"(numeric: {numeric_rank})")
-                                    
-                                    if numeric_rank > best_rank:
-                                        best_rank = numeric_rank
+                                    # Keep the first valid rank found (simplify for now)
+                                    if not highest_rank:
                                         highest_rank = {
                                             "tier": tier,
                                             "division": division,
@@ -691,9 +698,9 @@ class RiotAPI:
                                             "source": "summoner_api"
                                         }
                                         
-                                        # Early exit if we found a good rank
-                                        if numeric_rank >= RANK_VALUES.get("DIAMOND", 25):
-                                            logger.info(f"✅ Found Diamond+ rank, stopping search early")
+                                        # Early exit if we found a high rank
+                                        if tier in ["CHALLENGER", "GRANDMASTER", "MASTER", "DIAMOND"]:
+                                            logger.info(f"✅ Found {tier} rank, stopping search early")
                                             break
                         except Exception as league_error:
                             logger.warning(f"Failed to get league entries: {league_error}")
@@ -712,13 +719,10 @@ class RiotAPI:
                             wins = league_entry.get("wins", 0)
                             losses = league_entry.get("losses", 0)
                             
-                            numeric_rank = get_rank_numeric_value(tier, division, lp)
+                            logger.info(f"✅ Found via entries search: {tier} {division} {lp} LP")
                             
-                            logger.info(f"✅ Found via entries search: {tier} {division} {lp} LP "
-                                      f"(numeric: {numeric_rank})")
-                            
-                            if numeric_rank > best_rank:
-                                best_rank = numeric_rank
+                            # Keep the first valid rank found (simplify for now)
+                            if not highest_rank:
                                 highest_rank = {
                                     "tier": tier,
                                     "division": division,
@@ -730,9 +734,9 @@ class RiotAPI:
                                     "source": "league_entries_search"
                                 }
                                 
-                                # Early exit if we found a good rank
-                                if numeric_rank >= RANK_VALUES.get("DIAMOND", 25):
-                                    logger.info(f"✅ Found Diamond+ rank, stopping search early")
+                                # Early exit if we found a high rank
+                                if tier in ["CHALLENGER", "GRANDMASTER", "MASTER", "DIAMOND"]:
+                                    logger.info(f"✅ Found {tier} rank, stopping search early")
                                     break
                 
                 except Exception as e:
@@ -759,6 +763,7 @@ class RiotAPI:
                 "losses": highest_rank.get("losses", 0),
                 "region": highest_rank["region"],
                 "ign": highest_rank["ign"],
+                "found_ign": highest_rank["ign"],  # Add missing field
                 "source": highest_rank.get("source"),
                 "success": True
             }
@@ -774,6 +779,7 @@ class RiotAPI:
                 "losses": 0,
                 "region": "N/A",
                 "ign": ign_list[0] if ign_list else "Unknown",
+                "found_ign": ign_list[0] if ign_list else "Unknown",  # Add missing field
                 "source": "default",
                 "success": False
             }

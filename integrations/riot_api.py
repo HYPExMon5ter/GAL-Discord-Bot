@@ -288,40 +288,50 @@ class RiotAPI:
         """Get summoner information by PUUID (tries TFT, falls back to LoL)."""
         platform = self._get_platform_endpoint(region)
         
-        # Try TFT API first (this should work now - the bug is fixed)
+        # Try TFT API first
         tft_url = f"https://{platform}.api.riotgames.com/tft/summoner/v1/summoners/by-puuid/{puuid}"
         try:
             logger.debug(f"🔍 Trying TFT API: {tft_url}")
             result = await self._make_request(tft_url)
-            if result and result.get("id"):  # Fixed: API bug is resolved, just check for "id"
+            if result and result.get("id"):  # Has summoner ID - normal case
                 logger.debug(f"✅ Got summoner data from TFT API for {puuid[:8]}... in {region}")
                 return result
             else:
-                logger.warning(f"⚠️ TFT API returned incomplete data for {puuid[:8]}... in {region}")
-                logger.debug(f"TFT API response: {result}")
+                # This is the API bug - account exists but no summoner entry
+                logger.info(f"⚠️ Account {puuid[:8]}... exists but has no TFT summoner entry in {region}")
+                if result:
+                    result["_no_summoner_entry"] = True  # Flag for fallback detection
+                    return result
+                else:
+                    logger.debug(f"TFT API returned null/empty for {puuid[:8]}... in {region}")
         except RiotAPIError as e:
-            logger.warning(f"TFT Summoner API failed for {puuid[:8]}... in {region}: {e}")
+            logger.debug(f"TFT Summoner API returned error for {puuid[:8]}... in {region}: {e}")
         except Exception as e:
-            logger.warning(f"Unexpected error with TFT Summoner API for {puuid[:8]}... in {region}: {e}")
+            logger.debug(f"Unexpected error with TFT Summoner API for {puuid[:8]}... in {region}: {e}")
         
         # Fallback to LoL endpoint (in case TFT player also has LoL account)
         lol_url = f"https://{platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
         try:
             logger.info(f"🔍 Trying LoL API fallback: {lol_url}")
             result = await self._make_request(lol_url)
-            if result and result.get("id"):  # Fixed: API bug is resolved, just check for "id"
+            if result and result.get("id"):  # Has summoner ID - normal case
                 logger.info(f"✅ Got summoner data from LoL API fallback for {puuid[:8]}... in {region}")
                 return result
             else:
-                logger.error(f"❌ LoL API also returned incomplete data for {puuid[:8]}... in {region}")
-                logger.error(f"LoL API response: {result}")
-                raise RiotAPIError("Both TFT and LoL Summoner APIs returned incomplete data")
+                # This is the API bug - account exists but no summoner entry
+                logger.info(f"⚠️ Account {puuid[:8]}... exists but has no LoL summoner entry in {region}")
+                if result:
+                    result["_no_summoner_entry"] = True  # Flag for fallback detection
+                    return result
+                else:
+                    logger.debug(f"LoL API returned null/empty for {puuid[:8]}... in {region}")
         except RiotAPIError as e:
-            logger.error(f"❌ Both TFT and LoL Summoner APIs failed for {puuid[:8]}... in {region}: {e}")
-            raise RiotAPIError(f"Summoner not found: {e}")
+            logger.debug(f"LoL Summoner API returned error for {puuid[:8]}... in {region}: {e}")
         except Exception as e:
-            logger.error(f"❌ Unexpected error with LoL Summoner API for {puuid[:8]}... in {region}: {e}")
-            raise RiotAPIError(f"Unexpected error in summoner lookup: {e}")
+            logger.debug(f"Unexpected error with LoL Summoner API for {puuid[:8]}... in {region}: {e}")
+        
+        # No summoner entry found in either TFT or LoL for this region
+        raise RiotAPIError(f"No summoner entry found for {puuid[:8]}... in {region}")
 
     async def get_league_entries(self, region: str, summoner_id: str) -> List[Dict[str, Any]]:
         """Get TFT league (rank) entries for a summoner."""
@@ -632,47 +642,53 @@ class RiotAPI:
                         summoner_id = summoner_data.get("id")
                         
                         if not summoner_id:
-                            # BUG: Summoner API returned data but no 'id' field
-                            # This is the known Riot API bug - use fallback search
-                            logger.warning(f"⚠️ Summoner API bug: No 'id' field for {riot_id_display} in {region}")
-                            logger.debug(f"Summoner data: {summoner_data}")
-                            
-                            # Use exact game_name from Account API (already have it)
-                            fallback_rank = await self._fallback_search_league_entries(
-                                region=region,
-                                game_name=account_data["gameName"],  # Exact name from API
-                                puuid=puuid
-                            )
-                            
-                            if fallback_rank:
-                                tier = fallback_rank["tier"]
-                                division = fallback_rank["rank"]
-                                lp = fallback_rank["leaguePoints"]
-                                wins = fallback_rank.get("wins", 0)
-                                losses = fallback_rank.get("losses", 0)
+                            # Check if this is the known API bug (account exists but no summoner entry)
+                            if summoner_data and summoner_data.get("_no_summoner_entry"):
+                                # API bug detected - use fallback search
+                                logger.info(f"⚠️ Summoner API bug detected for {riot_id_display} in {region} - using fallback search")
+                                logger.debug(f"Account data exists but no summoner entry: {summoner_data}")
                                 
-                                # Skip unplayed accounts
-                                if wins == 0 and losses == 0:
-                                    logger.debug(f"{riot_id_display}: Has rank entry but 0 games")
+                                # Use exact game_name from Account API (already have it)
+                                fallback_rank = await self._fallback_search_league_entries(
+                                    region=region,
+                                    game_name=account_data["gameName"],  # Exact name from API
+                                    puuid=puuid
+                                )
+                                
+                                if fallback_rank:
+                                    tier = fallback_rank["tier"]
+                                    division = fallback_rank["rank"]
+                                    lp = fallback_rank["leaguePoints"]
+                                    wins = fallback_rank.get("wins", 0)
+                                    losses = fallback_rank.get("losses", 0)
+                                    
+                                    # Skip unplayed accounts
+                                    if wins == 0 and losses == 0:
+                                        logger.debug(f"{riot_id_display}: Has rank entry but 0 games")
+                                    else:
+                                        # Compare with highest rank
+                                        numeric_value = get_rank_numeric_value(tier, division, lp)
+                                        
+                                        if numeric_value > highest_numeric:
+                                            highest_numeric = numeric_value
+                                            highest_rank = {
+                                                "tier": tier,
+                                                "division": division,
+                                                "lp": lp,
+                                                "wins": wins,
+                                                "losses": losses,
+                                                "region": region.upper(),
+                                                "ign": riot_id_display
+                                            }
+                                        
+                                        logger.info(f"✅ Found rank via fallback: {riot_id_display}: {tier} {division} {lp} LP")
                                 else:
-                                    # Compare with highest rank
-                                    numeric_value = get_rank_numeric_value(tier, division, lp)
-                                    
-                                    if numeric_value > highest_numeric:
-                                        highest_numeric = numeric_value
-                                        highest_rank = {
-                                            "tier": tier,
-                                            "division": division,
-                                            "lp": lp,
-                                            "wins": wins,
-                                            "losses": losses,
-                                            "region": region.upper(),
-                                            "ign": riot_id_display
-                                        }
-                                    
-                                    logger.info(f"✅ Found rank via fallback: {riot_id_display}: {tier} {division} {lp} LP")
-                            
-                            continue  # Move to next region
+                                    logger.info(f"⚠️ No rank found for {riot_id_display} in {region} via fallback")
+                                
+                                continue  # Move to next region
+                            else:
+                                logger.debug(f"No summoner data for {riot_id_display} in {region}")
+                                continue  # Move to next region
                         
                         # Normal flow: We have summoner ID, use League API
                         league_entries = await self.get_league_entries(region, summoner_id)

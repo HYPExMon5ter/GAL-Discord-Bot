@@ -362,6 +362,8 @@ async def get_column_mapping(guild_id: str, force_redetect: bool = False) -> Col
         mapping.checkin_column = detections["checkin"].column_letter
     if "team" in detections:
         mapping.team_column = detections["team"].column_letter
+    if "rank" in detections:
+        mapping.rank_column = detections["rank"].column_letter
 
     return mapping
 

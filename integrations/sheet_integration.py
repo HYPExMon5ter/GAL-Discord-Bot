@@ -59,6 +59,8 @@ class SheetIntegrationHelper:
                     column_config["checkin_col"] = mapping.checkin_column
                 if mapping.team_column:
                     column_config["team_col"] = mapping.team_column
+                if mapping.rank_column:
+                    column_config["rank_col"] = mapping.rank_column
                 if mapping.custom_columns:
                     column_config.update(mapping.custom_columns)
 
@@ -84,6 +86,7 @@ class SheetIntegrationHelper:
                     "registered_col",
                     "checkin_col",
                     "team_col",
+                    "rank_col",  # Add rank column support
                 ]
 
                 for key in column_keys:

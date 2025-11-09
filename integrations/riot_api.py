@@ -356,9 +356,16 @@ class RiotAPI:
             Dict with tier, rank, LP, wins, losses, or None if not found
         """
         platform = self._get_platform_endpoint(region)
-        game_name = riot_id.split("#")[0].lower() if "#" in riot_id else riot_id.lower()
         
-        logger.info(f"🔍 Searching league entries for '{riot_id}' in {region.upper()}")
+        # FIXED: Extract ONLY the game name, completely ignore the tag
+        if "#" in riot_id:
+            game_name = riot_id.split("#")[0]  # Get name before #
+        else:
+            game_name = riot_id
+        
+        game_name = game_name.lower()  # Lowercase for comparison
+        
+        logger.info(f"🔍 Searching league entries for '{riot_id}' (searching for: '{game_name}') in {region.upper()}")
         
         # Optimized tier search order: Most common ranks first
         # Gold/Plat = ~60% of ranked players, check these first
@@ -398,36 +405,43 @@ class RiotAPI:
                 for entry in entries:
                     entry_name = entry.get("summonerName", "").lower()
                     
-                    # Match by game name (case-insensitive, more precise matching)
-                    # Extract name without spaces for comparison
-                    clean_game_name = game_name.replace(" ", "").lower()
-                    clean_entry_name = entry_name.replace(" ", "").lower()
+                    # Clean both names (remove spaces, underscores, special chars)
+                clean_game_name = game_name.replace(" ", "").replace("_", "")
+                clean_entry_name = entry_name.replace(" ", "").replace("_", "")
+                
+                # Exact match check (most reliable)
+                is_exact_match = clean_game_name == clean_entry_name
+                
+                # Fuzzy match check (only if names are very similar)
+                is_fuzzy_match = False
+                if not is_exact_match:
+                    # Check if one name contains the other
+                    if clean_game_name in clean_entry_name or clean_entry_name in clean_game_name:
+                        # Additional validation: length difference must be small
+                        len_diff = abs(len(clean_game_name) - len(clean_entry_name))
+                        if len_diff <= 3:  # Max 3 character difference
+                            is_fuzzy_match = True
+                
+                if is_exact_match or is_fuzzy_match:
+                    tier_display = tier.upper() if tier not in ["challenger", "grandmaster", "master"] else tier.capitalize()
+                    lp = entry.get("leaguePoints", 0)
+                    wins = entry.get("wins", 0)
+                    losses = entry.get("losses", 0)
                     
-                    # More precise matching: exact match, or with very similar substrings
-                    is_exact_match = clean_game_name == clean_entry_name
-                    is_close_match = (
-                        (clean_game_name in clean_entry_name and len(clean_entry_name) < len(clean_game_name) + 5) or
-                        (clean_entry_name in clean_game_name and len(clean_game_name) < len(clean_entry_name) + 5)
-                    )
+                    match_type = "exact" if is_exact_match else "fuzzy"
+                    logger.info(f"✅ Found '{riot_id}' ({match_type} match: '{entry.get('summonerName')}') in {tier_display} {division or ''}: {lp} LP ({wins}W/{losses}L)")
                     
-                    if is_exact_match or is_close_match:
-                        tier_display = tier.upper() if tier not in ["challenger", "grandmaster", "master"] else tier.capitalize()
-                        lp = entry.get("leaguePoints", 0)
-                        wins = entry.get("wins", 0)
-                        losses = entry.get("losses", 0)
-                        
-                        logger.info(f"✅ Found '{riot_id}' (matched as '{entry_name}') in {tier_display} {division or ''}: {lp} LP ({wins}W/{losses}L)")
-                        
-                        return {
-                            "tier": tier_display,
-                            "rank": division or "I",
-                            "leaguePoints": lp,
-                            "wins": wins,
-                            "losses": losses,
-                            "summonerId": entry.get("summonerId"),
-                            "queueType": "RANKED_TFT",
-                            "source": "league_entries_search"
-                        }
+                    return {
+                        "tier": tier_display,
+                        "rank": division or "I",
+                        "leaguePoints": lp,
+                        "wins": wins,
+                        "losses": losses,
+                        "summonerId": entry.get("summonerId"),
+                        "queueType": "RANKED_TFT",
+                        "source": "league_entries_search",
+                        "matched_name": entry.get("summonerName")  # For debugging
+                    }
                 
                 # Small delay to respect rate limits (20 requests per second)
                 await asyncio.sleep(0.06)  # ~16 requests/sec to be safe
@@ -443,7 +457,7 @@ class RiotAPI:
                 logger.warning(f"Unexpected error searching {tier} {division or ''}: {e}")
                 continue
         
-        logger.info(f"⚠️ No rank found for '{riot_id}' in {region.upper()}")
+        logger.info(f"⚠️ No rank found for '{riot_id}' (searched for: '{game_name}') in {region.upper()}")
         return None
 
     async def get_match_details(self, region: str, match_id: str) -> Dict[str, Any]:

@@ -322,16 +322,23 @@ async def complete_registration(
             if rank_data and rank_data.get("success"):
                 logging.info(f"✅ Rank found for {discord_tag}: {rank_data['highest_rank']} "
                           f"(IGN: {rank_data['found_ign']}, Region: {rank_data['region']})")
+                player_rank = rank_data["highest_rank"]
             else:
-                logging.warning(f"⚠️ No rank found for {discord_tag}, defaulting to Unranked")
-                rank_data = {"highest_rank": "Unranked"}
+                # Use Iron IV as default (consistent with get_highest_rank_across_accounts)
+                player_rank = "Iron IV"
+                logging.warning(f"⚠️ No rank found for {discord_tag}, using default: {player_rank}")
                 
         except Exception as e:
             logging.error(f"❌ Rank fetch error for {discord_tag}: {e}")
-            rank_data = {"highest_rank": "Unranked"}  # Graceful fallback
+            player_rank = "Iron IV"  # Graceful fallback
+            logging.warning(f"⚠️ Rank fetch failed for {discord_tag}, using default: {player_rank}")
 
-        # Extract rank string for storage
-        player_rank = rank_data.get("highest_rank", "Unranked")
+        # Verify rank value before sheet write
+        if not player_rank or player_rank.strip() == "":
+            logging.warning(f"⚠️ Empty rank value for {discord_tag}, forcing Iron IV")
+            player_rank = "Iron IV"
+
+        logging.info(f"🔄 Registering {discord_tag} with rank: {player_rank}")
 
         # 7) Upsert user row in sheet
         logging.info(f"🔄 Starting sheet registration for {discord_tag}")

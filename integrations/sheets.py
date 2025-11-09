@@ -792,7 +792,11 @@ async def find_or_register_user(
         # Add rank if column exists
         rank_col = await SheetIntegrationHelper.get_column_letter(gid, "rank_col")
         if rank_col:
-            writes[rank_col] = rank or "Unranked"
+            rank_value = rank if rank is not None and rank.strip() != "" else "Iron IV"
+            writes[rank_col] = rank_value
+            logger.info(f"✍️ Writing rank to column {rank_col}: '{rank_value}'")
+        else:
+            logger.error(f"❌ No rank column configured for guild {gid}!")
 
         if target_row:
             # Write to existing formatted row using batch update

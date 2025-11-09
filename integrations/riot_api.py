@@ -335,7 +335,84 @@ class RiotAPI:
         url = f"https://{regional}.api.riotgames.com/tft/match/v1/matches/by-puuid/{puuid}/ids?count={count}"
         return await self._make_request(url)
 
-    
+    async def _fallback_search_league_entries(
+        self,
+        region: str,
+        game_name: str,  # Exact name from Account API
+        puuid: str       # For verification
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Fallback method to find rank when Summoner API doesn't return ID.
+        Only called when primary flow fails due to missing 'id' field.
+        
+        Args:
+            region: Region to search
+            game_name: Exact game name from Account API (case-sensitive)
+            puuid: PUUID for verification
+            
+        Returns:
+            Rank data or None
+        """
+        platform = self._get_platform_endpoint(region)
+        
+        logger.info(f"🔄 Using fallback tier search for {game_name} in {region} (Summoner ID missing)")
+        
+        # Search order: Most common tiers first, skip apex tiers (they timeout)
+        tier_search_order = [
+            # Most common (60% of players)
+            ("GOLD", "I"), ("GOLD", "II"), ("GOLD", "III"), ("GOLD", "IV"),
+            ("PLATINUM", "I"), ("PLATINUM", "II"), ("PLATINUM", "III"), ("PLATINUM", "IV"),
+            
+            # High tiers
+            ("DIAMOND", "I"), ("DIAMOND", "II"), ("DIAMOND", "III"), ("DIAMOND", "IV"),
+            
+            # Lower tiers
+            ("SILVER", "I"), ("SILVER", "II"), ("SILVER", "III"), ("SILVER", "IV"),
+            ("BRONZE", "I"), ("BRONZE", "II"), ("BRONZE", "III"), ("BRONZE", "IV"),
+            ("IRON", "I"), ("IRON", "II"), ("IRON", "III"), ("IRON", "IV"),
+            
+            # Skip Master/GM/Challenger - they cause 504 timeouts
+        ]
+        
+        game_name_lower = game_name.lower().replace(" ", "").replace("_", "")
+        
+        for tier, division in tier_search_order:
+            try:
+                url = f"https://{platform}.api.riotgames.com/tft/league/v1/entries/{tier}/{division}"
+                entries = await self._make_request(url)
+                
+                if not isinstance(entries, list):
+                    continue
+                
+                # Search for matching summoner
+                for entry in entries:
+                    entry_name = entry.get("summonerName", "").lower().replace(" ", "").replace("_", "")
+                    
+                    # Exact match on cleaned names
+                    if entry_name == game_name_lower:
+                        logger.info(f"✅ Found {game_name} in {tier} {division} via fallback search")
+                        return {
+                            "tier": tier,
+                            "rank": division,
+                            "leaguePoints": entry.get("leaguePoints", 0),
+                            "wins": entry.get("wins", 0),
+                            "losses": entry.get("losses", 0),
+                            "queueType": "RANKED_TFT"
+                        }
+                
+                # Rate limit protection
+                await asyncio.sleep(0.05)
+                
+            except RiotAPIError as e:
+                if "404" not in str(e):
+                    logger.debug(f"Error searching {tier} {division}: {e}")
+                continue
+            except Exception as e:
+                logger.debug(f"Unexpected error in {tier} {division}: {e}")
+                continue
+        
+        logger.info(f"⚠️ No rank found for {game_name} in {region} via fallback search")
+        return None
 
     async def get_match_details(self, region: str, match_id: str) -> Dict[str, Any]:
         """Get detailed match information."""
@@ -549,16 +626,55 @@ class RiotAPI:
                     puuid = account_data["puuid"]
                     riot_id_display = f"{account_data['gameName']}#{account_data['tagLine']}"
                     
-                    # Step 2: Get summoner (summoner ID) - API bug should be fixed now
+                    # Step 2: Get summoner (summoner ID)
                     try:
                         summoner_data = await self.get_summoner_by_puuid(region, puuid)
                         summoner_id = summoner_data.get("id")
                         
                         if not summoner_id:
-                            logger.warning(f"⚠️ No summoner ID returned for {riot_id_display} in {region}")
-                            continue
+                            # BUG: Summoner API returned data but no 'id' field
+                            # This is the known Riot API bug - use fallback search
+                            logger.warning(f"⚠️ Summoner API bug: No 'id' field for {riot_id_display} in {region}")
+                            logger.debug(f"Summoner data: {summoner_data}")
+                            
+                            # Use exact game_name from Account API (already have it)
+                            fallback_rank = await self._fallback_search_league_entries(
+                                region=region,
+                                game_name=account_data["gameName"],  # Exact name from API
+                                puuid=puuid
+                            )
+                            
+                            if fallback_rank:
+                                tier = fallback_rank["tier"]
+                                division = fallback_rank["rank"]
+                                lp = fallback_rank["leaguePoints"]
+                                wins = fallback_rank.get("wins", 0)
+                                losses = fallback_rank.get("losses", 0)
+                                
+                                # Skip unplayed accounts
+                                if wins == 0 and losses == 0:
+                                    logger.debug(f"{riot_id_display}: Has rank entry but 0 games")
+                                else:
+                                    # Compare with highest rank
+                                    numeric_value = get_rank_numeric_value(tier, division, lp)
+                                    
+                                    if numeric_value > highest_numeric:
+                                        highest_numeric = numeric_value
+                                        highest_rank = {
+                                            "tier": tier,
+                                            "division": division,
+                                            "lp": lp,
+                                            "wins": wins,
+                                            "losses": losses,
+                                            "region": region.upper(),
+                                            "ign": riot_id_display
+                                        }
+                                    
+                                    logger.info(f"✅ Found rank via fallback: {riot_id_display}: {tier} {division} {lp} LP")
+                            
+                            continue  # Move to next region
                         
-                        # Step 3: Get league entries (RANK!)
+                        # Normal flow: We have summoner ID, use League API
                         league_entries = await self.get_league_entries(region, summoner_id)
                         
                         # Find TFT ranked entry

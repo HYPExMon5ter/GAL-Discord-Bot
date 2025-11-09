@@ -288,34 +288,34 @@ class RiotAPI:
         """Get summoner information by PUUID (tries TFT, falls back to LoL)."""
         platform = self._get_platform_endpoint(region)
         
-        # Try TFT API first
+        # Try TFT API first (this should work now - the bug is fixed)
         tft_url = f"https://{platform}.api.riotgames.com/tft/summoner/v1/summoners/by-puuid/{puuid}"
         try:
             logger.debug(f"🔍 Trying TFT API: {tft_url}")
             result = await self._make_request(tft_url)
-            if result and (result.get("id") or result.get("summonerId")):  # Check both possible field names
+            if result and result.get("id"):  # Fixed: API bug is resolved, just check for "id"
                 logger.debug(f"✅ Got summoner data from TFT API for {puuid[:8]}... in {region}")
                 return result
             else:
-                logger.warning(f"⚠️ TFT API returned empty/incomplete data for {puuid[:8]}... in {region}")
+                logger.warning(f"⚠️ TFT API returned incomplete data for {puuid[:8]}... in {region}")
                 logger.debug(f"TFT API response: {result}")
         except RiotAPIError as e:
             logger.warning(f"TFT Summoner API failed for {puuid[:8]}... in {region}: {e}")
         except Exception as e:
             logger.warning(f"Unexpected error with TFT Summoner API for {puuid[:8]}... in {region}: {e}")
         
-        # Fallback to LoL endpoint (might work for TFT players too)
+        # Fallback to LoL endpoint (in case TFT player also has LoL account)
         lol_url = f"https://{platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}"
         try:
             logger.info(f"🔍 Trying LoL API fallback: {lol_url}")
             result = await self._make_request(lol_url)
-            if result and (result.get("id") or result.get("summonerId")):  # Check both possible field names
+            if result and result.get("id"):  # Fixed: API bug is resolved, just check for "id"
                 logger.info(f"✅ Got summoner data from LoL API fallback for {puuid[:8]}... in {region}")
                 return result
             else:
-                logger.error(f"❌ LoL API also returned empty data for {puuid[:8]}... in {region}")
+                logger.error(f"❌ LoL API also returned incomplete data for {puuid[:8]}... in {region}")
                 logger.error(f"LoL API response: {result}")
-                raise RiotAPIError("Both TFT and LoL Summoner APIs returned empty data")
+                raise RiotAPIError("Both TFT and LoL Summoner APIs returned incomplete data")
         except RiotAPIError as e:
             logger.error(f"❌ Both TFT and LoL Summoner APIs failed for {puuid[:8]}... in {region}: {e}")
             raise RiotAPIError(f"Summoner not found: {e}")
@@ -335,130 +335,7 @@ class RiotAPI:
         url = f"https://{regional}.api.riotgames.com/tft/match/v1/matches/by-puuid/{puuid}/ids?count={count}"
         return await self._make_request(url)
 
-    async def find_summoner_in_league_entries(
-        self, 
-        region: str, 
-        riot_id: str,
-        max_tier: str = None
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Search TFT league entries to find a summoner's rank.
-        
-        Workaround for Riot API bug where Summoner API doesn't return 'id' field.
-        Searches through tier/division entries to match by summoner name.
-        
-        Args:
-            region: Region to search (e.g., 'na', 'euw')
-            riot_id: Full Riot ID (e.g., 'HYPExMon5ter#NA1')
-            max_tier: Stop searching if we find this tier or higher
-            
-        Returns:
-            Dict with tier, rank, LP, wins, losses, or None if not found
-        """
-        platform = self._get_platform_endpoint(region)
-        
-        # FIXED: Extract ONLY the game name, completely ignore the tag
-        if "#" in riot_id:
-            game_name = riot_id.split("#")[0]  # Get name before #
-        else:
-            game_name = riot_id
-        
-        game_name = game_name.lower()  # Lowercase for comparison
-        
-        logger.info(f"🔍 Searching league entries for '{riot_id}' (searching for: '{game_name}') in {region.upper()}")
-        
-        # Optimized tier search order: Most common ranks first
-        # Gold/Plat = ~60% of ranked players, check these first
-        tier_search_order = [
-            # Most common tiers (check first for speed)
-            ("GOLD", "I"), ("GOLD", "II"), ("GOLD", "III"), ("GOLD", "IV"),
-            ("PLATINUM", "I"), ("PLATINUM", "II"), ("PLATINUM", "III"), ("PLATINUM", "IV"),
-            ("SILVER", "I"), ("SILVER", "II"), ("SILVER", "III"), ("SILVER", "IV"),
-            
-            # Higher tiers
-            ("DIAMOND", "I"), ("DIAMOND", "II"), ("DIAMOND", "III"), ("DIAMOND", "IV"),
-            
-            # Lower tiers
-            ("BRONZE", "I"), ("BRONZE", "II"), ("BRONZE", "III"), ("BRONZE", "IV"),
-            ("IRON", "I"), ("IRON", "II"), ("IRON", "III"), ("IRON", "IV"),
-            
-            # Apex tiers (least common, check last)
-            ("master", None),
-            ("grandmaster", None),
-            ("challenger", None),
-        ]
-        
-        for tier, division in tier_search_order:
-            try:
-                # Build endpoint URL
-                if tier in ["challenger", "grandmaster", "master"]:
-                    url = f"https://{platform}.api.riotgames.com/tft/league/v1/{tier}"
-                    response = await self._make_request(url)
-                    entries = response.get("entries", []) if isinstance(response, dict) else []
-                else:
-                    url = f"https://{platform}.api.riotgames.com/tft/league/v1/entries/{tier}/{division}"
-                    entries = await self._make_request(url)
-                    if not isinstance(entries, list):
-                        entries = []
-                
-                # Search entries for matching summoner
-                for entry in entries:
-                    entry_name = entry.get("summonerName", "").lower()
-                    
-                    # Clean both names (remove spaces, underscores, special chars)
-                clean_game_name = game_name.replace(" ", "").replace("_", "")
-                clean_entry_name = entry_name.replace(" ", "").replace("_", "")
-                
-                # Exact match check (most reliable)
-                is_exact_match = clean_game_name == clean_entry_name
-                
-                # Fuzzy match check (only if names are very similar)
-                is_fuzzy_match = False
-                if not is_exact_match:
-                    # Check if one name contains the other
-                    if clean_game_name in clean_entry_name or clean_entry_name in clean_game_name:
-                        # Additional validation: length difference must be small
-                        len_diff = abs(len(clean_game_name) - len(clean_entry_name))
-                        if len_diff <= 3:  # Max 3 character difference
-                            is_fuzzy_match = True
-                
-                if is_exact_match or is_fuzzy_match:
-                    tier_display = tier.upper() if tier not in ["challenger", "grandmaster", "master"] else tier.capitalize()
-                    lp = entry.get("leaguePoints", 0)
-                    wins = entry.get("wins", 0)
-                    losses = entry.get("losses", 0)
-                    
-                    match_type = "exact" if is_exact_match else "fuzzy"
-                    logger.info(f"✅ Found '{riot_id}' ({match_type} match: '{entry.get('summonerName')}') in {tier_display} {division or ''}: {lp} LP ({wins}W/{losses}L)")
-                    
-                    return {
-                        "tier": tier_display,
-                        "rank": division or "I",
-                        "leaguePoints": lp,
-                        "wins": wins,
-                        "losses": losses,
-                        "summonerId": entry.get("summonerId"),
-                        "queueType": "RANKED_TFT",
-                        "source": "league_entries_search",
-                        "matched_name": entry.get("summonerName")  # For debugging
-                    }
-                
-                # Small delay to respect rate limits (20 requests per second)
-                await asyncio.sleep(0.06)  # ~16 requests/sec to be safe
-                
-            except RiotAPIError as e:
-                if "404" in str(e) or "Data not found" in str(e):
-                    # Tier/division doesn't exist or is empty, continue
-                    logger.debug(f"No data for {tier} {division or ''} in {region.upper()}")
-                else:
-                    logger.warning(f"Error searching {tier} {division or ''}: {e}")
-                continue
-            except Exception as e:
-                logger.warning(f"Unexpected error searching {tier} {division or ''}: {e}")
-                continue
-        
-        logger.info(f"⚠️ No rank found for '{riot_id}' (searched for: '{game_name}') in {region.upper()}")
-        return None
+    
 
     async def get_match_details(self, region: str, match_id: str) -> Dict[str, Any]:
         """Get detailed match information."""
@@ -628,173 +505,137 @@ class RiotAPI:
         
         return results
 
-    async def get_highest_rank_across_accounts(self, ign_list: List[str], default_region: str = "na") -> Dict[str, Any]:
+    async def get_highest_rank_across_accounts(
+        self, 
+        ign_list: List[str], 
+        default_region: str = "na"
+    ) -> Dict[str, Any]:
         """
-        Get the highest rank for a player across all provided IGNs and regions.
-        Optimized to check NA and EUW first, then other regions.
+        Get highest rank across multiple IGNs and regions.
+        
+        Uses proper 3-step flow (API bug is now fixed):
+        1. Account API (get puuid)
+        2. Summoner API (get summoner id) 
+        3. League API (get rank entries)
         
         Args:
-            ign_list: List of IGNs to check (main + alternates)
-            default_region: Default region to check first
+            ign_list: List of IGNs to check
+            default_region: Default region to start with
             
         Returns:
             Dict with highest rank information or Iron IV if not found
         """
-        logger.info(f"🎖️ Fetching highest rank for {len(ign_list)} IGNs starting in {default_region.upper()}")
+        logger.info(f"🎖️ Fetching highest rank for {len(ign_list)} IGNs")
         
-        best_rank = 0  # Numeric rank for comparison
         highest_rank = None
+        highest_numeric = 0
         
-        # Priority region order: NA and EUW first (tournament regions)
-        priority_regions = ["na", "euw"]
-        other_regions = [r for r in ["eune", "kr", "jp", "oce", "br", "lan", "las", "ru", "tr"] 
-                         if r not in priority_regions]
-        regions_to_check = priority_regions + other_regions
+        # Try multiple regions - prioritize tournament regions first
+        regions_to_check = ["na", "euw", "kr", "br", "jp", "oce"]
         
-        logger.info(f"Checking regions: {priority_regions} (priority), then {other_regions if not highest_rank else '(skipping if found)'}")
-        
-        for region in regions_to_check:
-            for ign in ign_list:
+        for ign in ign_list:
+            for region in regions_to_check:
                 try:
-                    # Get account info first to validate the account exists
-                    logger.debug(f"Trying {ign} in {region.upper()}")
+                    logger.debug(f"🔍 Checking {ign} in {region.upper()}")
                     
-                    # Parse riot_id into game_name and tag_line
+                    # Step 1: Get account (PUUID)
                     game_name, tag_line = self._parse_riot_id(ign, region)
-                    
-                    # Get account info
                     account_data = await self.get_account_by_riot_id(region, game_name, tag_line)
+                    
                     if not account_data or "puuid" not in account_data:
-                        logger.debug(f"No account data for {ign} in {region.upper()}")
+                        logger.debug(f"No account found for {ign} in {region}")
                         continue
                     
                     puuid = account_data["puuid"]
                     riot_id_display = f"{account_data['gameName']}#{account_data['tagLine']}"
                     
-                    # Try Summoner API first (in case Riot fixed the bug)
-                    summoner_id = None
+                    # Step 2: Get summoner (summoner ID) - API bug should be fixed now
                     try:
                         summoner_data = await self.get_summoner_by_puuid(region, puuid)
-                        summoner_id = summoner_data.get("id") or summoner_data.get("summonerId")
-                        if summoner_id:
-                            logger.debug(f"✅ Got summoner ID for {riot_id_display}, using normal flow")
-                    except:
-                        pass  # Expected to fail due to Riot API bug
-                    
-                    # If summoner ID exists, use normal flow
-                    if summoner_id:
-                        try:
-                            league_entries = await self.get_league_entries(region, summoner_id)
-                            
-                            for entry in league_entries:
-                                if entry.get("queueType") == "RANKED_TFT":
-                                    tier = entry.get("tier", "UNRANKED")
-                                    division = entry.get("rank", "I")
-                                    lp = entry.get("leaguePoints", 0)
-                                    wins = entry.get("wins", 0)
-                                    losses = entry.get("losses", 0)
-                                    
-                                    if wins == 0 and losses == 0:
-                                        continue
-                                    
-                                    logger.info(f"Found rank: {tier} {division} {lp} LP for {riot_id_display}")
-                                    
-                                    # Keep the first valid rank found (simplify for now)
-                                    if not highest_rank:
-                                        highest_rank = {
-                                            "tier": tier,
-                                            "division": division,
-                                            "lp": lp,
-                                            "wins": wins,
-                                            "losses": losses,
-                                            "region": region.upper(),
-                                            "ign": riot_id_display,
-                                            "source": "summoner_api"
-                                        }
-                                        
-                                        # Early exit if we found a high rank
-                                        if tier in ["CHALLENGER", "GRANDMASTER", "MASTER", "DIAMOND"]:
-                                            logger.info(f"✅ Found {tier} rank, stopping search early")
-                                            break
-                        except Exception as league_error:
-                            logger.warning(f"Failed to get league entries: {league_error}")
-                    
-                    # WORKAROUND: Summoner ID missing due to Riot API bug
-                    # Search through league entries directly
-                    if not summoner_id or not highest_rank:
-                        logger.info(f"🔄 Using league entries search for {riot_id_display} in {region.upper()}")
+                        summoner_id = summoner_data.get("id")
                         
-                        league_entry = await self.find_summoner_in_league_entries(region, ign)
+                        if not summoner_id:
+                            logger.warning(f"⚠️ No summoner ID returned for {riot_id_display} in {region}")
+                            continue
                         
-                        if league_entry:
-                            tier = league_entry.get("tier", "UNRANKED")
-                            division = league_entry.get("rank", "I")
-                            lp = league_entry.get("leaguePoints", 0)
-                            wins = league_entry.get("wins", 0)
-                            losses = league_entry.get("losses", 0)
-                            
-                            logger.info(f"✅ Found via entries search: {tier} {division} {lp} LP")
-                            
-                            # Keep the first valid rank found (simplify for now)
-                            if not highest_rank:
-                                highest_rank = {
-                                    "tier": tier,
-                                    "division": division,
-                                    "lp": lp,
-                                    "wins": wins,
-                                    "losses": losses,
-                                    "region": region.upper(),
-                                    "ign": riot_id_display,
-                                    "source": "league_entries_search"
-                                }
+                        # Step 3: Get league entries (RANK!)
+                        league_entries = await self.get_league_entries(region, summoner_id)
+                        
+                        # Find TFT ranked entry
+                        for entry in league_entries:
+                            if entry.get("queueType") == "RANKED_TFT":
+                                tier = entry.get("tier", "UNRANKED")
+                                division = entry.get("rank", "IV")
+                                lp = entry.get("leaguePoints", 0)
+                                wins = entry.get("wins", 0)
+                                losses = entry.get("losses", 0)
                                 
-                                # Early exit if we found a high rank
-                                if tier in ["CHALLENGER", "GRANDMASTER", "MASTER", "DIAMOND"]:
-                                    logger.info(f"✅ Found {tier} rank, stopping search early")
-                                    break
-                
-                except Exception as e:
-                    logger.error(f"Error processing {ign} in {region.upper()}: {e}")
+                                # Skip new/unplayed accounts
+                                if wins == 0 and losses == 0:
+                                    continue
+                                
+                                # Compare ranks to find highest
+                                numeric_value = get_rank_numeric_value(tier, division, lp)
+                                
+                                if numeric_value > highest_numeric:
+                                    highest_numeric = numeric_value
+                                    highest_rank = {
+                                        "tier": tier,
+                                        "division": division,
+                                        "lp": lp,
+                                        "wins": wins,
+                                        "losses": losses,
+                                        "region": region.upper(),
+                                        "ign": riot_id_display
+                                    }
+                                
+                                logger.info(f"✅ Found rank for {riot_id_display}: {tier} {division} {lp} LP")
+                                break  # Found TFT rank, no need to check other entries
+                        
+                        if not league_entries or not any(e.get("queueType") == "RANKED_TFT" for e in league_entries):
+                            logger.debug(f"📊 {riot_id_display} in {region}: Unranked (no TFT games)")
+                        
+                    except RiotAPIError as e:
+                        if "404" in str(e) or "not found" in str(e).lower():
+                            logger.debug(f"Summoner not found: {ign} in {region}")
+                        else:
+                            logger.warning(f"Error getting rank for {ign} in {region}: {e}")
+                        continue
+                        
+                except RiotAPIError as e:
+                    if "404" in str(e):
+                        logger.debug(f"Account not found: {ign} in {region}")
+                    else:
+                        logger.warning(f"API error for {ign} in {region}: {e}")
                     continue
-            
-            # If we found a rank in priority regions, skip other regions
-            if highest_rank and region in priority_regions:
-                logger.info(f"✅ Found rank in priority region {region.upper()}, skipping remaining regions")
-                break
+                except Exception as e:
+                    logger.error(f"Unexpected error for {ign} in {region}: {e}")
+                    continue
         
-        # Return results
+        # Return highest rank found or default to Iron IV
         if highest_rank:
             return {
                 "highest_rank": format_rank_display(
                     highest_rank["tier"], 
                     highest_rank["division"], 
                     highest_rank["lp"]
-                ),
+                              ),
                 "tier": highest_rank["tier"],
                 "division": highest_rank["division"],
                 "lp": highest_rank["lp"],
-                "wins": highest_rank.get("wins", 0),
-                "losses": highest_rank.get("losses", 0),
+                "found_ign": highest_rank["ign"],
                 "region": highest_rank["region"],
-                "ign": highest_rank["ign"],
-                "found_ign": highest_rank["ign"],  # Add missing field
-                "source": highest_rank.get("source"),
                 "success": True
             }
         else:
-            # Default to Iron IV (lowest rank) if no rank found
-            logger.warning(f"No rank found for any IGN, defaulting to Iron IV")
+            logger.info(f"No ranks found for {ign_list}, defaulting to Iron IV")
             return {
                 "highest_rank": "Iron IV",
                 "tier": "IRON",
                 "division": "IV",
                 "lp": 0,
-                "wins": 0,
-                "losses": 0,
+                "found_ign": ign_list[0] if ign_list else "Unknown",
                 "region": "N/A",
-                "ign": ign_list[0] if ign_list else "Unknown",
-                "found_ign": ign_list[0] if ign_list else "Unknown",  # Add missing field
-                "source": "default",
                 "success": False
             }
 

@@ -147,8 +147,8 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         if show_registration:
             components.extend(self._get_registration_components())
         
-        # Add separator before check-in only if there are sections before it
-        if show_checkin and (show_registration or show_tournament_info):
+        # Add separator before check-in only if registration is shown
+        if show_checkin and show_registration:
             components.append(discord.ui.Separator(visible=True, spacing=discord.SeparatorSpacing.large))
         
         if show_checkin:
@@ -218,12 +218,11 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
     
     def _get_registration_components(self) -> list:
         """Returns registration section components."""
-        components = [
-            discord.ui.TextDisplay(content="# 📝 Registration"),
-        ]
+        components = []
         
         if self.data['reg_open']:
-            components.append(discord.ui.TextDisplay(content="**🟢 Open**"))
+            components.append(discord.ui.TextDisplay(content="# 📝 Registration"))
+            components.append(discord.ui.TextDisplay(content="🟢 **Open**"))
             
             # Add close time if scheduled
             if self.data.get('reg_close_ts'):
@@ -240,7 +239,8 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                 content=f"-# {self.data['registered']}/{self.data['max_players']} players • {spots_remaining} spots available"
             ))
         else:
-            components.append(discord.ui.TextDisplay(content="**🔴 Closed**"))
+            components.append(discord.ui.TextDisplay(content="# 📝 Registration"))
+            components.append(discord.ui.TextDisplay(content="🔴 **Closed**"))
             
             # Show scheduled open time if available
             if self.data.get('reg_open_ts'):
@@ -252,12 +252,11 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
     
     def _get_checkin_components(self) -> list:
         """Returns check-in section components."""
-        components = [
-            discord.ui.TextDisplay(content="# ✔️ Check In"),
-        ]
+        components = []
         
         if self.data['ci_open']:
-            components.append(discord.ui.TextDisplay(content="**🟢 Open**"))
+            components.append(discord.ui.TextDisplay(content="# ✔️ Check In"))
+            components.append(discord.ui.TextDisplay(content="🟢 **Open**"))
             
             # Add close time if scheduled
             if self.data.get('ci_close_ts'):
@@ -274,7 +273,8 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
                 content=f"-# {pct_checkin:.0f}% ready • {self.data['checked_in']}/{self.data['registered']} players checked in"
             ))
         else:
-            components.append(discord.ui.TextDisplay(content="**🔴 Closed**"))
+            components.append(discord.ui.TextDisplay(content="# ✔️ Check In"))
+            components.append(discord.ui.TextDisplay(content="🔴 **Closed**"))
             
             # Show scheduled open time if available
             if self.data.get('ci_open_ts'):
@@ -317,10 +317,11 @@ class UnifiedChannelLayoutView(discord.ui.LayoutView):
         """Returns components for when no events are active or scheduled."""
         hub_config = _FULL_CFG.get("embeds", {}).get("hub", {})
         no_event_text = hub_config.get("no_event_message",
-                                       "\n🌙 **No active or scheduled event right now**> Check back soon for the next tournament!")
+                                       "🌙 **No active or scheduled event right now**\n> Check back soon for the next tournament!")
         
         return [
             discord.ui.TextDisplay(content="# 🏆 Tournament Hub"),
+            discord.ui.Separator(visible=False, spacing=discord.SeparatorSpacing.large),
             discord.ui.Section(
                 discord.ui.TextDisplay(content=no_event_text),
                 accessory=discord.ui.Thumbnail(
@@ -553,54 +554,6 @@ class LayoutAdminButton(discord.ui.Button):
         components.extend(button_components)
         
         return components
-    
-    # Note: All component builder methods are now synchronous and included in the UnifiedChannelLayoutView class above
-# This section kept as a placeholder to show where the old async methods were
-    
-    def _get_no_event_components(self) -> list:
-        """Returns components for when no events are active or scheduled."""
-        hub_config = _FULL_CFG.get("embeds", {}).get("hub", {})
-        no_event_text = hub_config.get("no_event_message",
-                                       "\n🌙 **No active or scheduled event right now**\n> Check back soon for the next tournament!")
-        
-        return [
-            discord.ui.TextDisplay(content="# 🏆 Tournament Hub"),
-            discord.ui.Section(
-                discord.ui.TextDisplay(content=no_event_text),
-                accessory=discord.ui.Thumbnail(
-                    media="attachment://GA_Logo_Black_Background.jpg",
-                ),
-            ),
-        ]
-    
-    def _get_action_button_components(self) -> list:
-        """Returns action button components as ActionRow for LayoutView."""
-        reg_open = persisted.get(self.guild_id, {}).get("registration_open", False)
-        ci_open = persisted.get(self.guild_id, {}).get("checkin_open", False)
-        
-        buttons = []
-        
-        # Primary action buttons (conditional)
-        if reg_open:
-            if self.user and RoleManager.is_registered(self.user):
-                buttons.append(LayoutRegisterButton(label="Update Registration"))
-            else:
-                buttons.append(LayoutRegisterButton(label="Register"))
-        
-        if ci_open:
-            buttons.append(LayoutCheckinButton())
-        
-        # Always include secondary buttons
-        buttons.extend([
-            LayoutViewPlayersButton(),
-            LayoutAdminButton(),
-        ])
-        
-        # Put all buttons in a single ActionRow
-        if buttons:
-            return [discord.ui.ActionRow(*buttons)]
-        else:
-            return []
 
 
 async def build_unified_view(guild: discord.Guild, user: Optional[discord.Member] = None) -> discord.ui.LayoutView:

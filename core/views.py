@@ -295,50 +295,48 @@ async def complete_registration(
         # Remove from waitlist if they were on it (they're being registered now)
         await WaitlistManager.remove_from_waitlist(gid, discord_tag)
 
-        # Parse comma-separated alternate IGNs for rank fetching
-        alt_igns_list = []
-        if alt_igns and alt_igns.strip():
-            alt_igns_list = [
-                name.strip() 
-                for name in re.split(r'\s*,\s*', alt_igns) 
-                if name.strip()
-            ]
-        
-        # Collect all IGNs for rank fetching (main + alternates)
-        all_igns_for_rank = [ign] + alt_igns_list
-        
-        # 6.5) Fetch rank data for all IGNs
-        rank_data = None
-        try:
-            logging.info(f"🎖️ Fetching rank data for {discord_tag} with IGNs: {all_igns_for_rank}")
-            
-            from integrations.riot_api import RiotAPI
-            async with RiotAPI() as riot_client:
-                rank_data = await riot_client.get_highest_rank_across_accounts(
-                    ign_list=all_igns_for_rank,
-                    default_region="na"
-                )
-            
-            if rank_data and rank_data.get("success"):
-                logging.info(f"✅ Rank found for {discord_tag}: {rank_data['highest_rank']} "
-                          f"(IGN: {rank_data['found_ign']}, Region: {rank_data['region']})")
-                player_rank = rank_data["highest_rank"]
-            else:
-                # Use Iron IV as default (consistent with get_highest_rank_across_accounts)
-                player_rank = "Iron IV"
-                logging.warning(f"⚠️ No rank found for {discord_tag}, using default: {player_rank}")
-                
-        except Exception as e:
-            logging.error(f"❌ Rank fetch error for {discord_tag}: {e}")
-            player_rank = "Iron IV"  # Graceful fallback
-            logging.warning(f"⚠️ Rank fetch failed for {discord_tag}, using default: {player_rank}")
+        # Rank fetching disabled - set default rank without API calls
+        # # Parse comma-separated alternate IGNs for rank fetching
+        # alt_igns_list = []
+        # if alt_igns and alt_igns.strip():
+        #     alt_igns_list = [
+        #         name.strip() 
+        #         for name in re.split(r'\s*,\s*', alt_igns) 
+        #         if name.strip()
+        #     ]
+        # 
+        # # Collect all IGNs for rank fetching (main + alternates)
+        # all_igns_for_rank = [ign] + alt_igns_list
+        # 
+        # # 6.5) Fetch rank data for all IGNs
+        # rank_data = None
+        # try:
+        #     logging.info(f"🎖️ Fetching rank data for {discord_tag} with IGNs: {all_igns_for_rank}")
+        #     
+        #     from integrations.riot_api import RiotAPI
+        #     async with RiotAPI() as riot_client:
+        #         rank_data = await riot_client.get_highest_rank_across_accounts(
+        #             ign_list=all_igns_for_rank,
+        #             default_region="na"
+        #         )
+        #     
+        #     if rank_data and rank_data.get("success"):
+        #         logging.info(f"✅ Rank found for {discord_tag}: {rank_data['highest_rank']} "
+        #                   f"(IGN: {rank_data['found_ign']}, Region: {rank_data['region']})")
+        #         player_rank = rank_data["highest_rank"]
+        #     else:
+        #         # Use Iron IV as default (consistent with get_highest_rank_across_accounts)
+        #         player_rank = "Iron IV"
+        #         logging.warning(f"⚠️ No rank found for {discord_tag}, using default: {player_rank}")
+        #             
+        # except Exception as e:
+        #     logging.error(f"❌ Rank fetch error for {discord_tag}: {e}")
+        #     player_rank = "Iron IV"  # Graceful fallback
+        #     logging.warning(f"⚠️ Rank fetch failed for {discord_tag}, using default: {player_rank}")
 
-        # Verify rank value before sheet write
-        if not player_rank or player_rank.strip() == "":
-            logging.warning(f"⚠️ Empty rank value for {discord_tag}, forcing Iron IV")
-            player_rank = "Iron IV"
-
-        logging.info(f"🔄 Registering {discord_tag} with rank: {player_rank}")
+        # Set default rank without fetching
+        player_rank = "Unranked"
+        logging.info(f"🔄 Registering {discord_tag} with default rank: {player_rank}")
 
         # 7) Upsert user row in sheet
         logging.info(f"🔄 Starting sheet registration for {discord_tag}")
@@ -823,8 +821,8 @@ class RegistrationModal(discord.ui.Modal):
         """Setup input fields dynamically based on configuration."""
         # In-Game Name
         self.ign_input = discord.ui.TextInput(
-            label="In-Game Name",
-            placeholder="Enter your TFT IGN",
+            label="PBE In-Game Name",
+            placeholder="Enter your PBE IGN (Name#TAG)",
             required=True,
             default=default_ign or "",
             max_length=50
@@ -833,8 +831,8 @@ class RegistrationModal(discord.ui.Modal):
 
         # Alternative IGN(s)
         self.alt_ign_input = discord.ui.TextInput(
-            label="Alternative IGN(s)",
-            placeholder="Comma-separated alt IGNs (optional)",
+            label="Main In-Game Name",
+            placeholder="Enter your Main IGN (optional)",
             required=False,
             default=default_alt_igns or "",
             max_length=200
@@ -926,8 +924,8 @@ class RegistrationModal(discord.ui.Modal):
                 if name.strip()
             ]
 
-        # Collect all IGNs to validate (main + alternates)
-        all_igns_to_validate = [ign] + alt_igns_list
+        # Only validate the PBE IGN (main field), skip main server IGN validation
+        all_igns_to_validate = [ign]
         
         # IGN Verification - check if ALL IGNs are valid with multi-region support
         try:
@@ -972,11 +970,11 @@ class RegistrationModal(discord.ui.Modal):
                     color=discord.Color.red()
                 )
                 error_embed.add_field(
-                    name="💡 Tips",
-                    value="• Make sure your IGN is spelled correctly\n"
-                          "• Include your tag if you have one (e.g., `Player#TAG`)\n"
-                          "• Players can be in different regions (NA, EUW, KR, etc.)\n"
-                          "• Check each name individually to ensure they're all valid",
+                    name="💡 PBE IGN Tips",
+                    value="• Use your global Riot ID (Name#TAG) that you use to log into PBE\n"
+                          "• This is the same account you use for regular League servers\n"
+                          "• Make sure your tag is included (e.g., `Player#NA1`)\n"
+                          "• Check your spelling carefully - this is your tournament account",
                     inline=False
                 )
 

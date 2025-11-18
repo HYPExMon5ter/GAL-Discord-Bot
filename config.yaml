@@ -81,7 +81,7 @@ ping_user: <@162359821100646401>
 
 # Tournament settings
 tournament:
-  current_name: Curse of the Carousel      # Current tournament name
+  current_name: GALs Giving                # Current tournament name
 
 # Google Sheets configuration
 sheet_configuration:

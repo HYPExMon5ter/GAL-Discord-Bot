@@ -69,80 +69,81 @@ async def verify_ign_for_registration(ign: str, region: str = "na") -> Tuple[boo
 
 async def _verify_ign_with_riot_api(ign: str, default_region: str = "na") -> Tuple[bool, str, Optional[Dict]]:
     """
-    Verify IGN using RiotAPI with multi-region detection.
+    Verify IGN using RiotAPI with global account lookup.
     
-    This is a fallback when the dashboard verification service is not available
-    or when we need multi-region support.
+    This uses the same logic as rank detection - accounts are global, so we only need
+    to check one regional. Account existence = valid IGN (summoner data is optional).
     """
     try:
         from integrations.riot_api import RiotAPI, RiotAPIError
         
-        # Regions to try (default first, then others)
-        regions_to_try = [default_region] + [r for r in ALL_REGIONS if r != default_region]
-        
-        for region in regions_to_try:
+        # Use RiotAPI context manager
+        async with RiotAPI() as riot_client:
+            # Step 1: Get PUUID (account is global, use any regional - americas is fine)
+            logger.debug(f"Verifying {ign} using global account lookup")
+            
+            # Parse riot_id into game_name and tag_line
+            game_name, tag_line = riot_client._parse_riot_id(ign, default_region)
+            
+            # Account API is global - use americas regional directly
+            url = f"https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
+            account_data = await riot_client._make_request(url)
+            
+            if not account_data or "puuid" not in account_data:
+                logger.info(f"IGN {ign} not found in any region")
+                return False, f"❌ IGN '{ign}' not found", None
+            
+            # Account exists - this is enough for verification!
+            puuid = account_data['puuid']
+            found_ign = f"{account_data['gameName']}#{account_data['tagLine']}"
+            
+            # Step 2 (OPTIONAL): Try to get summoner data but DON'T fail verification if it doesn't exist
+            summoner_id = None
+            summoner_level = 0
+            profile_icon_id = 0
+            summoner_region = "GLOBAL"  # Account is global
+            
+            # Try to get summoner data (nice to have but not required)
             try:
-                logger.debug(f"Verifying {ign} in {region.upper()}")
-                
-                # Use RiotAPI context manager
-                async with RiotAPI() as riot_client:
-                    # Parse riot_id into game_name and tag_line
-                    game_name, tag_line = riot_client._parse_riot_id(ign, region)
-                    
-                    # Try to get account info - this validates the IGN exists
-                    account_data = await riot_client.get_account_by_riot_id(region, game_name, tag_line)
-                    
-                    # If we get here, the IGN is valid
-                    found_ign = f"{account_data['gameName']}#{account_data['tagLine']}"
-                    puuid = account_data['puuid']
-                    
-                    # Try to get basic summoner info for additional data (optional for verification)
-                    try:
-                        summoner_data = await riot_client.get_summoner_by_puuid(region, puuid)
-                        summoner_id = summoner_data.get('id')  # Use .get() to be safe
-                        summoner_level = summoner_data.get('summonerLevel', 0)
-                        profile_icon_id = summoner_data.get('profileIconId', 0)
-                    except Exception as summoner_error:
-                        logger.warning(f"Failed to get summoner data for {found_ign} in {region.upper()}: {summoner_error}")
-                        summoner_id = None
-                        summoner_level = 0
-                        profile_icon_id = 0
-                    
-                    riot_data = {
-                        "ign": found_ign,
-                        "gameName": account_data['gameName'],
-                        "tagLine": account_data['tagLine'],
-                        "puuid": puuid,
-                        "summonerId": summoner_id,  # May be None if summoner API fails
-                        "summonerLevel": summoner_level,
-                        "region": region.upper(),
-                        "accountId": account_data.get('accountId'),
-                        "profileIconId": profile_icon_id
-                    }
-                    
-                    logger.info(f"✅ Verified IGN {ign} as {found_ign} in {region.upper()}")
-                    return True, f"✅ Verified in {region.upper()}", riot_data
-                    
-            except RiotAPIError as e:
-                if "404" in str(e) or "not found" in str(e).lower():
-                    # Account not found in this region, try next
-                    logger.debug(f"IGN {ign} not found in {region.upper()}")
-                    continue
+                # We could try to find which platform the summoner is on, but for verification
+                # just checking the default region is sufficient
+                summoner_data = await riot_client.get_summoner_by_puuid(default_region, puuid)
+                if summoner_data and summoner_data.get('id'):
+                    summoner_id = summoner_data.get('id')
+                    summoner_level = summoner_data.get('summonerLevel', 0)
+                    profile_icon_id = summoner_data.get('profileIconId', 0)
+                    summoner_region = default_region.upper()
+                    logger.debug(f"Found summoner data for {found_ign} on {summoner_region}")
                 else:
-                    # Other API error (rate limit, etc.)
-                    logger.warning(f"RiotAPI error verifying {ign} in {region.upper()}: {e}")
-                    # Try next region for rate limit errors too
-                    if "429" in str(e):
-                        await asyncio.sleep(1)  # Brief pause for rate limit
-                        continue
-                    break
-            except Exception as e:
-                logger.error(f"Unexpected error verifying {ign} in {region.upper()}: {e}")
-                continue
-        
-        # If we've tried all regions and didn't find the IGN
-        return False, f"❌ IGN '{ign}' not found in any region", None
-        
+                    logger.debug(f"No summoner data for {found_ign} on {default_region.upper()} - account exists without summoner")
+            except Exception as summoner_error:
+                # This is OK - account exists, summoner data is just bonus
+                logger.debug(f"Summoner data not available for {found_ign}: {summoner_error}")
+                pass
+            
+            riot_data = {
+                "ign": found_ign,
+                "gameName": account_data['gameName'],
+                "tagLine": account_data['tagLine'],
+                "puuid": puuid,
+                "summonerId": summoner_id,  # May be None if no TFT summoner
+                "summonerLevel": summoner_level,
+                "region": summoner_region,  # "GLOBAL" if no summoner found
+                "accountId": account_data.get('accountId'),
+                "profileIconId": profile_icon_id
+            }
+            
+            logger.info(f"✅ Verified IGN {ign} as {found_ign} (account exists)")
+            return True, f"✅ Verified", riot_data
+            
+    except RiotAPIError as e:
+        if "404" in str(e) or "not found" in str(e).lower():
+            logger.info(f"IGN {ign} not found: {e}")
+            return False, f"❌ IGN '{ign}' not found", None
+        else:
+            logger.warning(f"RiotAPI error verifying {ign}: {e}")
+            # For rate limit or other errors, allow registration to continue
+            return True, f"⚠️ IGN verification error - registration allowed", None
     except Exception as e:
         logger.error(f"Error in _verify_ign_with_riot_api: {e}")
         # Allow registration to continue even if verification fails

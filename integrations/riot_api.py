@@ -192,6 +192,26 @@ class RiotAPI:
         "tr": "tr1"
     }
 
+    # Maps platform routing (e.g., "na1") to regional routing (e.g., "americas")
+    PLATFORM_TO_REGION = {
+        # AMERICAS
+        "na1": "americas", "br1": "americas", "la1": "americas", "la2": "americas", "oc1": "americas",
+        # EUROPE
+        "euw1": "europe", "eun1": "europe", "tr1": "europe", "ru": "europe",
+        # ASIA
+        "kr": "asia", "jp1": "asia",
+        # SEA (TFT-specific)
+        "sg2": "sea", "ph2": "sea", "vn2": "sea", "th2": "sea", "tw2": "sea"
+    }
+
+    # Maps regional to list of platforms to try (in priority order)
+    REGIONAL_TO_PLATFORMS = {
+        "americas": ["na1", "br1", "la1", "la2", "oc1"],
+        "europe": ["euw1", "eun1", "tr1", "ru"],
+        "asia": ["kr", "jp1"],
+        "sea": ["sg2", "ph2", "vn2", "th2", "tw2"]
+    }
+
     def __init__(self):
         self.api_key = os.getenv("RIOT_API_KEY")
         if not self.api_key:
@@ -283,6 +303,33 @@ class RiotAPI:
         regional = self._get_regional_endpoint(region)
         url = f"https://{regional}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
         return await self._make_request(url)
+
+    async def get_active_tft_platform(self, regional: str, puuid: str) -> Optional[str]:
+        """
+        Get the active TFT platform/shard for a player.
+        This tells us which platform server the player is actively playing on.
+        
+        Args:
+            regional: Regional endpoint (e.g., "americas", "europe", "asia", "sea")
+            puuid: Player's PUUID
+            
+        Returns:
+            Platform code (e.g., "na1", "kr", "euw1") or None if not found
+        """
+        url = f"https://{regional}.api.riotgames.com/riot/account/v1/active-shards/by-game/tft/by-puuid/{puuid}"
+        try:
+            data = await self._make_request(url)
+            platform = data.get("activeShard")  # e.g., "na1"
+            if platform:
+                logger.debug(f"✅ Found active TFT platform {platform} for {puuid[:8]}... in {regional}")
+            return platform
+        except RiotAPIError as e:
+            if "404" in str(e):
+                # This is normal - player might not have played TFT on this regional
+                logger.debug(f"No active TFT shard for {puuid[:8]}... in {regional}")
+            else:
+                logger.debug(f"Active shard API error for {puuid[:8]}... in {regional}: {e}")
+            return None
 
     async def get_summoner_by_puuid(self, region: str, puuid: str) -> Dict[str, Any]:
         """Get summoner information by PUUID (tries TFT, falls back to LoL)."""
@@ -600,149 +647,233 @@ class RiotAPI:
         """
         Get highest rank across multiple IGNs and regions.
         
-        Uses proper 3-step flow (API bug is now fixed):
-        1. Account API (get puuid)
-        2. Summoner API (get summoner id) 
-        3. League API (get rank entries)
+        Uses proper 4-step flow with active shard detection:
+        1. Account API (get puuid) - try all regionals to find account
+        2. Active Shard API (get exact platform where they play TFT)
+        3. Summoner API (get summoner id using active platform)
+        4. League API (get rank entries using active platform)
         
         Args:
             ign_list: List of IGNs to check
-            default_region: Default region to start with
+            default_region: Default region to start with (not used with new flow)
             
         Returns:
             Dict with highest rank information or Iron IV if not found
         """
-        logger.info(f"🎖️ Fetching highest rank for {len(ign_list)} IGNs")
+        logger.info(f"🎖️ Fetching highest rank for {len(ign_list)} IGNs using 4-step flow")
         
         highest_rank = None
         highest_numeric = 0
         
-        # Try multiple regions - prioritize tournament regions first
-        regions_to_check = ["na", "euw", "kr", "br", "jp", "oce"]
+        # Regionals to try for finding accounts
+        regionals_to_check = ["americas", "europe", "asia", "sea"]
         
         for ign in ign_list:
-            for region in regions_to_check:
+            account_puuid = None
+            account_game_name = None
+            account_tag_line = None
+            riot_id_display = None
+            
+            # Step 1: Get PUUID (account is global, use americas regional)
+            try:
+                # Parse Riot ID (use default region for parsing only)
+                game_name, tag_line = self._parse_riot_id(ign, default_region)
+                
+                logger.debug(f"🔍 Step 1: Getting PUUID for {ign}")
+                
+                # Account API is global - use any regional (americas is fine)
+                url = f"https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
+                account_data = await self._make_request(url)
+                
+                if account_data and "puuid" in account_data:
+                    account_puuid = account_data["puuid"]
+                    account_game_name = account_data["gameName"]
+                    account_tag_line = account_data["tagLine"]
+                    
+                    riot_id_display = f"{account_game_name}#{account_tag_line}"
+                    logger.info(f"✅ Step 1: Found account {riot_id_display} with PUUID {account_puuid[:8]}...")
+                else:
+                    logger.warning(f"❌ Account data invalid for {ign}")
+                    continue
+                    
+            except RiotAPIError as e:
+                if "404" in str(e):
+                    logger.warning(f"❌ Account not found: {ign}")
+                else:
+                    logger.warning(f"❌ API error for {ign}: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"❌ Unexpected error for {ign}: {e}")
+                continue
+            
+            # Step 2: Try Active Shard on ALL regionals
+            active_platforms = []
+            all_regionals = ["americas", "europe", "asia", "sea"]
+            
+            try:
+                logger.debug(f"🔍 Step 2: Checking active TFT shards for {account_puuid[:8]}...")
+                
+                for regional in all_regionals:
+                    platform = await self.get_active_tft_platform(regional, account_puuid)
+                    if platform:
+                        logger.info(f"✅ Found active shard {platform} in {regional}")
+                        active_platforms.append(platform)
+                
+                if active_platforms:
+                    platforms_to_check = active_platforms
+                    logger.info(f"✅ Step 2: Found {len(active_platforms)} active platform(s): {active_platforms}")
+                else:
+                    logger.info(f"ℹ️ Step 2: No active TFT shards - will try ALL platforms")
+                    # Fallback: Try ALL platforms from ALL regionals
+                    platforms_to_check = (
+                        self.REGIONAL_TO_PLATFORMS["americas"] +
+                        self.REGIONAL_TO_PLATFORMS["europe"] +
+                        self.REGIONAL_TO_PLATFORMS["asia"] +
+                        self.REGIONAL_TO_PLATFORMS["sea"]
+                    )
+                    
+            except Exception as e:
+                logger.warning(f"❌ Step 2 error: {e}")
+                # Fallback to trying ALL platforms
+                platforms_to_check = (
+                    self.REGIONAL_TO_PLATFORMS["americas"] +
+                    self.REGIONAL_TO_PLATFORMS["europe"] +
+                    self.REGIONAL_TO_PLATFORMS["asia"] +
+                    self.REGIONAL_TO_PLATFORMS["sea"]
+                )
+            
+            if not platforms_to_check:
+                logger.warning(f"❌ No platforms to check for {riot_id_display}")
+                continue
+            
+            # Steps 3 & 4: Try each platform until we find rank data
+            rank_found = False
+            for platform in platforms_to_check:
+                # Map platform to region name
+                region_name = None
+                for region, plat in self.PLATFORM_ENDPOINTS.items():
+                    if plat == platform:
+                        region_name = region
+                        break
+                
+                if not region_name:
+                    logger.debug(f"Could not map platform {platform} to region, skipping")
+                    continue
+                
+                # Try to get summoner and rank data on this platform
                 try:
-                    logger.debug(f"🔍 Checking {ign} in {region.upper()}")
+                    logger.debug(f"🔍 Step 3: Trying platform {platform} for {riot_id_display}")
                     
-                    # Step 1: Get account (PUUID)
-                    game_name, tag_line = self._parse_riot_id(ign, region)
-                    account_data = await self.get_account_by_riot_id(region, game_name, tag_line)
+                    # Step 3: Get summoner data using this platform
+                    summoner_data = await self.get_summoner_by_puuid(region_name, account_puuid)
+                    summoner_id = summoner_data.get("id")
                     
-                    if not account_data or "puuid" not in account_data:
-                        logger.debug(f"No account found for {ign} in {region}")
-                        continue
-                    
-                    puuid = account_data["puuid"]
-                    riot_id_display = f"{account_data['gameName']}#{account_data['tagLine']}"
-                    
-                    # Step 2: Get summoner (summoner ID)
-                    try:
-                        summoner_data = await self.get_summoner_by_puuid(region, puuid)
-                        summoner_id = summoner_data.get("id")
-                        
-                        if not summoner_id:
-                            # Check if this is the known API bug (account exists but no summoner entry)
-                            if summoner_data and summoner_data.get("_no_summoner_entry"):
-                                # API bug detected - use fallback search
-                                logger.info(f"⚠️ Summoner API bug detected for {riot_id_display} in {region} - using fallback search")
-                                logger.debug(f"Account data exists but no summoner entry: {summoner_data}")
+                    if not summoner_id:
+                        # Check if this is the known API bug (account exists but no summoner entry)
+                        if summoner_data and summoner_data.get("_no_summoner_entry"):
+                            # API bug detected - use fallback search on this platform
+                            logger.info(f"⚠️ Summoner API bug detected for {riot_id_display} on {platform} - using fallback search")
+                            
+                            # Use exact game_name from Account API
+                            fallback_rank = await self._fallback_search_league_entries(
+                                region=region_name,
+                                game_name=account_game_name,  # Exact name from API
+                                puuid=account_puuid
+                            )
+                            
+                            if fallback_rank:
+                                tier = fallback_rank["tier"]
+                                division = fallback_rank["rank"]
+                                lp = fallback_rank["leaguePoints"]
+                                wins = fallback_rank.get("wins", 0)
+                                losses = fallback_rank.get("losses", 0)
                                 
-                                # Use exact game_name from Account API (already have it)
-                                fallback_rank = await self._fallback_search_league_entries(
-                                    region=region,
-                                    game_name=account_data["gameName"],  # Exact name from API
-                                    puuid=puuid
-                                )
-                                
-                                if fallback_rank:
-                                    tier = fallback_rank["tier"]
-                                    division = fallback_rank["rank"]
-                                    lp = fallback_rank["leaguePoints"]
-                                    wins = fallback_rank.get("wins", 0)
-                                    losses = fallback_rank.get("losses", 0)
-                                    
-                                    # Skip unplayed accounts
-                                    if wins == 0 and losses == 0:
-                                        logger.debug(f"{riot_id_display}: Has rank entry but 0 games")
-                                    else:
-                                        # Compare with highest rank
-                                        numeric_value = get_rank_numeric_value(tier, division, lp)
-                                        
-                                        if numeric_value > highest_numeric:
-                                            highest_numeric = numeric_value
-                                            highest_rank = {
-                                                "tier": tier,
-                                                "division": division,
-                                                "lp": lp,
-                                                "wins": wins,
-                                                "losses": losses,
-                                                "region": region.upper(),
-                                                "ign": riot_id_display
-                                            }
-                                        
-                                        logger.info(f"✅ Found rank via fallback: {riot_id_display}: {tier} {division} {lp} LP")
-                                else:
-                                    logger.info(f"⚠️ No rank found for {riot_id_display} in {region} via fallback")
-                                
-                                continue  # Move to next region
-                            else:
-                                logger.debug(f"No summoner data for {riot_id_display} in {region}")
-                                continue  # Move to next region
-                        
-                        # Normal flow: We have summoner ID, use League API
-                        league_entries = await self.get_league_entries(region, summoner_id)
-                        
-                        # Find TFT ranked entry
-                        for entry in league_entries:
-                            if entry.get("queueType") == "RANKED_TFT":
-                                tier = entry.get("tier", "UNRANKED")
-                                division = entry.get("rank", "IV")
-                                lp = entry.get("leaguePoints", 0)
-                                wins = entry.get("wins", 0)
-                                losses = entry.get("losses", 0)
-                                
-                                # Skip new/unplayed accounts
+                                # Skip unplayed accounts
                                 if wins == 0 and losses == 0:
-                                    continue
-                                
-                                # Compare ranks to find highest
-                                numeric_value = get_rank_numeric_value(tier, division, lp)
-                                
-                                if numeric_value > highest_numeric:
-                                    highest_numeric = numeric_value
-                                    highest_rank = {
-                                        "tier": tier,
-                                        "division": division,
-                                        "lp": lp,
-                                        "wins": wins,
-                                        "losses": losses,
-                                        "region": region.upper(),
-                                        "ign": riot_id_display
-                                    }
-                                
-                                logger.info(f"✅ Found rank for {riot_id_display}: {tier} {division} {lp} LP")
-                                break  # Found TFT rank, no need to check other entries
-                        
-                        if not league_entries or not any(e.get("queueType") == "RANKED_TFT" for e in league_entries):
-                            logger.debug(f"📊 {riot_id_display} in {region}: Unranked (no TFT games)")
-                        
-                    except RiotAPIError as e:
-                        if "404" in str(e) or "not found" in str(e).lower():
-                            logger.debug(f"Summoner not found: {ign} in {region}")
+                                    logger.debug(f"{riot_id_display}: Has rank entry but 0 games on {platform}")
+                                else:
+                                    # Compare with highest rank
+                                    numeric_value = get_rank_numeric_value(tier, division, lp)
+                                    
+                                    if numeric_value > highest_numeric:
+                                        highest_numeric = numeric_value
+                                        highest_rank = {
+                                            "tier": tier,
+                                            "division": division,
+                                            "lp": lp,
+                                            "wins": wins,
+                                            "losses": losses,
+                                            "region": platform.upper(),
+                                            "ign": riot_id_display
+                                        }
+                                    
+                                    logger.info(f"✅ Found rank via fallback: {riot_id_display}: {tier} {division} {lp} LP on {platform}")
+                                    rank_found = True
+                            else:
+                                logger.debug(f"No rank found for {riot_id_display} on {platform} via fallback")
                         else:
-                            logger.warning(f"Error getting rank for {ign} in {region}: {e}")
+                            logger.debug(f"No summoner ID found for {riot_id_display} on {platform}")
+                        
+                        # Continue to next platform
                         continue
+                    
+                    # Step 4: Get league entries using this platform
+                    logger.debug(f"🔍 Step 4: Getting league entries for {riot_id_display} on {platform}")
+                    league_entries = await self.get_league_entries(region_name, summoner_id)
+                    
+                    # Find TFT ranked entry
+                    for entry in league_entries:
+                        if entry.get("queueType") == "RANKED_TFT":
+                            tier = entry.get("tier", "UNRANKED")
+                            division = entry.get("rank", "IV")
+                            lp = entry.get("leaguePoints", 0)
+                            wins = entry.get("wins", 0)
+                            losses = entry.get("losses", 0)
+                            
+                            # Skip new/unplayed accounts
+                            if wins == 0 and losses == 0:
+                                continue
+                            
+                            # Compare ranks to find highest
+                            numeric_value = get_rank_numeric_value(tier, division, lp)
+                            
+                            if numeric_value > highest_numeric:
+                                highest_numeric = numeric_value
+                                highest_rank = {
+                                    "tier": tier,
+                                    "division": division,
+                                    "lp": lp,
+                                    "wins": wins,
+                                    "losses": losses,
+                                    "region": platform.upper(),
+                                    "ign": riot_id_display
+                                }
+                            
+                            logger.info(f"✅ Step 4: Found rank for {riot_id_display}: {tier} {division} {lp} LP on {platform}")
+                            rank_found = True
+                            break  # Found TFT rank, no need to check other entries
+                    
+                    if rank_found:
+                        break  # Stop trying other platforms if we found rank
+                    
+                    if not league_entries or not any(e.get("queueType") == "RANKED_TFT" for e in league_entries):
+                        logger.debug(f"📊 {riot_id_display} on {platform}: Unranked (no TFT ranked games)")
                         
                 except RiotAPIError as e:
-                    if "404" in str(e):
-                        logger.debug(f"Account not found: {ign} in {region}")
+                    if "404" in str(e) or "not found" in str(e).lower():
+                        logger.debug(f"No summoner/rank for {riot_id_display} on {platform}, trying next...")
+                        continue  # Try next platform
                     else:
-                        logger.warning(f"API error for {ign} in {region}: {e}")
-                    continue
+                        logger.warning(f"Error on {platform}: {e}")
+                        continue
                 except Exception as e:
-                    logger.error(f"Unexpected error for {ign} in {region}: {e}")
+                    logger.debug(f"Unexpected error on {platform}: {e}")
                     continue
+            
+            if not rank_found:
+                logger.info(f"📊 {riot_id_display}: No rank found on any platform in {found_regional}")
+                
+                # End of platform loop
         
         # Return highest rank found or default to Iron IV
         if highest_rank:

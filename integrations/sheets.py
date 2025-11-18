@@ -676,12 +676,13 @@ async def find_or_register_user(
                     batch_updates.append((f"{pronouns_col}{row}", pronouns))
                     updates_needed.append("pronouns")
 
-            # Update rank if provided and different
-            if rank is not None and rank != old_rank:
-                rank_col = await SheetIntegrationHelper.get_column_letter(gid, "rank_col")
-                if rank_col:
-                    batch_updates.append((f"{rank_col}{row}", rank))
-                    updates_needed.append("rank")
+            # Rank updates disabled
+            # # Update rank if provided and different
+            # if rank is not None and rank != old_rank:
+            #     rank_col = await SheetIntegrationHelper.get_column_letter(gid, "rank_col")
+            #     if rank_col:
+            #         batch_updates.append((f"{rank_col}{row}", rank))
+            #         updates_needed.append("rank")
 
             # Execute all updates in a single batch
             if batch_updates:
@@ -789,14 +790,15 @@ async def find_or_register_user(
         if pronouns_col:
             writes[pronouns_col] = pronouns or ""
 
-        # Add rank if column exists
-        rank_col = await SheetIntegrationHelper.get_column_letter(gid, "rank_col")
-        if rank_col:
-            rank_value = rank if rank is not None and rank.strip() != "" else "Iron IV"
-            writes[rank_col] = rank_value
-            logger.info(f"✍️ Writing rank to column {rank_col}: '{rank_value}'")
-        else:
-            logger.error(f"❌ No rank column configured for guild {gid}!")
+        # Rank writing disabled
+        # # Add rank if column exists
+        # rank_col = await SheetIntegrationHelper.get_column_letter(gid, "rank_col")
+        # if rank_col:
+        #     rank_value = rank if rank is not None and rank.strip() != "" else "Iron IV"
+        #     writes[rank_col] = rank_value
+        #     logger.info(f"✍️ Writing rank to column {rank_col}: '{rank_value}'")
+        # else:
+        #     logger.error(f"❌ No rank column configured for guild {gid}!")
 
         if target_row:
             # Write to existing formatted row using batch update

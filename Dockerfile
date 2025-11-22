@@ -76,5 +76,24 @@ EXPOSE 3000 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command - starts the bot
-CMD ["python", "bot.py"]
+# Create startup script
+RUN echo '#!/bin/sh\n\
+# Start the API server in background\n\
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 &\n\
+\n\
+# Wait for API to be ready\n\
+echo "Waiting for API to start..."\n\
+for i in $(seq 1 30); do\n\
+    if curl -f http://localhost:8000/health > /dev/null 2>&1; then\n\
+        echo "API is ready!"\n\
+        break\n\
+    fi\n\
+    echo "Attempt $i/30: API not ready yet"\n\
+    sleep 2\n\
+done\n\
+\n\
+# Start the bot\n\
+exec python bot.py' > /app/start.sh && chmod +x /app/start.sh
+
+# Default command - starts the services
+CMD ["/app/start.sh"]

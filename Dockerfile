@@ -59,14 +59,15 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy built frontend from previous stage
 COPY --from=frontend-builder --chown=gal:gal /app/dashboard ./dashboard
 
+# Create necessary directories as root before switching users
+RUN mkdir -p /app/logs /app/storage /app/.dashboard && \
+    chown -R gal:gal /app/logs /app/storage /app/.dashboard
+
 # Copy application code (excluding files in .dockerignore)
 COPY --chown=gal:gal . .
 
 # Change to non-root user
 USER gal
-
-# Create necessary directories
-RUN mkdir -p /app/logs /app/storage /app/.dashboard
 
 # Expose ports
 EXPOSE 3000 8000

@@ -78,5 +78,5 @@ EXPOSE 3000 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command - start the bot which will start dashboard services
-CMD ["python", "bot.py"]
+# Default command - start the API server directly (Railway needs this as main process)
+CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]

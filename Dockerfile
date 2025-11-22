@@ -66,27 +66,12 @@ RUN mkdir -p /app/logs /app/storage /app/.dashboard && \
 # Copy application code (excluding files in .dockerignore)
 COPY --chown=gal:gal . .
 
-# Create a simple startup script directly in Dockerfile
-RUN echo '#!/bin/sh' > /app/start.sh && \
-    echo 'echo "Starting API server..."' >> /app/start.sh && \
-    echo 'python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 &' >> /app/start.sh && \
-    echo 'API_PID=$!' >> /app/start.sh && \
-    echo 'echo "Waiting for API to be ready..."' >> /app/start.sh && \
-    echo 'sleep 5' >> /app/start.sh && \
-    echo 'i=1' >> /app/start.sh && \
-    echo 'while [ $i -le 30 ]; do' >> /app/start.sh && \
-    echo '  if curl -f http://localhost:8000/health > /dev/null 2>&1; then' >> /app/start.sh && \
-    echo '    echo "API is ready!"' >> /app/start.sh && \
-    echo '    break' >> /app/start.sh && \
-    echo '  fi' >> /app/start.sh && \
-    echo '  echo "Attempt $i/30: API not ready yet, waiting..."' >> /app/start.sh && \
-    echo '  sleep 2' >> /app/start.sh && \
-    echo '  i=$((i+1))' >> /app/start.sh && \
-    echo 'done' >> /app/start.sh && \
-    echo 'echo "Starting Discord bot..."' >> /app/start.sh && \
-    echo 'exec python bot.py' >> /app/start.sh && \
-    chmod +x /app/start.sh && \
-    chown gal:gal /app/start.sh
+# Install supervisor for process management
+RUN apt-get update && apt-get install -y supervisor && \
+    rm -rf /var/lib/apt/lists/* && apt-get clean
+
+# Create supervisor configuration
+RUN printf "[unix_http_server]\nfile=/tmp/supervisor.sock\n\n[supervisord]\nnodaemon=true\nlogfile=/dev/stdout\nlogfile_maxbytes=0\nloglevel=info\n\n[rpcinterface:supervisor]\nsupervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface\n\n[supervisorctl]\nserverurl=unix:///tmp/supervisor.sock\n\n[program:api]\ncommand=python -m uvicorn api.main:app --host 0.0.0.0 --port 8000\ndirectory=/app\nuser=gal\nautostart=true\nautorestart=true\nstdout_logfile=/dev/stdout\nstdout_logfile_maxbytes=0\nstderr_logfile=/dev/stderr\nstderr_logfile_maxbytes=0\n\n[program:bot]\ncommand=python bot.py\ndirectory=/app\nuser=gal\nautostart=true\nautorestart=true\nstdout_logfile=/dev/stdout\nstdout_logfile_maxbytes=0\nstderr_logfile=/dev/stderr\nstderr_logfile_maxbytes=0" > /etc/supervisor/conf.d/gal.conf
 
 # Change to non-root user
 USER gal
@@ -98,5 +83,5 @@ EXPOSE 3000 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command - starts the services
-CMD ["/app/start.sh"]
+# Default command - starts supervisor which manages both services
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/gal.conf"]

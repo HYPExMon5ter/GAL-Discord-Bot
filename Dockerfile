@@ -63,20 +63,7 @@ COPY --from=frontend-builder --chown=gal:gal /app/dashboard ./dashboard
 RUN mkdir -p /app/logs /app/storage /app/.dashboard && \
     chown -R gal:gal /app/logs /app/storage /app/.dashboard
 
-# Copy application code (excluding files in .dockerignore)
-COPY --chown=gal:gal . .
-
-# Change to non-root user
-USER gal
-
-# Expose ports
-EXPOSE 3000 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Create startup script
+# Create startup script as root (will be owned by gal)
 RUN echo '#!/bin/sh\n\
 # Start the API server in background\n\
 python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 &\n\
@@ -93,7 +80,21 @@ for i in $(seq 1 30); do\n\
 done\n\
 \n\
 # Start the bot\n\
-exec python bot.py' > /app/start.sh && chmod +x /app/start.sh
+exec python bot.py' > /app/start.sh && chmod +x /app/start.sh && \
+    chown gal:gal /app/start.sh
+
+# Copy application code (excluding files in .dockerignore)
+COPY --chown=gal:gal . .
+
+# Change to non-root user
+USER gal
+
+# Expose ports
+EXPOSE 3000 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Default command - starts the services
 CMD ["/app/start.sh"]

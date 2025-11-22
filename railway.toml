@@ -14,7 +14,8 @@ restartPolicyMaxRetries = 20
 # Resource allocation
 numReplicas = 1
 
-# Start command is handled by Dockerfile CMD to ensure API starts before health check
+# Start command - override Railway dashboard settings
+startCommand = "python -m uvicorn api.main:app --host 0.0.0.0 --port 8000"
 
 # Environment variables
 [deploy.env]

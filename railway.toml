@@ -14,8 +14,7 @@ restartPolicyMaxRetries = 10
 # Resource allocation
 numReplicas = 1
 
-# Start command (can be overridden by Railway if needed)
-startCommand = "python bot.py"
+# Start command is handled by Dockerfile CMD to ensure API starts before health check
 
 # Environment variables
 [deploy.env]

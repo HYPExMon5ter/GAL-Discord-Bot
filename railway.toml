@@ -22,6 +22,9 @@ NODE_ENV = "production"
 ENABLE_DASHBOARD = "true"
 PYTHONUNBUFFERED = "1"
 PYTHONDONTWRITEBYTECODE = "1"
+API_BASE_URL = "https://gal-discord-bot-production.up.railway.app"
+NEXT_PUBLIC_API_URL = "https://gal-discord-bot-production.up.railway.app"
+NEXT_PUBLIC_APP_TITLE = "Guardian Angel League Dashboard"
 # Note: Discord bot not running in this deployment - only API server
 
 # Service configuration for Railway

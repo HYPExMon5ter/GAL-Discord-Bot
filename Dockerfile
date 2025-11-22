@@ -74,9 +74,9 @@ USER gal
 # Expose ports
 EXPOSE 3000 8000
 
-# Health check
+# Health check - using python instead of curl for reliability
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5).raise_for_status()"
 
 # Default command - start the API server directly (Railway needs this as main process)
 # Force Railway to rebuild - API server v2

@@ -14,8 +14,8 @@ restartPolicyMaxRetries = 20
 # Resource allocation
 numReplicas = 1
 
-# Start command - use explicit path for Python
-startCommand = "/usr/local/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000"
+# Start command - remove to use Dockerfile CMD instead
+# Start command - remove to use Dockerfile CMD instead
 
 # Environment variables
 [deploy.env]

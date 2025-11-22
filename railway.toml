@@ -1,4 +1,4 @@
-# Railway configuration for GAL API Server
+# Railway configuration for GAL Discord Bot with Dashboard
 
 [build]
 builder = "DOCKERFILE"
@@ -7,28 +7,37 @@ dockerfilePath = "Dockerfile"
 [deploy]
 # Health check configuration
 healthcheckPath = "/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 180
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
+restartPolicyMaxRetries = 20
 
 # Resource allocation
 numReplicas = 1
 
-# Start command - API only
-startCommand = "python -m uvicorn api.main:app --host 0.0.0.0 --port 8000"
+# Start command - use explicit path for Python
+startCommand = "/usr/local/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000"
 
 # Environment variables
 [deploy.env]
+NODE_ENV = "production"
+ENABLE_DASHBOARD = "true"
 PYTHONUNBUFFERED = "1"
 PYTHONDONTWRITEBYTECODE = "1"
+API_BASE_URL = "https://gal-discord-bot-production.up.railway.app"
+NEXT_PUBLIC_API_URL = "https://gal-discord-bot-production.up.railway.app"
+NEXT_PUBLIC_APP_TITLE = "Guardian Angel League Dashboard"
+# Note: Discord bot not running in this deployment - only API server
 
 # Service configuration for Railway
 [service]
-name = "gal-api-server"
+name = "gal-discord-bot"
 # Auto-assigns public URL
 port = 8000
 
-# Health check configuration
+# Multi-port configuration (Railway supports primary port only)
+# Note: Dashboard frontend runs on port 3000/8080 but not accessible from outside
+
+# Health check port (API backend)
 [service.healthcheck]
 path = "/health"
 port = 8000

@@ -1,8 +1,8 @@
 ---
 id: system.dashboard_deployment
-version: 1.0
-last_updated: 2025-01-24
-tags: [dashboard, deployment, devops, ci-cd, production]
+version: 2.0
+last_updated: 2025-11-19
+tags: [dashboard, deployment, devops, ci-cd, production, railway]
 ---
 
 # Dashboard Deployment Guide
@@ -89,6 +89,265 @@ const config = {
   },
 };
 ```
+
+## Railway Deployment (Recommended)
+
+### Overview
+Railway provides a simplified, container-based deployment platform that handles build, deployment, and infrastructure management automatically. The GAL Discord Bot with Dashboard is optimized for Railway deployment using a multi-runtime Dockerfile.
+
+### Architecture on Railway
+```
+Railway Service (Single Container)
+├── Discord Bot (Python)
+├── FastAPI Backend (Python, port 8000)
+└── Next.js Dashboard (Node.js, port 3000)
+```
+
+### Prerequisites
+- GitHub repository with project code
+- Railway account
+- Discord Bot Token
+- Railway PostgreSQL add-on
+
+### Configuration Files
+
+#### railway.toml
+```toml
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+numReplicas = 1
+startCommand = "python bot.py"
+
+[deploy.env]
+NODE_ENV = "production"
+ENABLE_DASHBOARD = "true"
+PYTHONUNBUFFERED = "1"
+PYTHONDONTWRITEBYTECODE = "1"
+
+[service]
+name = "gal-discord-bot"
+
+[service.healthcheck]
+path = "/health"
+port = 8000
+```
+
+#### Multi-Stage Dockerfile
+```dockerfile
+# Stage 1: Build Next.js frontend
+FROM node:20-slim AS frontend-builder
+WORKDIR /app/dashboard
+COPY dashboard/package*.json ./
+RUN npm ci && npm cache clean --force
+RUN npm update next eslint-config-next js-yaml
+RUN npm audit fix --force || true
+COPY dashboard/ ./
+ENV NODE_ENV=production
+RUN npm run build --no-lint
+RUN npm prune --production
+
+# Stage 2: Python environment with Node.js runtime
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 NODE_ENV=production PYTHONDONTWRITEBYTECODE=1
+RUN apt-get update && apt-get install -y nodejs npm curl \
+  && rm -rf /var/lib/apt/lists/* && apt-get clean
+RUN useradd --create-home --shell /bin/bash gal
+WORKDIR /app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+  && pip install --no-cache-dir -r requirements.txt
+COPY --from=frontend-builder --chown=gal:gal /app/dashboard ./dashboard
+COPY --chown=gal:gal . .
+USER gal
+EXPOSE 3000 8000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+CMD ["python", "bot.py"]
+```
+
+### Environment Variables
+
+#### Required Variables
+```bash
+DISCORD_TOKEN=your_discord_bot_token
+APPLICATION_ID=your_discord_application_id
+DATABASE_URL=your_production_database_url  # Railway PostgreSQL
+ENABLE_DASHBOARD=true
+```
+
+#### Optional Variables
+```bash
+RIOT_API_KEY=your_riot_api_key
+DASHBOARD_MASTER_PASSWORD=your_secure_password
+```
+
+### Deployment Process
+
+#### 1. Connect Repository to Railway
+1. Go to Railway dashboard
+2. Click "New Project" → "Deploy from GitHub repo"
+3. Select your repository
+4. Click "Deploy"
+
+#### 2. Configure Services
+1. **Add PostgreSQL Add-on**:
+   - Go to project → New → PostgreSQL
+   - Railway will provide `DATABASE_URL`
+   - Copy to environment variables
+
+2. **Set Environment Variables**:
+   - Go to project → Settings → Variables
+   - Add all required variables listed above
+
+3. **Configure Environment**:
+   - Railway automatically detects `railway.toml`
+   - Sets `NODE_ENV=production` and `ENABLE_DASHBOARD=true`
+   - Starts container with `python bot.py`
+
+### Deployment Flow
+1. **Build Phase** (~2-3 minutes):
+   - Railway detects `Dockerfile` and `railway.toml`
+   - Multi-stage build: Next.js frontend → Python runtime
+   - Security patches applied automatically
+
+2. **Startup Phase** (~30 seconds):
+   - Container starts with `python bot.py`
+   - Bot initializes Discord connection
+   - `ENABLE_DASHBOARD=true` triggers dashboard startup
+   - Dashboard manager starts services
+
+3. **Runtime**:
+   - Bot processes Discord commands
+   - API serves on port 8000 with health checks
+   - Dashboard serves on port 3000
+   - Railway monitors health and restarts on failures
+
+### Features in Railway
+- ✅ **Zero Configuration**: Auto-detects and builds from Dockerfile
+- ✅ **Health Monitoring**: Built-in health checks with automatic restart
+- ✅ **Security Updates**: Automated package security patches
+- ✅ **Multi-Runtime**: Node.js + Python in single container
+- ✅ **Environment Management**: Automatic production configuration
+- ✅ **Zero Downtime**: Rolling updates and deployments
+- ✅ **Built-in Database**: PostgreSQL add-on with automatic connection
+- ✅ **Custom Domains**: Easy SSL certificate management
+
+### Troubleshooting Railway Deployment
+
+#### Common Issues and Solutions
+
+##### Dashboard Build Fails
+```bash
+# Solution: Railway automatically handles build issues
+# Multi-stage build ensures compatibility
+# Build failures logged in Railway dashboard
+```
+
+##### Environment Variables Not Working
+```bash
+# Verify in Railway Settings → Variables
+# Check for typos in variable names
+# Railway env overrides all other sources
+```
+
+##### Health Checks Failing
+```bash
+# Check /health endpoint is responding
+# Verify DATABASE_URL is correct
+# Review logs in Railway dashboard
+```
+
+##### Services Not Starting
+```bash
+# Check ENABLE_DASHBOARD=true is set
+# Verify Dockerfile is in repository root
+# Review build logs for errors
+```
+
+### Monitoring and Logs
+
+#### Railway Dashboard
+- **Real-time logs**: View container logs
+- **Build logs**: Debug build failures
+- **Metrics**: CPU, memory, and performance
+- **Health status**: Service health indicators
+
+#### Log Locations
+```bash
+# Bot logs
+Starting dashboard services...
+✅ Dashboard services started successfully
+
+# API logs
+INFO:     Application startup complete
+INFO:     127.0.0.1:33714 - "GET /health HTTP/1.1" 200 OK
+
+# Next.js logs
+✓ Starting...
+✓ Ready in 15.2s
+```
+
+### Scaling Considerations
+
+#### Current Limitations
+- **Single Service**: Bot + Dashboard in one container
+- **Database**: Single PostgreSQL instance
+- **Performance**: Shared resources for all services
+
+#### Scaling Options
+```bash
+# Horizontal Scaling
+numReplicas = 3  # In railway.toml
+
+# Database Scaling
+- Use connection pooling
+- Consider read replicas for heavy loads
+```
+
+### Migration from Local Development
+
+#### Key Differences
+| Local | Railway |
+|-------|---------|
+| SQLite | PostgreSQL |
+| Development mode | Production mode |
+| Manual starts | Automatic deployment |
+| File-based cache | Memory-based cache |
+| Manual config | Auto configuration |
+
+#### Migration Steps
+1. **Export Local Data** (if needed)
+2. **Set up Railway Environment Variables**
+3. **Add Railway PostgreSQL**
+4. **Deploy and Verify**
+5. **Test All Functionality**
+
+### Best Practices
+
+#### Deployment
+- Always test in Railway staging first
+- Use environment-specific configuration
+- Monitor build logs for issues
+- Keep `railway.toml` in repository root
+
+#### Security
+- Never commit secrets to repository
+- Use Railway environment variables
+- Regular security updates via Railway
+- Monitor dependency vulnerabilities
+
+#### Performance
+- Use Railway's built-in metrics
+- Monitor database connection pooling
+- Optimize Next.js build size
+- Regular performance audits
 
 ## Build Process
 

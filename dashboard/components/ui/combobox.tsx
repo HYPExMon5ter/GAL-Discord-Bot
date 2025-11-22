@@ -92,7 +92,7 @@ export function Combobox({
           // Don't close if clicking inside the popover content or the input
           const target = e.target as HTMLElement;
           const isInput = target.tagName === 'INPUT';
-          const isInsideContent = e.currentTarget.contains(target);
+          const isInsideContent = (e.currentTarget as HTMLElement)?.contains(target) || false;
           
           if (isInput || isInsideContent) {
             e.preventDefault()
@@ -163,7 +163,7 @@ export function Combobox({
                 className="flex items-center px-2 py-1.5 text-sm rounded cursor-pointer hover:bg-accent text-primary transition-colors"
               >
                 <Plus className="mr-2 h-4 w-4" />
-                {createText} "{search.trim()}"
+                {createText} &quot;{search.trim()}&quot;
               </div>
             </div>
           )}

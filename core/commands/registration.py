@@ -304,32 +304,38 @@ def register(gal: app_commands.Group) -> None:
     )
     @command_tracer("gal.cache")
     async def cache_refresh(interaction: discord.Interaction):
-        """Force a complete cache refresh including column mappings."""
+        """Force a complete cache refresh including column mappings, roles, and UI."""
         if not await ensure_staff(interaction, context="Cache Command"):
             return
 
         try:
+            import time
             await interaction.response.defer(ephemeral=True)
             
             guild_id = str(interaction.guild.id)
+            start_time = time.time()
             
             # Step 1: Clear cached column mappings for this guild
             from integrations.sheet_detector import clear_cached_column_mapping
             await clear_cached_column_mapping(guild_id)
-            logging.info(f"Cleared cached column mappings for guild {guild_id}")
+            logger.info(f"Cleared cached column mappings for guild {guild_id}")
             
             # Step 2: Re-detect column mappings from the sheet
             from integrations.sheet_detector import ensure_column_mappings_initialized
             mappings_detected = await ensure_column_mappings_initialized(guild_id)
             
             if not mappings_detected:
-                logging.warning(f"Failed to re-detect column mappings for guild {guild_id}")
+                logger.warning(f"Failed to re-detect column mappings for guild {guild_id}")
             
-            # Step 3: Refresh user data cache from the sheet
-            await refresh_sheet_cache(force=True)
-            logging.info(f"Refreshed user data cache for guild {guild_id}")
+            # Step 3: Refresh user data cache from the sheet (includes role sync)
+            total_changes, total_users = await refresh_sheet_cache(bot=interaction.client, force=True)
+            logger.info(f"Refreshed user data cache for guild {guild_id}")
             
-            # Step 4: Get the detected mappings for reporting
+            # Step 4: Update unified channel embed
+            from core.components_traditional import update_unified_channel
+            ui_updated = await update_unified_channel(interaction.guild)
+            
+            # Step 5: Get the detected mappings for reporting
             from integrations.sheet_detector import get_column_mapping
             try:
                 mapping = await get_column_mapping(guild_id)
@@ -354,31 +360,52 @@ def register(gal: app_commands.Group) -> None:
                 
                 column_info = "\n• " + "\n• ".join(detected_columns) if detected_columns else "No columns detected"
                 
-                logging.info(f"Detected columns for guild {guild_id}: {', '.join(detected_columns)}")
+                logger.info(f"Detected columns for guild {guild_id}: {', '.join(detected_columns)}")
                 
             except Exception as mapping_error:
-                logging.error(f"Error getting column mapping for guild {guild_id}: {mapping_error}")
+                logger.error(f"Error getting column mapping for guild {guild_id}: {mapping_error}")
                 column_info = "Error getting column info"
             
-            # Provide detailed feedback based on results
-            if mappings_detected:
-                await interaction.followup.send(
-                    "✅ **Complete cache refresh successful:**\n\n"
-                    "• Column mappings re-detected and updated\n"
-                    "• User data refreshed from Google Sheet\n"
-                    "• Cache cleared and rebuilt\n\n"
-                    f"**Detected columns:**{column_info}",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.followup.send(
-                    "⚠️ **Cache refresh completed with issues:**\n\n"
-                    "• User data refreshed from Google Sheet\n"
-                    "• Column mapping re-detection had problems\n"
-                    "• Check the logs for details\n\n"
-                    f"**Current columns:**{column_info}",
-                    ephemeral=True,
-                )
+            # Build comprehensive embed response
+            elapsed = time.time() - start_time
+            
+            embed = discord.Embed(
+                title="🔄 Cache Refresh Complete",
+                description=f"✅ Full system refresh completed in **{elapsed:.2f}s**",
+                color=discord.Color.green()
+            )
+            
+            embed.add_field(
+                name="📊 User Data Cache",
+                value=f"• Updated **{total_changes}** changes\n• Total users: **{total_users}**",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📋 Column Detection",
+                value=column_info,
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🔐 Role Synchronization",
+                value="✅ Discord roles synced with sheet data",
+                inline=False
+            )
+            
+            embed.add_field(
+                name="🎨 UI Update",
+                value=f"{'✅ Unified channel updated' if ui_updated else '⚠️ UI update failed'}",
+                inline=False
+            )
+            
+            # Add status indicator at the bottom
+            status_emoji = "✅" if mappings_detected and ui_updated else "⚠️"
+            status_text = "All systems operational" if mappings_detected and ui_updated else "Some issues detected"
+            
+            embed.set_footer(text=f"{status_emoji} {status_text}")
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
                 
         except Exception as exc:
             await handle_command_exception(interaction, exc, "Cache Command")

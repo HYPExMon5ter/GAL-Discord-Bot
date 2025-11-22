@@ -496,12 +496,12 @@ class DashboardManager:
 
     async def _start_frontend_service(self) -> bool:
         """
-        Start the Next.js frontend service.
+        Start the Next.js frontend service in production mode.
         
         Returns:
             True if frontend started successfully, False otherwise.
         """
-        logger.info("Starting Next.js frontend...")
+        logger.info("Starting Next.js frontend (production mode)...")
         
         frontend_dir = self.project_root / "dashboard"
         if not frontend_dir.exists():
@@ -509,44 +509,42 @@ class DashboardManager:
             return False
 
         try:
-            # Check if node_modules exists
-            node_modules = frontend_dir / "node_modules"
-            if not node_modules.exists():
-                logger.info("Installing frontend dependencies...")
-                install_cmd = "npm install"
+            # Check if production build exists
+            next_build_dir = frontend_dir / ".next"
+            if not next_build_dir.exists():
+                logger.warning("Production build not found - falling back to development mode")
+                logger.info("💡 To fix this, run 'npm run build' in the dashboard directory or deploy with Docker")
+                
+                # Fall back to development mode
                 if sys.platform == "win32":
-                    install_result = subprocess.run(
-                        install_cmd,
+                    cmd_str = "npm run dev"
+                    self.frontend_process = subprocess.Popen(
+                        cmd_str,
                         shell=True,
                         cwd=str(frontend_dir),
-                        capture_output=True,
-                        text=True
+                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
                     )
                 else:
-                    install_result = subprocess.run(
-                        ["npm", "install"], 
-                        cwd=str(frontend_dir),
-                        capture_output=True,
-                        text=True
+                    self.frontend_process = subprocess.Popen(
+                        ["npm", "run", "dev"],
+                        cwd=str(frontend_dir)
                     )
-                if install_result.returncode != 0:
-                    logger.error(f"Failed to install dependencies: {install_result.stderr}")
-                    return False
-
-            # Start the development server
-            if sys.platform == "win32":
-                cmd_str = "npm run dev"
-                self.frontend_process = subprocess.Popen(
-                    cmd_str,
-                    shell=True,
-                    cwd=str(frontend_dir),
-                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
-                )
             else:
-                self.frontend_process = subprocess.Popen(
-                    ["npm", "run", "dev"],
-                    cwd=str(frontend_dir)
-                )
+                # Production build exists - use production mode
+                logger.info("Starting Next.js in production mode...")
+                if sys.platform == "win32":
+                    cmd_str = "npm start"
+                    self.frontend_process = subprocess.Popen(
+                        cmd_str,
+                        shell=True,
+                        cwd=str(frontend_dir),
+                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+                    )
+                else:
+                    self.frontend_process = subprocess.Popen(
+                        ["npm", "start"],
+                        cwd=str(frontend_dir)
+                    )
 
             # Try to find the actual Node.js process (not cmd.exe on Windows)
             actual_pid = self._find_actual_service_pid(self.frontend_process.pid, "node.exe")
@@ -557,7 +555,9 @@ class DashboardManager:
             with open(self.frontend_pid_file, 'w') as f:
                 f.write(str(actual_pid or self.frontend_process.pid))
 
-            logger.info(f"Frontend service started (PID: {self.frontend_process.pid}, actual: {actual_pid})")
+            mode = "production" if next_build_dir.exists() else "development"
+            logger.info(f"Frontend service started in {mode} mode (PID: {self.frontend_process.pid}, actual: {actual_pid})")
+            logger.info(f"📊 Dashboard URL: http://localhost:{self.frontend_port}")
             return True
 
         except Exception as e:

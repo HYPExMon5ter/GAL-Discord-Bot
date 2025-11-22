@@ -289,7 +289,10 @@ def get_sheet_url_for_environment(mode: str) -> str:
     Get the appropriate sheet URL based on environment (dev/prod).
     Supports both old format (sheet_url) and new format (sheet_url_prod/dev).
     """
-    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    # Support multiple common Railway production environment names
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    is_production = railway_env in production_names
     dev_guild_id = os.getenv("DEV_GUILD_ID")
 
     settings = get_sheet_settings(mode)
@@ -479,7 +482,9 @@ def merge_config_on_deployment():
     import os
 
     # Only run in production
-    if os.getenv("RAILWAY_ENVIRONMENT_NAME") != "production":
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    if railway_env not in production_names:
         return
 
     try:

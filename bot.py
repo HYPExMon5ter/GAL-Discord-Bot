@@ -449,6 +449,15 @@ class GALBot(commands.Bot):
 
     async def _setup_dashboard_services(self):
         """Setup and start dashboard services during bot initialization."""
+        import os
+        
+        # Check if dashboard should be enabled
+        enable_dashboard = os.getenv("ENABLE_DASHBOARD", "false").lower() == "true"
+        
+        if not enable_dashboard:
+            logging.info("Dashboard services disabled - set ENABLE_DASHBOARD=true to enable")
+            return
+            
         try:
             # Import here to avoid circular imports
             from services.dashboard_manager import start_dashboard_services

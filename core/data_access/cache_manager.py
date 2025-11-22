@@ -17,11 +17,8 @@ import hashlib
 import pickle
 from abc import ABC, abstractmethod
 
-try:
-    import redis.asyncio as redis
-    REDIS_AVAILABLE = True
-except ImportError:
-    REDIS_AVAILABLE = False
+# Redis support removed - using in-memory caching only
+REDIS_AVAILABLE = False
 
 
 class CacheLevel(Enum):
@@ -272,175 +269,6 @@ class MemoryCache:
             }
 
 
-class RedisCache:
-    """Redis-based cache implementation."""
-    
-    def __init__(self, 
-                 redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379"),
-                 default_ttl: timedelta = timedelta(minutes=5),
-                 key_prefix: str = "gal_cache:"):
-        """
-        Initialize Redis cache.
-        
-        Args:
-            redis_url: Redis connection URL
-            default_ttl: Default time-to-live
-            key_prefix: Prefix for all cache keys
-        """
-        if not REDIS_AVAILABLE:
-            raise ImportError("redis package is required for RedisCache")
-        
-        self.redis_url = redis_url
-        self.default_ttl = default_ttl
-        self.key_prefix = key_prefix
-        self._client: Optional[redis.Redis] = None
-        self.logger = logging.getLogger("RedisCache")
-    
-    async def connect(self) -> None:
-        """Connect to Redis."""
-        try:
-            self._client = redis.from_url(self.redis_url)
-            await self._client.ping()
-            self.logger.info("Connected to Redis cache")
-        except Exception as e:
-            self.logger.error(f"Failed to connect to Redis: {e}")
-            raise
-    
-    async def disconnect(self) -> None:
-        """Disconnect from Redis."""
-        if self._client:
-            await self._client.close()
-            self._client = None
-    
-    def _make_key(self, key: str) -> str:
-        """Create a namespaced key."""
-        return f"{self.key_prefix}{key}"
-    
-    async def get(self, key: str) -> Optional[Any]:
-        """
-        Get a value from Redis cache.
-        
-        Args:
-            key: Cache key
-            
-        Returns:
-            Cached value or None
-        """
-        if not self._client:
-            await self.connect()
-        
-        try:
-            redis_key = self._make_key(key)
-            data = await self._client.get(redis_key)
-            
-            if data:
-                return pickle.loads(data)
-            return None
-        except Exception as e:
-            self.logger.error(f"Redis get error for key {key}: {e}")
-            return None
-    
-    async def set(self, 
-                  key: str, 
-                  value: Any, 
-                  ttl: Optional[timedelta] = None,
-                  tags: Optional[List[str]] = None) -> None:
-        """
-        Set a value in Redis cache.
-        
-        Args:
-            key: Cache key
-            value: Value to cache
-            ttl: Time-to-live
-            tags: Cache tags (stored as metadata)
-        """
-        if not self._client:
-            await self.connect()
-        
-        try:
-            redis_key = self._make_key(key)
-            data = pickle.dumps(value)
-            cache_ttl = ttl or self.default_ttl
-            
-            # Store the data
-            await self._client.setex(redis_key, cache_ttl, data)
-            
-            # Store tags if provided
-            if tags:
-                tags_key = f"{redis_key}:tags"
-                await self._client.setex(tags_key, cache_ttl, pickle.dumps(tags))
-                
-        except Exception as e:
-            self.logger.error(f"Redis set error for key {key}: {e}")
-    
-    async def delete(self, key: str) -> bool:
-        """
-        Delete a key from Redis cache.
-        
-        Args:
-            key: Cache key
-            
-        Returns:
-            True if key was deleted
-        """
-        if not self._client:
-            await self.connect()
-        
-        try:
-            redis_key = self._make_key(key)
-            tags_key = f"{redis_key}:tags"
-            
-            # Delete both data and tags
-            await self._client.delete(redis_key, tags_key)
-            return True
-        except Exception as e:
-            self.logger.error(f"Redis delete error for key {key}: {e}")
-            return False
-    
-    async def delete_pattern(self, pattern: str) -> int:
-        """
-        Delete keys matching a pattern.
-        
-        Args:
-            pattern: Pattern to match
-            
-        Returns:
-            Number of keys deleted
-        """
-        if not self._client:
-            await self.connect()
-        
-        try:
-            redis_pattern = self._make_key(pattern)
-            keys = await self._client.keys(redis_pattern)
-            
-            if keys:
-                # Also delete tag keys
-                tag_keys = [f"{key.decode()}:tags" for key in keys]
-                all_keys = keys + tag_keys
-                return await self._client.delete(*all_keys)
-            
-            return 0
-        except Exception as e:
-            self.logger.error(f"Redis delete pattern error for pattern {pattern}: {e}")
-            return 0
-    
-    async def clear(self) -> None:
-        """Clear all cache entries with this prefix."""
-        if not self._client:
-            await self.connect()
-        
-        try:
-            pattern = self._make_key("*")
-            keys = await self._client.keys(pattern)
-            
-            if keys:
-                await self._client.delete(*keys)
-                
-        except Exception as e:
-            self.logger.error(f"Redis clear error: {e}")
-
-
 class CacheManager:
     """
     Multi-level cache manager.
@@ -466,16 +294,7 @@ class CacheManager:
             default_ttl=timedelta(minutes=self.config.get("memory_ttl_minutes", 5))
         )
         
-        self.redis_cache = None
-        if self.config.get("redis_enabled", False) and REDIS_AVAILABLE:
-            try:
-                self.redis_cache = RedisCache(
-                    redis_url=self.config.get("redis_url", os.getenv("REDIS_URL", "redis://localhost:6379")),
-                    default_ttl=timedelta(minutes=self.config.get("redis_ttl_minutes", 15)),
-                    key_prefix=self.config.get("redis_key_prefix", "gal_cache:")
-                )
-            except Exception as e:
-                self.logger.warning(f"Redis cache initialization failed: {e}")
+        # Redis support removed - using in-memory caching only
         
         # Cache strategies
         self.strategies: Dict[str, CacheStrategy] = {}
@@ -508,7 +327,7 @@ class CacheManager:
     
     async def get(self, key: str) -> Optional[Any]:
         """
-        Get a value from cache (tries memory first, then Redis).
+        Get a value from cache (memory only).
         
         Args:
             key: Cache key
@@ -516,20 +335,8 @@ class CacheManager:
         Returns:
             Cached value or None
         """
-        # Try memory cache first
-        value = await self.memory_cache.get(key)
-        if value is not None:
-            return value
-        
-        # Try Redis cache
-        if self.redis_cache:
-            value = await self.redis_cache.get(key)
-            if value is not None:
-                # Populate memory cache
-                await self.memory_cache.set(key, value)
-                return value
-        
-        return None
+        # Memory cache only
+        return await self.memory_cache.get(key)
     
     async def set(self, 
                   key: str, 
@@ -538,7 +345,7 @@ class CacheManager:
                   tags: Optional[List[str]] = None,
                   data_type: Optional[str] = None) -> None:
         """
-        Set a value in all available cache levels.
+        Set a value in memory cache only.
         
         Args:
             key: Cache key
@@ -547,34 +354,24 @@ class CacheManager:
             tags: Cache tags
             data_type: Type of data for strategy selection
         """
-        # Set in memory cache
+        # Set in memory cache only
         await self.memory_cache.set(key, value, ttl, tags)
-        
-        # Set in Redis cache if available
-        if self.redis_cache:
-            await self.redis_cache.set(key, value, ttl, tags)
     
     async def delete(self, key: str) -> bool:
         """
-        Delete a key from all cache levels.
+        Delete a key from memory cache only.
         
         Args:
             key: Cache key
             
         Returns:
-            True if key was deleted from any level
+            True if key was deleted
         """
-        memory_deleted = await self.memory_cache.delete(key)
-        redis_deleted = False
-        
-        if self.redis_cache:
-            redis_deleted = await self.redis_cache.delete(key)
-        
-        return memory_deleted or redis_deleted
+        return await self.memory_cache.delete(key)
     
     async def delete_pattern(self, pattern: str) -> int:
         """
-        Delete keys matching a pattern from all cache levels.
+        Delete keys matching a pattern from memory cache only.
         
         Args:
             pattern: Pattern to match
@@ -582,13 +379,7 @@ class CacheManager:
         Returns:
             Total number of keys deleted
         """
-        memory_deleted = await self.memory_cache.delete_pattern(pattern)
-        redis_deleted = 0
-        
-        if self.redis_cache:
-            redis_deleted = await self.redis_cache.delete_pattern(pattern)
-        
-        return memory_deleted + redis_deleted
+        return await self.memory_cache.delete_pattern(pattern)
     
     async def delete_by_tags(self, tags: List[str]) -> int:
         """
@@ -606,32 +397,14 @@ class CacheManager:
     async def clear(self) -> None:
         """Clear all cache entries."""
         await self.memory_cache.clear()
-        
-        if self.redis_cache:
-            await self.redis_cache.clear()
     
     async def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive cache statistics."""
         stats = {
             "timestamp": utcnow().isoformat(),
             "memory_cache": await self.memory_cache.get_stats(),
-            "redis_cache": None
+            "redis_cache": {"status": "removed", "reason": "Redis support removed - using memory-only caching"}
         }
-        
-        if self.redis_cache:
-            try:
-                # Basic Redis stats
-                info = await self.redis_cache._client.info()
-                stats["redis_cache"] = {
-                    "connected": True,
-                    "memory_used": info.get("used_memory_human"),
-                    "connected_clients": info.get("connected_clients"),
-                    "total_commands_processed": info.get("total_commands_processed")
-                }
-            except Exception as e:
-                stats["redis_cache"] = {"connected": False, "error": str(e)}
-        else:
-            stats["redis_cache"] = {"connected": False, "reason": "Redis not available"}
         
         return stats
     
@@ -656,7 +429,6 @@ class CacheManager:
             except asyncio.CancelledError:
                 pass
         
-        if self.redis_cache:
-            await self.redis_cache.disconnect()
+        # Redis support removed - no disconnect needed
         
         self.logger.info("Cache manager shutdown complete")

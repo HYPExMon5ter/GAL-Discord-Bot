@@ -16,14 +16,19 @@ class EnvironmentHelper:
         Returns:
             Tuple of (is_production, dev_guild_id)
         """
-        is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+        # Support multiple common Railway production environment names
+        production_names = ["production", "main", "prod"]
+        railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+        is_production = railway_env in production_names
         dev_guild_id = os.getenv("DEV_GUILD_ID")
         return is_production, dev_guild_id
 
     @staticmethod
     def is_production() -> bool:
         """Check if running in production environment."""
-        return os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+        production_names = ["production", "main", "prod"]
+        railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+        return railway_env in production_names
 
     @staticmethod
     def get_environment_type() -> str:

@@ -9,7 +9,7 @@ import re
 from typing import Dict, Optional, Tuple, Any, List
 from datetime import datetime, timedelta
 import aiohttp
-import redis.asyncio as redis
+# Redis support removed - using in-memory caching only
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -44,17 +44,16 @@ class IGNVerificationService:
     Includes caching, rate limiting, and graceful error handling.
     """
 
-    def __init__(self, riot_api_key: str, redis_url: str = "redis://localhost:6379"):
+    def __init__(self, riot_api_key: str):
         """
         Initialize IGN verification service.
         
         Args:
             riot_api_key: Riot Games API key
-            redis_url: Redis connection URL for caching
         """
         self.riot_api_key = riot_api_key
-        self.redis_url = redis_url
-        self.redis_client: Optional[redis.Redis] = None
+        # Redis support removed - using in-memory caching only
+        self._in_memory_cache: Dict[str, Tuple[IGNVerificationResult, datetime]] = {}
         self.cache_ttl = timedelta(hours=1)  # Cache results for 1 hour
         self.rate_limit_per_minute = 100
         self.rate_limit_per_second = 20
@@ -68,26 +67,14 @@ class IGNVerificationService:
 
     async def initialize(self) -> bool:
         """
-        Initialize the service (Redis connection, etc.).
+        Initialize the service (in-memory caching only).
         
         Returns:
             True if initialization successful, False otherwise.
         """
-        try:
-            # Initialize Redis connection
-            self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
-            
-            # Test Redis connection
-            await self.redis_client.ping()
-            logger.info("IGN verification service initialized successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize IGN verification service: {e}")
-            # Continue without Redis (in-memory fallback)
-            self.redis_client = None
-            logger.warning("IGN verification service continuing without Redis cache")
-            return True
+        # Redis support removed - using in-memory caching only
+        logger.info("IGN verification service initialized successfully (in-memory caching)")
+        return True
 
     async def verify_ign(self, ign: str, region: str = "na") -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
@@ -160,7 +147,7 @@ class IGNVerificationService:
 
     async def _get_cached_result(self, ign: str, region: str) -> Optional[VerificationCache]:
         """
-        Get cached verification result.
+        Get cached verification result from memory.
         
         Args:
             ign: IGN to lookup
@@ -169,39 +156,25 @@ class IGNVerificationService:
         Returns:
             Cached result if available and not expired, None otherwise
         """
-        if not self.redis_client:
-            return None
-
         try:
-            cache_key = f"ign_verification:{ign.lower()}:{region}"
-            cached_data = await self.redis_client.hgetall(cache_key)
+            cache_key = f"{ign.lower()}:{region}"
             
-            if not cached_data:
+            if cache_key not in self._in_memory_cache:
                 return None
 
+            result, cached_at = self._in_memory_cache[cache_key]
+            expires_at = cached_at + self.cache_ttl
+            
             # Check if cache is expired
-            expires_at = datetime.fromisoformat(cached_data.get('expires_at', ''))
             if datetime.now() > expires_at:
-                await self.redis_client.delete(cache_key)
+                del self._in_memory_cache[cache_key]
                 return None
-
-            # Reconstruct result
-            result = IGNVerificationResult(
-                is_valid=cached_data.get('is_valid') == 'true',
-                message=cached_data.get('message', ''),
-                riot_data=eval(cached_data.get('riot_data', '{}')) if cached_data.get('riot_data') else None,
-                summoner_id=cached_data.get('summoner_id'),
-                account_id=cached_data.get('account_id'),
-                puuid=cached_data.get('puuid'),
-                rank=cached_data.get('rank'),
-                level=int(cached_data.get('level', 0)) if cached_data.get('level') else None
-            )
 
             return VerificationCache(
                 ign=ign,
                 region=region,
                 result=result,
-                cached_at=datetime.fromisoformat(cached_data.get('cached_at')),
+                cached_at=cached_at,
                 expires_at=expires_at
             )
 
@@ -211,35 +184,19 @@ class IGNVerificationService:
 
     async def _cache_result(self, ign: str, region: str, result: IGNVerificationResult) -> None:
         """
-        Cache verification result.
+        Cache verification result in memory.
         
         Args:
             ign: IGN that was verified
             region: Region for the verification
             result: Verification result to cache
         """
-        if not self.redis_client:
-            return
-
         try:
-            cache_key = f"ign_verification:{ign.lower()}:{region}"
-            expires_at = datetime.now() + self.cache_ttl
-
-            cache_data = {
-                'is_valid': str(result.is_valid).lower(),
-                'message': result.message,
-                'riot_data': str(result.riot_data) if result.riot_data else '',
-                'summoner_id': result.summoner_id or '',
-                'account_id': result.account_id or '',
-                'puuid': result.puuid or '',
-                'rank': result.rank or '',
-                'level': str(result.level) if result.level else '',
-                'cached_at': datetime.now().isoformat(),
-                'expires_at': expires_at.isoformat()
-            }
-
-            await self.redis_client.hset(cache_key, mapping=cache_data)
-            await self.redis_client.expireat(cache_key, int(expires_at.timestamp()))
+            cache_key = f"{ign.lower()}:{region}"
+            cached_at = datetime.now()
+            
+            # Store in memory cache
+            self._in_memory_cache[cache_key] = (result, cached_at)
 
         except Exception as e:
             logger.error(f"Error caching result for {ign}: {e}")
@@ -450,33 +407,17 @@ class IGNVerificationService:
             Dictionary with verification statistics
         """
         try:
-            if not self.redis_client:
-                return {
-                    "total_cached": 0,
-                    "valid_cached": 0, 
-                    "expired_cached": 0,
-                    "recent_verifications": 0
-                }
-
-            # Count cached results
-            cache_keys = await self.redis_client.keys("ign_verification:*")
-            total_cached = len(cache_keys)
-            
+            total_cached = len(self._in_memory_cache)
             valid_cached = 0
             recent_verifications = 0
             now = datetime.now()
             
-            for key in cache_keys[:100]:  # Limit to avoid too many Redis calls
-                try:
-                    cached_data = await self.redis_client.hgetall(key)
-                    if cached_data.get('is_valid') == 'true':
-                        valid_cached += 1
-                        
-                    cached_at = datetime.fromisoformat(cached_data.get('cached_at', ''))
-                    if now - cached_at < timedelta(hours=24):
-                        recent_verifications += 1
-                except Exception:
-                    continue
+            for cache_key, (result, cached_at) in self._in_memory_cache.items():
+                if result.is_valid:
+                    valid_cached += 1
+                    
+                if now - cached_at < timedelta(hours=24):
+                    recent_verifications += 1
 
             return {
                 "total_cached": total_cached,
@@ -498,9 +439,9 @@ class IGNVerificationService:
         """
         Cleanup resources when service is shutting down.
         """
-        if self.redis_client:
-            await self.redis_client.close()
-            logger.info("IGN verification service cleanup completed")
+        # Redis support removed - just clear in-memory cache
+        self._in_memory_cache.clear()
+        logger.info("IGN verification service cleanup completed")
 
 
 # Global service instance
@@ -518,13 +459,12 @@ async def get_verification_service() -> Optional[IGNVerificationService]:
     return _verification_service
 
 
-async def initialize_verification_service(riot_api_key: str, redis_url: str = "redis://localhost:6379") -> bool:
+async def initialize_verification_service(riot_api_key: str) -> bool:
     """
     Initialize the global IGN verification service.
     
     Args:
         riot_api_key: Riot Games API key
-        redis_url: Redis connection URL
         
     Returns:
         True if initialization successful, False otherwise
@@ -536,7 +476,7 @@ async def initialize_verification_service(riot_api_key: str, redis_url: str = "r
         return False
     
     try:
-        _verification_service = IGNVerificationService(riot_api_key, redis_url)
+        _verification_service = IGNVerificationService(riot_api_key)
         success = await _verification_service.initialize()
         
         if success:

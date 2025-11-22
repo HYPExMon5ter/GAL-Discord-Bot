@@ -13,7 +13,7 @@ from core.events import EventBus, get_event_bus
 from core.models import Tournament, User
 
 # Setup components
-cache_manager = CacheManager(config={"redis_enabled": True})
+cache_manager = CacheManager(config={"redis_enabled": False})
 connection_manager = ConnectionManager()
 event_bus = get_event_bus()
 

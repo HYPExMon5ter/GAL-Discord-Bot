@@ -242,13 +242,47 @@ api/
 ## Deployment Configuration
 
 ### Environment Setup
-- Environment variables loaded from `.env.local`
-- Database connection configuration
-- Redis cache configuration
+- Environment variables loaded from `.env` and `.env.local` (parent directory)
+- Database connection configuration (SQLite for local, PostgreSQL for production)
+- In-memory caching configuration (Redis removed as of v2.0)
 - CORS and security settings
+- Dashboard control via environment variables
 - Logging and monitoring configuration
 
-**For Implementation Details**: See `api/main.py` for environment variable handling and configuration patterns
+### Environment Variables
+
+#### Required Variables
+```bash
+# Database Configuration
+DATABASE_URL=sqlite:///./dashboard/dashboard.db  # Local development
+DATABASE_URL=postgresql://...              # Production (Railway PostgreSQL)
+
+# Dashboard Control
+ENABLE_DASHBOARD=true                        # Enable/disable dashboard services
+
+# API Configuration
+RIOT_API_KEY=your_riot_api_key             # League of Legends IGN verification
+```
+
+#### Optional Variables
+```bash
+# Dashboard Authentication
+DASHBOARD_MASTER_PASSWORD=secure_password    # Dashboard login password
+
+# Frontend Configuration
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+NEXT_PUBLIC_APP_TITLE="GAL Live Graphics Dashboard"
+NODE_ENV=development                          # Node.js environment
+API_BASE_URL=http://localhost:8000
+```
+
+**Changes in v2.0**: 
+- **Redis Removed**: Redis caching replaced with in-memory caching for simpler deployment
+- **ENABLE_DASHBOARD**: New variable to control dashboard service startup
+- **Railway Support**: Optimized for Railway.com production deployment
+- **Security Updates**: Environment variable precedence updated for better configuration management
+
+**For Implementation Details**: See `api/dependencies.py` and `api/main.py` for environment variable handling and configuration patterns
 
 ## Graphics Service and JSON Serialization
 

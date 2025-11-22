@@ -1,0 +1,147 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python cache and artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv
+venv/
+env/
+ENV/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+gal_bot.log
+
+# Testing and coverage
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Node.js (but keep package.json/package-lock.json)
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+dashboard/build/
+dashboard/.cache/
+dashboard/temp/
+dashboard/tmp/
+dashboard/*.tsbuildinfo
+
+# Development files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Factory AI
+.factory/
+.agent/
+
+# Database files (they should be mounted as volumes)
+*.db
+*.sqlite
+*.sqlite3
+dashboard.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Documentation (optional - remove if you want docs in container)
+README.md
+docs/
+*.md
+
+# Scripts that aren't needed in container
+scripts/
+
+# Testing files
+tests/
+test_*
+*_test.py
+
+# Development tools
+.ruff_cache/
+.mypy_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

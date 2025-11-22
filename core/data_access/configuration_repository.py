@@ -532,8 +532,12 @@ class ConfigurationRepository:
         Returns:
             Environment information dictionary
         """
+        # Support multiple common Railway production environment names
+        production_names = ["production", "main", "prod"]
+        railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+        
         return {
-            "is_production": os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production",
+            "is_production": railway_env in production_names,
             "dev_guild_id": os.getenv("DEV_GUILD_ID"),
             "database_url": "configured" if os.getenv("DATABASE_URL") else "not configured",
             "discord_token": "configured" if os.getenv("DISCORD_TOKEN") else "not configured"

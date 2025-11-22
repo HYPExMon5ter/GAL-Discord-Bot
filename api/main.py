@@ -154,10 +154,9 @@ async def startup_event():
     
     # Initialize IGN verification service
     riot_api_key = os.getenv("RIOT_API_KEY")
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
     
     if riot_api_key:
-        success = await initialize_verification_service(riot_api_key, redis_url)
+        success = await initialize_verification_service(riot_api_key)
         if success:
             logger.info("✅ IGN verification service initialized")
         else:

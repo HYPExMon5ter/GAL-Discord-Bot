@@ -36,7 +36,7 @@ onboard:
       description: |
         Congratulations! Your onboarding has been approved. 🌸
         
-        You've been assigned the **Angels** role and now have full access to our community. Feel free to introduce yourself in the welcome channel and join our events!
+        You've been assigned the **Angels** role and now have full access to our community. Feel free to introduce yourself in https://discord.com/channels/716787949584515102/1243138004709670972 and join our events in https://discord.com/channels/716787949584515102/1387614581794537652!
         
         We're so glad to have you as part of our community. Welcome home, Angel! 💜
       color: '#27ae60'
@@ -46,7 +46,7 @@ onboard:
       description: |
         Thank you for your interest in Guardian Angel League. After careful review, we're unable to approve your onboarding application at this time.
         
-        You've been assigned the **Supporter** role, which provides limited access to our community. We appreciate your understanding and welcome you to stay connected with our events and streams.
+        You've been assigned the **Supporter** role, which provides limited access to our community. Feel free to introduce yourself in https://discord.com/channels/716787949584515102/1243138004709670972. We appreciate your understanding and welcome you to stay connected with our events and streams.
       color: '#e74c3c'
 
     already_approved:
@@ -103,7 +103,7 @@ rich_presence:
   message: 🛡️ TFT                          # Status message displayed on Discord
 
 # Bot performance settings
-cache_refresh_seconds: 600                 # Cache refresh interval in seconds (10 minutes)
+cache_refresh_seconds: 300                 # Cache refresh interval in seconds (10 minutes)
 
 # =============================================================================
 # EMBED MESSAGES CONFIGURATION

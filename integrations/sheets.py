@@ -574,6 +574,7 @@ async def cache_refresh_loop(bot):
     """Background task to refresh cache periodically."""
     # Get initial refresh interval from config
     from config import _FULL_CFG
+    from core.components_traditional import update_unified_channel
     cache_refresh_seconds = _FULL_CFG.get("cache_refresh_seconds", 600)
 
     # Wait for the initial refresh interval before starting
@@ -584,10 +585,18 @@ async def cache_refresh_loop(bot):
 
     while True:
         try:
-            # Process each guild separately to update unified channels
+            # Refresh cache for all guilds first
+            await refresh_sheet_cache(bot=bot, force=True)
+            
+            # Update unified channel for each guild after cache refresh
             for guild in bot.guilds:
-                await refresh_sheet_cache(bot=bot, force=True)
-            logger.debug("Periodic cache refresh completed")
+                try:
+                    await update_unified_channel(guild)
+                    logger.debug(f"Updated unified channel for guild {guild.name} after cache refresh")
+                except Exception as e:
+                    logger.error(f"Failed to update unified channel for guild {guild.name}: {e}")
+            
+            logger.debug("Periodic cache refresh and UI update completed")
             consecutive_errors = 0  # Reset on success
         except Exception as e:
             consecutive_errors += 1

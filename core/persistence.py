@@ -109,7 +109,10 @@ def get_db_connection():
 
 def load_persisted() -> Dict[str, Any]:
     """Load persisted data using unified storage service."""
-    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    # Support multiple common Railway production environment names
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    is_production = railway_env in production_names
     dev_guild_id = os.getenv("DEV_GUILD_ID")
 
     try:
@@ -155,7 +158,10 @@ def load_persisted() -> Dict[str, Any]:
 
 def save_persisted(data: Dict[str, Any]) -> None:
     """Save persisted data using unified storage service."""
-    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    # Support multiple common Railway production environment names
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    is_production = railway_env in production_names
     dev_guild_id = os.getenv("DEV_GUILD_ID")
 
     # If we're in dev mode with a production database URL, only save dev guild data
@@ -214,7 +220,10 @@ def set_persisted_msg(guild_id: Union[str, int], key: str, channel_id: int, msg_
     Store [channel_id, msg_id] for the given guild/key.
     """
     # Environment check to prevent dev from overwriting prod
-    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    # Support multiple common Railway production environment names
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    is_production = railway_env in production_names
     dev_guild_id = os.getenv("DEV_GUILD_ID")
     gid = str(guild_id)
 
@@ -266,7 +275,10 @@ def set_event_mode_for_guild(guild_id: Union[str, int], mode: str) -> None:
         raise ValueError(f"Invalid event mode: {mode}")
 
     # Environment check to prevent dev from overwriting prod
-    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    # Support multiple common Railway production environment names
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    is_production = railway_env in production_names
     dev_guild_id = os.getenv("DEV_GUILD_ID")
     gid = str(guild_id)
 
@@ -298,7 +310,10 @@ def set_schedule(guild_id: Union[str, int], key: str, dtstr: Optional[str]) -> N
     Set scheduled time for a specific key.
     """
     # Environment check to prevent dev from overwriting prod
-    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    # Support multiple common Railway production environment names
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    is_production = railway_env in production_names
     dev_guild_id = os.getenv("DEV_GUILD_ID")
     gid = str(guild_id)
 
@@ -391,7 +406,10 @@ def update_guild_data(guild_id: Union[str, int], data: Dict[str, Any]) -> None:
     Update guild data with new values.
     """
     # Environment check to prevent dev from overwriting prod
-    is_production = os.getenv("RAILWAY_ENVIRONMENT_NAME") == "production"
+    # Support multiple common Railway production environment names
+    production_names = ["production", "main", "prod"]
+    railway_env = os.getenv("RAILWAY_ENVIRONMENT_NAME")
+    is_production = railway_env in production_names
     dev_guild_id = os.getenv("DEV_GUILD_ID")
     gid = str(guild_id)
 

@@ -61,7 +61,7 @@ export function LockConflictDialog({
                 Lock expires in {formatExpirationTime(lock.expires_at)}
               </p>
               <p className="text-yellow-600">
-                You'll be able to edit once the lock expires or is released.
+                You&apos;ll be able to edit once the lock expires or is released.
               </p>
             </div>
           </div>

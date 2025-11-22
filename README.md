@@ -404,16 +404,136 @@ python -m pytest tests/integration/
 
 ## 🚀 Deployment
 
-### Production Deployment
-- Use Docker containers for consistent deployment
-- Environment-specific configuration management
-- Automated health checks and monitoring
-- Rolling updates with zero downtime
+### Railway Production Deployment (Recommended)
+
+The GAL Discord Bot is designed for Railway deployment with a unified container running both the bot and dashboard.
+
+#### Setup Instructions
+
+1. **Connect Repository to Railway**
+   ```bash
+   # Connect your GitHub repository to Railway
+   # Railway will automatically detect the Dockerfile
+   ```
+
+2. **Configure Environment Variables in Railway**
+   ```bash
+   # Required
+   DISCORD_TOKEN=your_discord_bot_token
+   APPLICATION_ID=your_discord_application_id
+   DATABASE_URL=your_production_database_url  # Railway PostgreSQL add-on
+   
+   # Optional
+   RIOT_API_KEY=your_riot_api_key_for_ign_verification
+   ENABLE_DASHBOARD=true  # Set to false to disable dashboard
+   DASHBOARD_MASTER_PASSWORD=your_secure_dashboard_password
+   
+   # Automatically set by Railway
+   RAILWAY_ENVIRONMENT_NAME=production
+   NODE_ENV=production
+   ```
+
+3. **Add Railway Services**
+   - **PostgreSQL Add-on**: For persistent data storage
+   - **Discord**: No add-on needed (bot connects directly)
+
+4. **Deploy**
+   - Railway will build using the multi-stage Dockerfile
+   - Bot starts automatically and registers Discord commands
+   - Dashboard becomes available at your Railway public URL
+
+#### Features in Railway
+- ✅ Multi-stage build (Node.js + Python)
+- ✅ Production Next.js dashboard (port 3000)
+- ✅ FastAPI backend (port 8000)  
+- ✅ Health checks and auto-restart
+- ✅ Redis-free (in-memory caching)
+- ✅ Zero-downtime deployments
+
+#### Architecture
+```
+Railway Container (Single Service)
+├── Discord Bot (Python)
+├── FastAPI Backend (Python, port 8000)
+└── Next.js Dashboard (Node.js, port 3000)
+```
+
+### Local Development
+
+#### Prerequisites
+- Python 3.12+
+- Node.js 18+
+- Docker (optional)
+
+#### Setup
+```bash
+# Clone and setup
+git clone <repository-url>
+cd New-GAL-Discord-Bot
+
+# Python environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# Frontend dependencies
+cd dashboard
+npm install
+cd ..
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your values
+```
+
+#### Update Dependencies & Security
+```bash
+# Update dashboard dependencies and fix security vulnerabilities
+# Linux/Mac:
+./update-dependencies.sh
+
+# Windows:
+update-dependencies.bat
+
+# Or manually:
+cd dashboard && npm update next eslint-config-next js-yaml && npm audit fix --force && cd ..
+```
+
+#### Build Dashboard (Required for Production)
+```bash
+# Build the Next.js dashboard once before running in production
+# Linux/Mac:
+./build-dashboard.sh
+
+# Windows:
+build-dashboard.bat
+
+# Or manually:
+cd dashboard && npm install && npm run build && cd ..
+```
+
+#### Running Services
+```bash
+# Option 1: Run all services together
+python bot.py  # This starts bot + dashboard if ENABLE_DASHBOARD=true
+# Note: Will auto-fallback to dev mode if dashboard not built
+
+# Option 2: Run separately
+# Terminal 1: API backend
+cd api && python -m uvicorn main:app --reload --port 8000
+
+# Terminal 2: Frontend  
+cd dashboard && npm run dev  # Dev mode
+# OR (after build): cd dashboard && npm start  # Production mode
+
+# Terminal 3: Discord bot
+python bot.py
+```
 
 ### Environment Configuration
-- **Development**: Local development with hot reload
-- **Staging**: Pre-production testing environment
-- **Production**: Live environment with monitoring
+- **Development**: `ENABLE_DASHBOARD=false`, hot reload enabled
+- **Staging**: Railway staging environment with test data
+- **Production**: Railway with PostgreSQL and full monitoring
 
 ## 🆘 Support
 

@@ -1,8 +1,8 @@
 ---
 id: system.dependencies
-version: 1.3
-last_updated: 2025-06-17
-tags: [dependencies, security-enhanced, current]
+version: 1.4
+last_updated: 2025-11-19
+tags: [dependencies, security-enhanced, current, redis-removed]
 ---
 
 # Dependencies and System Requirements
@@ -91,13 +91,20 @@ tags: [dependencies, security-enhanced, current]
   - Required for: Legacy API calls, external integrations
   - Features: Session management, retry logic
 
-## Optional Components
+## Caching & Performance
 
-### Caching
-- **redis** - In-memory data structure store
-  - Status: Configured but optional
-  - Purpose: Enhanced caching for high-load scenarios
-  - Current: File-based caching primarily used
+### Memory-Based Caching
+- **In-memory caching** - Built-in caching with TTL support
+  - Status: Primary caching method (Redis removed)
+  - Purpose: High-performance caching without external dependencies
+  - Features: Memory storage, TTL management, automatic cleanup
+  - Benefits: Simpler deployment, reduced complexity, zero external dependencies
+
+### Previous Redis Support (Removed)
+- **redis** - Previously used for distributed caching
+  - Status: **Removed as of v1.4** - migrated to in-memory caching
+  - Reason: Simplify deployment, reduce complexity, eliminate external dependencies
+  - Migration: All Redis functionality replaced with equivalent in-memory implementations
 
 ## Security & Performance
 

@@ -64,7 +64,7 @@ export function UnsavedChangesDialog({
           <div className="flex items-start gap-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
             <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
             <div className="text-sm text-orange-800">
-              If you don't save your changes, all modifications will be lost.
+              If you don&apos;t save your changes, all modifications will be lost.
             </div>
           </div>
 

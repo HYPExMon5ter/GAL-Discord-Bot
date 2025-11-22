@@ -187,7 +187,7 @@ export function EventSelector({
                 className="flex items-center px-2 py-1.5 text-sm cursor-pointer hover:bg-accent hover:text-accent-foreground text-primary transition-colors"
               >
                 <span className="mr-2">✨</span>
-                Create new: "{search}"
+                Create new: &quot;{search}&quot;
               </div>
             </div>
           )}
@@ -197,7 +197,7 @@ export function EventSelector({
       {/* Status messages */}
       {value && !events.includes(value) && (
         <p className="text-xs text-primary mt-1">
-          ✨ Creating new event: "{value}"
+          ✨ Creating new event: &quot;{value}&quot;
         </p>
       )}
     </div>

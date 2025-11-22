@@ -22,7 +22,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy only the API module
+# Copy all necessary modules for the API
 COPY --chown=gal:gal api/ ./api/
 COPY --chown=gal:gal core/ ./core/
 COPY --chown=gal:gal utils/ ./utils/

@@ -63,28 +63,30 @@ COPY --from=frontend-builder --chown=gal:gal /app/dashboard ./dashboard
 RUN mkdir -p /app/logs /app/storage /app/.dashboard && \
     chown -R gal:gal /app/logs /app/storage /app/.dashboard
 
-# Create startup script as root (will be owned by gal)
-RUN echo '#!/bin/sh\n\
-# Start the API server in background\n\
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 &\n\
-\n\
-# Wait for API to be ready\n\
-echo "Waiting for API to start..."\n\
-for i in $(seq 1 30); do\n\
-    if curl -f http://localhost:8000/health > /dev/null 2>&1; then\n\
-        echo "API is ready!"\n\
-        break\n\
-    fi\n\
-    echo "Attempt $i/30: API not ready yet"\n\
-    sleep 2\n\
-done\n\
-\n\
-# Start the bot\n\
-exec python bot.py' > /app/start.sh && chmod +x /app/start.sh && \
-    chown gal:gal /app/start.sh
-
 # Copy application code (excluding files in .dockerignore)
 COPY --chown=gal:gal . .
+
+# Create a simple startup script directly in Dockerfile
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'echo "Starting API server..."' >> /app/start.sh && \
+    echo 'python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 &' >> /app/start.sh && \
+    echo 'API_PID=$!' >> /app/start.sh && \
+    echo 'echo "Waiting for API to be ready..."' >> /app/start.sh && \
+    echo 'sleep 5' >> /app/start.sh && \
+    echo 'i=1' >> /app/start.sh && \
+    echo 'while [ $i -le 30 ]; do' >> /app/start.sh && \
+    echo '  if curl -f http://localhost:8000/health > /dev/null 2>&1; then' >> /app/start.sh && \
+    echo '    echo "API is ready!"' >> /app/start.sh && \
+    echo '    break' >> /app/start.sh && \
+    echo '  fi' >> /app/start.sh && \
+    echo '  echo "Attempt $i/30: API not ready yet, waiting..."' >> /app/start.sh && \
+    echo '  sleep 2' >> /app/start.sh && \
+    echo '  i=$((i+1))' >> /app/start.sh && \
+    echo 'done' >> /app/start.sh && \
+    echo 'echo "Starting Discord bot..."' >> /app/start.sh && \
+    echo 'exec python bot.py' >> /app/start.sh && \
+    chmod +x /app/start.sh && \
+    chown gal:gal /app/start.sh
 
 # Change to non-root user
 USER gal

@@ -27,6 +27,7 @@ PYTHONDONTWRITEBYTECODE = "1"
 [service]
 name = "gal-discord-bot"
 # Auto-assigns public URL
+port = 8000
 
 # Health check port (API backend)
 [service.healthcheck]

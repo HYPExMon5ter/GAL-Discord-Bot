@@ -66,13 +66,6 @@ RUN mkdir -p /app/logs /app/storage /app/.dashboard && \
 # Copy application code (excluding files in .dockerignore)
 COPY --chown=gal:gal . .
 
-# Install supervisor for process management
-RUN apt-get update && apt-get install -y supervisor && \
-    rm -rf /var/lib/apt/lists/* && apt-get clean
-
-# Create supervisor configuration
-RUN printf "[unix_http_server]\nfile=/tmp/supervisor.sock\n\n[supervisord]\nnodaemon=true\nlogfile=/dev/stdout\nlogfile_maxbytes=0\nloglevel=info\n\n[rpcinterface:supervisor]\nsupervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface\n\n[supervisorctl]\nserverurl=unix:///tmp/supervisor.sock\n\n[program:api]\ncommand=python -m uvicorn api.main:app --host 0.0.0.0 --port 8000\ndirectory=/app\nuser=gal\nautostart=true\nautorestart=true\nstdout_logfile=/dev/stdout\nstdout_logfile_maxbytes=0\nstderr_logfile=/dev/stderr\nstderr_logfile_maxbytes=0\n\n[program:bot]\ncommand=python bot.py\ndirectory=/app\nuser=gal\nautostart=true\nautorestart=true\nstdout_logfile=/dev/stdout\nstdout_logfile_maxbytes=0\nstderr_logfile=/dev/stderr\nstderr_logfile_maxbytes=0" > /etc/supervisor/conf.d/gal.conf
-
 # Change to non-root user
 USER gal
 
@@ -80,8 +73,8 @@ USER gal
 EXPOSE 3000 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command - starts supervisor which manages both services
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/gal.conf"]
+# Default command - start the bot which will start dashboard services
+CMD ["python", "bot.py"]

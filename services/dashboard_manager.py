@@ -555,7 +555,7 @@ class DashboardManager:
             with open(self.frontend_pid_file, 'w') as f:
                 f.write(str(actual_pid or self.frontend_process.pid))
 
-            mode = "production" if next_build_dir.exists() else "development"
+            mode = "production" if build_id_file.exists() else "development"
             logger.info(f"Frontend service started in {mode} mode (PID: {self.frontend_process.pid}, actual: {actual_pid})")
             logger.info(f"📊 Dashboard URL: http://localhost:{self.frontend_port}")
             return True

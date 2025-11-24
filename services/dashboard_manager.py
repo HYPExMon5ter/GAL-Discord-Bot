@@ -509,9 +509,9 @@ class DashboardManager:
             return False
 
         try:
-            # Check if production build exists
-            next_build_dir = frontend_dir / ".next"
-            if not next_build_dir.exists():
+            # Check if production build exists (verify BUILD_ID file exists)
+            build_id_file = frontend_dir / ".next" / "BUILD_ID"
+            if not build_id_file.exists():
                 logger.warning("Production build not found - falling back to development mode")
                 logger.info("💡 To fix this, run 'npm run build' in the dashboard directory or deploy with Docker")
                 

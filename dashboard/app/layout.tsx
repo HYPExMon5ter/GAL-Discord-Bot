@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Poppins } from 'next/font/google'
 import './globals.css'
+import { ThemeProvider } from 'next-themes'
 import { AuthProvider } from '@/hooks/use-auth'
 import { DashboardDataProvider } from '@/hooks/use-dashboard-data'
 import { Toaster } from '@/components/ui/sonner'
@@ -29,14 +30,16 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body className={poppins.className}>
-        <AuthProvider>
-          <DashboardDataProvider>
-            {children}
-            <Toaster duration={5000} />
-          </DashboardDataProvider>
-        </AuthProvider>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          <AuthProvider>
+            <DashboardDataProvider>
+              {children}
+              <Toaster duration={5000} />
+            </DashboardDataProvider>
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

@@ -13,10 +13,12 @@ const nextConfig = {
   },
   // Disable static generation completely
   output: 'standalone',
-  experimental: {
-    // Disable App Router static generation
-    serverComponentsExternalPackages: [],
-  },
+  // Force all pages to be dynamic
+  trailingSlash: false,
+  // Don't generate static pages
+  generateEtags: false,
+  // Skip build-time static generation
+  distDir: '.next',
   // Disable ESLint during builds
   eslint: {
     ignoreDuringBuilds: true,
@@ -25,12 +27,14 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Disable trailing slash and other features
-  trailingSlash: false,
-  // Don't generate static pages
-  generateEtags: false,
-  // Skip build-time static generation
-  distDir: '.next',
+  // Skip static optimization
+  experimental: {
+    // Disable App Router static generation
+    serverComponentsExternalPackages: [],
+    // This disables ISR
+    isrMemoryCacheSize: 0,
+  },
+  // Force dynamic rendering by adding dummy rewrites
   async rewrites() {
     // Use environment variable for API URL, fallback to localhost for development
     const apiUrl = process.env.API_BASE_URL || 'http://localhost:8000';

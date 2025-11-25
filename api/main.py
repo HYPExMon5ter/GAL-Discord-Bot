@@ -246,10 +246,17 @@ async def proxy_to_frontend(request: Request, path: str):
             )
             
             # Return the response from Next.js
+            # Filter out headers that cause encoding issues
+            excluded_headers = {'content-encoding', 'content-length', 'transfer-encoding'}
+            filtered_headers = {
+                k: v for k, v in response.headers.items() 
+                if k.lower() not in excluded_headers
+            }
+            
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=dict(response.headers)
+                headers=filtered_headers
             )
         except httpx.RequestError as e:
             logger.error(f"Error proxying request to Next.js: {e}")

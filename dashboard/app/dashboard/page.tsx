@@ -37,24 +37,22 @@ export default function DashboardPage() {
 
   // Create toolbar with navigation buttons
   const toolbar = (
-    <>
+    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
       <Button
         variant="ghost"
-        
         onClick={() => setActiveTab('graphics')}
-        className={`gal-button-tab ${activeTab === 'graphics' ? 'active' : ''}`}
+        className={`gal-button-tab ${activeTab === 'graphics' ? 'active' : ''} w-full sm:w-auto`}
       >
         Active Graphics
       </Button>
       <Button
         variant="ghost"
-        
         onClick={() => setActiveTab('archive')}
-        className={`gal-button-tab ${activeTab === 'archive' ? 'active' : ''}`}
+        className={`gal-button-tab ${activeTab === 'archive' ? 'active' : ''} w-full sm:w-auto`}
       >
         Archived Graphics
       </Button>
-    </>
+    </div>
   );
 
   return (

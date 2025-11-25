@@ -185,7 +185,7 @@ const GraphicsTableComponent = ({
             variant="ghost"
             size="sm"
             onClick={() => onView(graphic)}
-            className="h-7 w-7 p-0 text-gal-cyan hover:text-gal-cyan hover:bg-gal-cyan/10 gal-glow-cyan/30 hover:gal-glow-cyan"
+            className="h-7 w-7 p-0 text-gal-view hover:text-gal-view hover:bg-gal-view/10 gal-glow-view/30 hover:gal-glow-view"
             title="View in OBS"
           >
             <Eye className="h-3 w-3" />

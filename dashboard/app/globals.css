@@ -146,6 +146,10 @@
   box-shadow: 0 0 20px hsl(36 92% 56% / 0.3);
 }
 
+.gal-glow-view {
+  box-shadow: 0 0 20px hsl(145 47% 33% / 0.3);
+}
+
 .gal-gradient-primary {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
 }

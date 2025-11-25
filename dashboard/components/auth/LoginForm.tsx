@@ -52,16 +52,16 @@ export function LoginForm() {
             <img 
               src="/assets/GA_Logo_Transparent_Background_White_Text.png" 
               alt="Guardian Angel League Logo" 
-              className="w-32 h-32 rounded-xl gal-glow-primary object-cover"
+              className="w-24 h-24 sm:w-32 sm:h-32 rounded-xl gal-glow-primary object-cover"
             />
           </div>
-          <CardTitle className="text-4xl font-abrau font-bold text-gal-text-primary">
+          <CardTitle className="text-2xl sm:text-4xl font-abrau font-bold text-gal-text-primary">
             GUARDIAN ANGEL LEAGUE
           </CardTitle>
-          <CardDescription className="text-xl font-montserrat text-gal-text-secondary">
+          <CardDescription className="text-lg sm:text-xl font-montserrat text-gal-text-secondary">
             Live Graphics Dashboard
           </CardDescription>
-          <CardDescription className="text-base font-montserrat text-muted-foreground">
+          <CardDescription className="text-sm sm:text-base font-montserrat text-muted-foreground">
             Enter the master password to access the dashboard
           </CardDescription>
         </CardHeader>

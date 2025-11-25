@@ -70,6 +70,7 @@ const config = {
   			'gal-error': '#FF5F5F',
   			'gal-success': '#4EFFB0',
   			'gal-amber': '#F59E0B',
+  			'gal-view': '#2D7D46',  // Dark green for "View in OBS" icon
   			'gal-pastel-1': '#FFDCF2',
   			'gal-pastel-2': '#DEE4FF',
   			'gal-pastel-3': '#9AB6DD',

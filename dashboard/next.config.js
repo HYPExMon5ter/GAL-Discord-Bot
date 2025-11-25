@@ -1,18 +1,9 @@
-const path = require('path');
-const dotenv = require('dotenv');
-
-// Load environment variables from parent directory
-dotenv.config({ path: path.join(__dirname, '../.env') });
-dotenv.config({ path: path.join(__dirname, '../.env.local'), override: true });
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false, // Disable for production build
   images: {
     domains: ['localhost'],
   },
-  // Disable static generation completely
-  output: 'standalone',
   // Force all pages to be dynamic
   trailingSlash: false,
   // Don't generate static pages
@@ -31,8 +22,6 @@ const nextConfig = {
   experimental: {
     // Disable App Router static generation
     serverComponentsExternalPackages: [],
-    // This disables ISR
-    isrMemoryCacheSize: 0,
   },
   // Force dynamic rendering by adding dummy rewrites
   async rewrites() {

@@ -38,7 +38,7 @@ class DashboardManager:
         
         # Service configuration
         self.api_port = 8000
-        self.frontend_port = 3000
+        self.frontend_port = 8080  # Use port 8080 for Railway deployment
         self.health_check_interval = 30
         self.max_startup_attempts = 3
         

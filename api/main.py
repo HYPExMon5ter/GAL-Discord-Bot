@@ -8,11 +8,14 @@ CORS middleware, and includes all API routers.
 import os
 import sys
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urljoin
 
+import httpx
 import logging
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 # Add project root to Python path to ensure imports work correctly
@@ -211,6 +214,62 @@ app.include_router(websocket.router, prefix="/api/v1", tags=["websocket"])
 app.include_router(graphics.router, prefix="/api/v1", tags=["graphics"])
 app.include_router(standings.router, prefix="/api/v1", tags=["scoreboard"])
 app.include_router(ign_verification.router, prefix="/api/v1", tags=["ign-verification"])
+
+# Reverse proxy for Next.js frontend
+# All non-API routes will be proxied to Next.js running on port 8080
+API_PATHS = {
+    "/api/", "/auth/", "/health", "/docs", "/redoc", "/openapi.json"
+}
+
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def proxy_to_frontend(request: Request, path: str):
+    """
+    Proxy non-API requests to Next.js frontend
+    """
+    # Check if this is an API route that should not be proxied
+    if any(path.startswith(api_path.rstrip('/')) for api_path in API_PATHS):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"API endpoint not found: /{path}"
+        )
+    
+    # Build the target URL for Next.js
+    target_url = f"http://localhost:8080/{path}"
+    
+    # Handle query parameters
+    if request.query_params:
+        target_url += f"?{request.url.query}"
+    
+    # Get request body if present
+    body = await request.body()
+    
+    # Create headers for the proxied request
+    headers = dict(request.headers)
+    # Remove host header as it will conflict
+    headers.pop("host", None)
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            # Proxy the request to Next.js
+            response = await client.request(
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                content=body if body else None
+            )
+            
+            # Return the response from Next.js
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers)
+            )
+        except httpx.RequestError as e:
+            logger.error(f"Error proxying request to Next.js: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Frontend service unavailable"
+            )
 
 if __name__ == "__main__":
     uvicorn.run(

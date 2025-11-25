@@ -627,8 +627,8 @@ async def health_check():
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 return s.connect_ex(('localhost', port)) != 0
         
-        if check_port(8000) and check_port(3000):
-            logging.info("Dashboard ports 8000 and 3000 are available")
+        if check_port(8000) and check_port(8080):
+            logging.info("Dashboard ports 8000 and 8080 are available")
         else:
             health_status["errors"].append("Dashboard ports may be in use")
             

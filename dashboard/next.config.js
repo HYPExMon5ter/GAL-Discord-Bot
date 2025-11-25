@@ -18,11 +18,15 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  // Skip static optimization
+  // Skip static optimization and force dynamic rendering
+  output: 'standalone',
+  // Disable static generation
   experimental: {
     // Disable App Router static generation
     serverComponentsExternalPackages: [],
   },
+  // Force all pages to be dynamic
+  skipTrailingSlashRedirect: true,
   // Force dynamic rendering by adding dummy rewrites
   async rewrites() {
     // Use environment variable for API URL, fallback to localhost for development

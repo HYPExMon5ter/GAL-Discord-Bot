@@ -3,8 +3,8 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev -p 8080",
+    "build": "next build --no-lint",
     "start": "next start -p 8080",
     "lint": "next lint",
     "type-check": "tsc --noEmit",

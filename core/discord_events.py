@@ -54,6 +54,9 @@ async def schedule_system_open(
     if guild_id not in persisted:
         persisted[guild_id] = {}
 
+    # Check previous state BEFORE updating to prevent duplicate pings
+    was_already_open = persisted[guild_id].get(f"{system_type}_open", False)
+
     # Clear the schedule FIRST to prevent duplicate executions
     set_schedule(guild.id, f"{system_type}_open", None)
 
@@ -84,8 +87,9 @@ async def schedule_system_open(
             await log_channel.send(embed=embed)
 
     # Send role ping to unified channel (if enabled) - with spam prevention
+    # Only ping if this is a NEW opening (not already open)
     unified_channel = discord.utils.get(guild.text_channels, name=get_unified_channel_name())
-    if unified_channel:
+    if unified_channel and not was_already_open:
         roles_config = _FULL_CFG.get("roles", {})
         now_timestamp = discord.utils.utcnow().timestamp()
 

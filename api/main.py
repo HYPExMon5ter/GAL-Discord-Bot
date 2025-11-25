@@ -131,19 +131,6 @@ async def health_check():
         "version": "1.0.0"
     }
 
-# Root endpoint
-@app.get("/")
-async def root():
-    """
-    Root endpoint with API information
-    """
-    return {
-        "message": "Guardian Angel League - Live Graphics Dashboard API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
-    }
-
 
 @app.on_event("startup")
 async def startup_event():

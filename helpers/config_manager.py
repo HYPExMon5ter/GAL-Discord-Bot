@@ -102,5 +102,14 @@ class ConfigManager:
             for guild in bot.guilds:
                 guild_success = await setup_unified_channel(guild)
                 results["embeds_updated"][guild.name] = {"unified": guild_success}
+                
+                # Also update onboard channel if welcome message has changed
+                try:
+                    from core.onboard import setup_onboard_channel
+                    onboard_success = await setup_onboard_channel(guild, bot)
+                    results["embeds_updated"][guild.name]["onboard"] = onboard_success
+                except Exception as e:
+                    print(f"[CONFIG-RELOAD] Failed to update onboard channel for {guild.name}: {e}")
+                    results["embeds_updated"][guild.name]["onboard"] = False
 
         return results

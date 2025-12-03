@@ -22,7 +22,7 @@ onboard:
   embeds:
     main:
       title: 🌸 Welcome to Guardian Angel League!
-      description: We're an inclusive community focused on creating a safe space for everyone. Please complete our onboarding process before joining the community.
+      description: We're an inclusive community focused on creating a safe space for marginalized genders. Please complete our onboarding process before joining the community.
       footer: Thank you for being here 💜
       color: '#f8c8dc'
 

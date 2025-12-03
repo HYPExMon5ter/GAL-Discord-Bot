@@ -537,25 +537,43 @@ async def setup_onboard_channel(guild: discord.Guild, client: discord.Client = N
         logging.info(f"Onboard channels confirmed: main={main_channel.name}, review={review_channel.name}")
 
         # Check if main embed already exists
-        main_embed_exists = False
+        existing_embed_message = None
         logging.info(f"Checking for existing onboard embed in {main_channel.name}...")
         async for message in main_channel.history(limit=50):
             if (message.author.bot and message.embeds and
                 any("Welcome to Guardian Angel League" in embed.title for embed in message.embeds)):
-                main_embed_exists = True
+                existing_embed_message = message
                 logging.info("Main onboard embed already exists")
                 break
 
+        # Get current embed from config
+        current_embed = onboard_embed_from_cfg("main")
+        
         # Post main embed if it doesn't exist
-        if not main_embed_exists:
+        if not existing_embed_message:
             logging.info(f"Creating new onboard embed for {main_channel.name}...")
-            embed = onboard_embed_from_cfg("main")
             view = OnboardView(guild.id)
 
-            await main_channel.send(embed=embed, view=view)
+            await main_channel.send(embed=current_embed, view=view)
             logging.info(f"Posted main onboard embed to {main_channel.mention}")
         else:
-            logging.info(f"Onboard embed already exists in {main_channel.name}, skipping creation")
+            # Check if existing embed content matches current config
+            existing_embed = existing_embed_message.embeds[0]
+            
+            # Compare key fields that might change
+            needs_update = (
+                existing_embed.description != current_embed.description or
+                existing_embed.title != current_embed.title or
+                (existing_embed.footer.text if existing_embed.footer else None) != (current_embed.footer.text if current_embed.footer else None)
+            )
+            
+            if needs_update:
+                logging.info(f"Updating existing onboard embed with new config...")
+                view = OnboardView(guild.id)
+                await existing_embed_message.edit(embed=current_embed, view=view)
+                logging.info(f"Updated main onboard embed in {main_channel.mention}")
+            else:
+                logging.info(f"Onboard embed already exists in {main_channel.name} and is up to date")
 
         # Rebuild pending submissions from review channel history
         logging.info(f"Rebuilding pending submissions from {review_channel.name}...")

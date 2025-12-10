@@ -13,9 +13,14 @@ import sys
 import time
 from datetime import datetime
 from typing import Dict, List, Tuple
+from dotenv import load_dotenv
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Load environment variables from .env file
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(env_path)
 
 from integrations.riot_api import RiotAPI, RiotAPIError, RateLimitError
 from utils.logging_utils import SecureLogger

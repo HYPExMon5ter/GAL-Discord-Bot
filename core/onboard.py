@@ -355,25 +355,29 @@ class ApproveButton(discord.ui.Button):
                 await interaction.response.edit_message(embed=embed, view=view)
 
                 # Send DM to user
+                dm_sent = False
                 try:
                     dm_embed = onboard_embed_from_cfg("approved")
                     await member.send(embed=dm_embed)
+                    dm_sent = True
+                    logging.info(f"Sent approval DM to {member}")
                 except discord.Forbidden:
                     logging.warning(f"Could not DM approval to {member}")
 
-                # Log to bot log
-                log_channel = discord.utils.get(
-                    interaction.guild.text_channels,
-                    name=get_log_channel_name()
-                )
-                if log_channel:
-                    log_embed = discord.Embed(
-                        title="✅ Onboarding Approved",
-                        description=f"{member.mention} was approved for onboarding by {interaction.user.mention}",
-                        color=discord.Color.green(),
-                        timestamp=discord.utils.utcnow()
+                # Log to bot-log ONLY if DM failed
+                if not dm_sent:
+                    log_channel = discord.utils.get(
+                        interaction.guild.text_channels,
+                        name=get_log_channel_name()
                     )
-                    await log_channel.send(embed=log_embed)
+                    if log_channel:
+                        log_embed = discord.Embed(
+                            title="❌ DM Delivery Failed",
+                            description=f"Failed to send approval notification to {member.mention}. Please reach out to them directly.",
+                            color=discord.Color.orange(),
+                            timestamp=discord.utils.utcnow()
+                        )
+                        await log_channel.send(embed=log_embed)
 
                 logging.info(f"Approved onboarding for {member} by {interaction.user}")
 
@@ -467,26 +471,29 @@ class DenyButton(discord.ui.Button):
                 await interaction.response.edit_message(embed=embed, view=view)
 
                 # Send DM to user with customizable embed
+                dm_sent = False
                 try:
                     dm_embed = onboard_embed_from_cfg("denied")
                     await member.send(embed=dm_embed)
+                    dm_sent = True
                     logging.info(f"Sent denial DM to {member}")
                 except discord.Forbidden:
                     logging.warning(f"Could not DM denial to {member}")
 
-                # Log to bot log
-                log_channel = discord.utils.get(
-                    interaction.guild.text_channels,
-                    name=get_log_channel_name()
-                )
-                if log_channel:
-                    log_embed = discord.Embed(
-                        title="❌ Onboarding Denied",
-                        description=f"{member.mention} was denied onboarding by {interaction.user.mention}",
-                        color=discord.Color.red(),
-                        timestamp=discord.utils.utcnow()
+                # Log to bot-log ONLY if DM failed
+                if not dm_sent:
+                    log_channel = discord.utils.get(
+                        interaction.guild.text_channels,
+                        name=get_log_channel_name()
                     )
-                    await log_channel.send(embed=log_embed)
+                    if log_channel:
+                        log_embed = discord.Embed(
+                            title="❌ DM Delivery Failed",
+                            description=f"Failed to send rejection notification to {member.mention}. Please reach out to them directly.",
+                            color=discord.Color.orange(),
+                            timestamp=discord.utils.utcnow()
+                        )
+                        await log_channel.send(embed=log_embed)
 
                 logging.info(f"Denied onboarding for {member} by {interaction.user}")
 

@@ -821,8 +821,8 @@ class RegistrationModal(discord.ui.Modal):
         """Setup input fields dynamically based on configuration."""
         # In-Game Name
         self.ign_input = discord.ui.TextInput(
-            label="PBE In-Game Name",
-            placeholder="Enter your PBE IGN (Name#TAG)",
+            label="Tournament In-Game Name",
+            placeholder="Enter your Tournament IGN (Name#TAG)",
             required=True,
             default=default_ign or "",
             max_length=50
@@ -924,7 +924,7 @@ class RegistrationModal(discord.ui.Modal):
                 if name.strip()
             ]
 
-        # Only validate the PBE IGN (main field), skip main server IGN validation
+        # Only validate the Tournament IGN (main field), skip main server IGN validation
         all_igns_to_validate = [ign]
         
         # IGN Verification - check if ALL IGNs are valid with multi-region support
@@ -970,8 +970,8 @@ class RegistrationModal(discord.ui.Modal):
                     color=discord.Color.red()
                 )
                 error_embed.add_field(
-                    name="💡 PBE IGN Tips",
-                    value="• Use your global Riot ID (Name#TAG) that you use to log into PBE\n"
+                    name="💡 Tournament IGN Tips",
+                    value="• Use your global Riot ID (Name#TAG) that you use to log into tournaments\n"
                           "• This is the same account you use for regular League servers\n"
                           "• Make sure your tag is included (e.g., `Player#NA1`)\n"
                           "• Check your spelling carefully - this is your tournament account",

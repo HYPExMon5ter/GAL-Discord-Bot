@@ -341,3 +341,37 @@ embeds:
       reminder: ✉️ Send a DM reminder to all unchecked-in users.
       cache: 🔄 Re-cache the data from the sheet.
       onboard: 🌸 Manage the onboarding system (setup, stats, refresh).
+      poll: 📨 Send poll notifications to all Angels.
+
+# Poll notification system
+poll:
+  # DM embed configuration
+  dm_embed:
+    title: "# 🌟 Hello Angel!"
+    color: "#f8c8dc"  # GAL pink
+    
+    # Message sections
+    header: "### We need your input! 📊"
+    
+    body: |
+      Please take a moment to vote on when you'd like our next **Guardian Angel League** tournament to be held. Your schedule matters, and we want to pick the best time for everyone! 🏆
+    
+    how_to_vote:
+      title: "### 🔗 How to vote:"
+      content: "Click the **\"Go to Poll\"** button below to access the voting form. It only takes a few seconds! ⏱️"
+    
+    footer: "-# 💙 Thank you for helping make GAL tournaments even better!"
+    
+    # Button configuration
+    button:
+      label: "📊 Go to Poll"
+  
+  # Role to send DMs to
+  target_role: "Angels"
+  
+  # Batch processing settings
+  batch_size: 10  # Users per batch
+  batch_delay: 1.0  # Seconds between batches
+  
+  # Progress update frequency
+  progress_update_interval: 5  # Update every N users

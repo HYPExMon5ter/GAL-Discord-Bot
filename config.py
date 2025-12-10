@@ -566,4 +566,69 @@ async def export_configuration_enhanced(guild_id: str = None) -> Dict[str, Any]:
     }
 
 
+# Poll configuration functions
+def get_poll_config() -> Dict[str, Any]:
+    """Get poll notification configuration."""
+    global _FULL_CFG
+    if not _FULL_CFG:
+        _FULL_CFG = load_config()
+    
+    # Default poll configuration
+    default_poll_config = {
+        "dm_embed": {
+            "title": "🌟 Hello Angel!",
+            "color": "#f8c8dc",
+            "header": "We need your input! 🗳️",
+            "body": "Please take a moment to vote on when you'd like our next **Guardian Angel League** tournament to be held. Your schedule matters, and we want to pick the best time for everyone! 🏆",
+            "how_to_vote": {
+                "title": "🔗 How to vote:",
+                "content": "Click the **\"Go to Poll\"** button below to access the voting form. It only takes a few seconds! 😊"
+            },
+            "footer": "💙 Thank you for helping make GAL tournaments even better!",
+            "button": {
+                "label": "🗳️ Go to Poll",
+                "emoji": "🗳️"
+            }
+        },
+        "target_role": "Angels",
+        "batch_size": 10,
+        "batch_delay": 1.0,
+        "progress_update_interval": 5
+    }
+    
+    poll_config = _FULL_CFG.get("poll", {})
+    
+    # Merge with defaults
+    merged_config = default_poll_config.copy()
+    
+    # Deep merge dm_embed section
+    if "dm_embed" in poll_config:
+        merged_dm_embed = merged_config["dm_embed"].copy()
+        for key, value in poll_config["dm_embed"].items():
+            if key == "how_to_vote" and isinstance(value, dict):
+                if "how_to_vote" not in merged_dm_embed:
+                    merged_dm_embed["how_to_vote"] = {}
+                merged_dm_embed["how_to_vote"].update(value)
+            elif key == "button" and isinstance(value, dict):
+                if "button" not in merged_dm_embed:
+                    merged_dm_embed["button"] = {}
+                merged_dm_embed["button"].update(value)
+            else:
+                merged_dm_embed[key] = value
+        merged_config["dm_embed"] = merged_dm_embed
+    
+    # Merge other settings
+    for key, value in poll_config.items():
+        if key != "dm_embed":
+            merged_config[key] = value
+    
+    return merged_config
+
+
+def get_angel_role() -> str:
+    """Get the configured Angels role name."""
+    poll_config = get_poll_config()
+    return poll_config.get("target_role", "Angels")
+
+
 logging.info("Configuration loaded and validated successfully")

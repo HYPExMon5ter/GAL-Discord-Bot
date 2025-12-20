@@ -81,7 +81,7 @@ ping_user: <@162359821100646401>
 
 # Tournament settings
 tournament:
-  current_name: GALs Giving                # Current tournament name
+  current_name: Holidaze                   # Current tournament name
 
 # Google Sheets configuration
 sheet_configuration:
@@ -358,7 +358,7 @@ poll:
     
     how_to_vote:
       title: "### 🔗 How to vote:"
-      content: "Click the **\"Go to Poll\"** button below to access the voting form. It only takes a few seconds! ⏱️"
+      content: "Click the **\"Go to Poll\"** button below to access the voting form. It only takes a few seconds! ⏱️\n"
     
     footer: "-# 💙 Thank you for helping make GAL tournaments even better!"
     

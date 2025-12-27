@@ -19,6 +19,12 @@ from helpers.role_helpers import RoleManager
 from helpers.embed_helpers import log_error
 
 
+# Review embed accent colors
+REVIEW_COLOR_PENDING = discord.Color.from_str('#3498db')  # Blue
+REVIEW_COLOR_APPROVED = discord.Color.green()
+REVIEW_COLOR_DENIED = discord.Color.red()
+
+
 class OnboardView(discord.ui.View):
     """View with Start Onboarding button for the main channel."""
 
@@ -205,52 +211,53 @@ class OnboardModal(discord.ui.Modal):
                 logging.error(f"Review channel '{review_channel_name}' not found")
                 return
 
-            # Create review embed
-            embed = onboard_embed_from_cfg("review")
+            # Get the member for profile picture
+            member = interaction.user
+
+            # Create embed with proper header size
+            embed = discord.Embed(
+                title="📝 New Onboarding Submission",
+                color=REVIEW_COLOR_PENDING,
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
 
             # Add fields with submission data
-            embed.add_field(
-                name="👤 Name",
-                value=submission_data['name'],
-                inline=True
-            )
-            embed.add_field(
-                name="🔤 Pronouns",
-                value=submission_data['pronouns'],
-                inline=True
-            )
-            embed.add_field(
-                name="📱 Socials",
-                value=submission_data['socials'],
-                inline=False
-            )
+            embed.add_field(name="👤 Name", value=submission_data['name'], inline=False)
+            embed.add_field(name="🔤 Pronouns", value=submission_data['pronouns'], inline=False)
+            embed.add_field(name="📱 Socials", value=submission_data['socials'], inline=False)
 
-            if submission_data['how_heard']:
+            if submission_data.get('how_heard'):
                 embed.add_field(
                     name="📢 How they heard about us",
                     value=submission_data['how_heard'],
                     inline=False
                 )
 
-            if submission_data['about']:
+            if submission_data.get('about'):
                 embed.add_field(
                     name="📝 About them",
                     value=submission_data['about'],
                     inline=False
                 )
 
-            # Set footer with user info
-            embed.set_footer(
-                text=f"User: {submission_data['discord_tag']} ({submission_data['discord_id']})"
+            # Visual separator between submission data and requester info
+            embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+            # Requester field with clickable mention (footer doesn't support mentions)
+            embed.add_field(
+                name="👤 Requester",
+                value=f"{member.mention} ({member.name})",
+                inline=False
             )
 
-            # Add timestamp
-            embed.timestamp = discord.utils.utcnow()
+            # Create view with approve/deny buttons
+            view = ReviewView(
+                user_id=submission_data['discord_id'],
+                guild_id=submission_data['guild_id']
+            )
 
-            # Create review view with approve/deny buttons
-            view = ReviewView(submission_data['discord_id'], submission_data['guild_id'])
-
-            # Send to review channel
+            # Send to review channel (both embed and view)
             message = await review_channel.send(embed=embed, view=view)
 
             # Update submission data with message info
@@ -322,7 +329,7 @@ class ApproveButton(discord.ui.Button):
 
             user_id = view.user_id
 
-            # Get the member
+            # Get the member being approved
             member = interaction.guild.get_member(user_id)
             if not member:
                 await interaction.response.send_message(
@@ -331,7 +338,7 @@ class ApproveButton(discord.ui.Button):
                 )
                 return
 
-            # Remove from pending submissions
+            # Remove from pending submissions (returns submission data)
             submission_data = OnboardManager.remove_pending_submission(user_id)
 
             # Assign approval role
@@ -339,7 +346,7 @@ class ApproveButton(discord.ui.Button):
             success = await RoleManager.add_role(member, approval_role)
 
             if success:
-                # Update embed to show approved
+                # Update existing embed to show approved
                 embed = interaction.message.embeds[0]
                 embed.color = discord.Color.green()
                 embed.add_field(
@@ -364,20 +371,13 @@ class ApproveButton(discord.ui.Button):
                 except discord.Forbidden:
                     logging.warning(f"Could not DM approval to {member}")
 
-                # Log to bot-log ONLY if DM failed
+                # Log to bot-log ONLY if DM failed (with profile pic + mention)
                 if not dm_sent:
-                    log_channel = discord.utils.get(
-                        interaction.guild.text_channels,
-                        name=get_log_channel_name()
+                    await _send_dm_failure_log(
+                        interaction.guild,
+                        member,
+                        "approval"
                     )
-                    if log_channel:
-                        log_embed = discord.Embed(
-                            title="❌ DM Delivery Failed",
-                            description=f"Failed to send approval notification to {member.mention}. Please reach out to them directly.",
-                            color=discord.Color.orange(),
-                            timestamp=discord.utils.utcnow()
-                        )
-                        await log_channel.send(embed=log_embed)
 
                 logging.info(f"Approved onboarding for {member} by {interaction.user}")
 
@@ -438,7 +438,7 @@ class DenyButton(discord.ui.Button):
 
             user_id = view.user_id
 
-            # Get the member
+            # Get the member being denied
             member = interaction.guild.get_member(user_id)
             if not member:
                 await interaction.response.send_message(
@@ -447,7 +447,7 @@ class DenyButton(discord.ui.Button):
                 )
                 return
 
-            # Remove from pending submissions
+            # Remove from pending submissions (returns submission data)
             submission_data = OnboardManager.remove_pending_submission(user_id)
 
             # Assign denial role (Supporter)
@@ -455,7 +455,7 @@ class DenyButton(discord.ui.Button):
             success = await RoleManager.add_role(member, denial_role)
 
             if success:
-                # Update embed to show denied
+                # Update existing embed to show denied
                 embed = interaction.message.embeds[0]
                 embed.color = discord.Color.red()
                 embed.add_field(
@@ -480,20 +480,13 @@ class DenyButton(discord.ui.Button):
                 except discord.Forbidden:
                     logging.warning(f"Could not DM denial to {member}")
 
-                # Log to bot-log ONLY if DM failed
+                # Log to bot-log ONLY if DM failed (with profile pic + mention)
                 if not dm_sent:
-                    log_channel = discord.utils.get(
-                        interaction.guild.text_channels,
-                        name=get_log_channel_name()
+                    await _send_dm_failure_log(
+                        interaction.guild,
+                        member,
+                        "rejection"
                     )
-                    if log_channel:
-                        log_embed = discord.Embed(
-                            title="❌ DM Delivery Failed",
-                            description=f"Failed to send rejection notification to {member.mention}. Please reach out to them directly.",
-                            color=discord.Color.orange(),
-                            timestamp=discord.utils.utcnow()
-                        )
-                        await log_channel.send(embed=log_embed)
 
                 logging.info(f"Denied onboarding for {member} by {interaction.user}")
 
@@ -516,6 +509,45 @@ class DenyButton(discord.ui.Button):
                     )
             except Exception:
                 pass
+
+
+# Helper function for DM failure logging with profile picture
+async def _send_dm_failure_log(
+    guild: discord.Guild,
+    member: discord.Member,
+    notification_type: str
+) -> None:
+    """
+    Send a DM failure log message with the user's profile picture and mention.
+
+    Args:
+        guild: The guild where this occurred
+        member: The member whose DM failed
+        notification_type: Type of notification that failed (e.g., "approval", "rejection")
+    """
+    try:
+        log_channel = discord.utils.get(
+            guild.text_channels,
+            name=get_log_channel_name()
+        )
+        if not log_channel:
+            return
+
+        # Create embed with profile picture
+        embed = discord.Embed(
+            title="❌ DM Delivery Failed",
+            description=f"Failed to send {notification_type} notification to {member.mention}.\n"
+                       f"**Please reach out to them directly.**",
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"User: {member.name} ({member.id})")
+
+        await log_channel.send(embed=embed)
+
+    except Exception as e:
+        logging.error(f"Error sending DM failure log: {e}")
 
 
 # Main setup functions

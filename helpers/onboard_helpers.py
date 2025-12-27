@@ -48,6 +48,11 @@ class OnboardManager:
         return user_id in cls._pending_submissions
 
     @classmethod
+    def get_pending_submission(cls, user_id: int) -> Optional[Dict]:
+        """Get a user's pending submission."""
+        return cls._pending_submissions.get(user_id)
+
+    @classmethod
     def get_pending_submissions(cls) -> Dict[int, Dict]:
         """Get all pending submissions."""
         return cls._pending_submissions.copy()
@@ -303,14 +308,16 @@ async def rebuild_pending_submissions_from_history(review_channel: discord.TextC
             if (embed.title and "Onboarding Submission" in embed.title and
                 message.components):
 
-                # Extract user ID from embed footer or description
+                # Extract user ID from "Requester" field
                 user_id = None
-                if embed.footer and embed.footer.text:
-                    # Look for user ID in footer (format: "User: username (123456789)")
-                    import re
-                    match = re.search(r'\((\d+)\)', embed.footer.text)
-                    if match:
-                        user_id = int(match.group(1))
+                for field in embed.fields:
+                    if field.name == "👤 Requester":
+                        # Extract user ID from mention format: <@123456789>
+                        import re
+                        match = re.search(r'<@(\d+)>', field.value)
+                        if match:
+                            user_id = int(match.group(1))
+                            break
 
                 if user_id:
                     # Check if buttons are still active (not disabled)
@@ -321,6 +328,8 @@ async def rebuild_pending_submissions_from_history(review_channel: discord.TextC
                                 if hasattr(button, 'disabled') and not button.disabled:
                                     has_active_buttons = True
                                     break
+                        if has_active_buttons:
+                            break
 
                     if has_active_buttons:
                         # This is still a pending submission

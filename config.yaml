@@ -375,3 +375,59 @@ poll:
   
   # Progress update frequency
   progress_update_interval: 5  # Update every N users
+
+# =============================================================================
+# SCREENSHOT-BASED STANDINGS EXTRACTION SYSTEM
+# =============================================================================
+standings_screenshots:
+  enabled: true
+  
+  # Channel monitoring
+  monitor_channels:
+    - "tournament-standings"
+    - "lobby-results"
+  
+  # User confirmation (when screenshot detected)
+  confirmation_method: "reaction"   # Options: "reaction", "message", "both"
+  confirmation_reaction: "✅"       # Emoji to add as reaction
+  confirmation_message: "📸 Screenshot detected! Processing in {batch_window}s..."
+  
+  # Staff notifications
+  staff_notification_channel: "bot-admin"
+  notify_on_detection: true
+  notify_on_completion: true
+  notify_on_validation_needed: true
+  
+  # Batch processing
+  batch_window_seconds: 30          # Collect screenshots within 30s window
+  max_concurrent_processing: 4      # Process up to 4 images simultaneously
+  
+  # Classification settings (simplified - faster and more reliable)
+  classification_threshold: 0.60    # 60% confidence for basic validation
+  skip_classification: false        # Set to true to bypass classification for trusted channels
+  
+  # OCR Engine settings (PaddleOCR - single fast engine)
+  use_gpu: false                    # Set to true if GPU/CUDA available for 3-5x speedup
+  enable_roi_detection: false       # Disabled for speed (can enable if crop needed)
+  timeout_seconds: 30              # OCR timeout to prevent hanging
+  
+  # Accuracy settings
+  auto_validate_threshold: 0.85     # 85% overall confidence for auto-validation
+  player_match_threshold: 0.95      # 95% fuzzy match threshold
+  
+  # Validation
+  expected_lobbies: 4               # Number of lobbies per round
+  players_per_lobby: 8
+  strict_validation: true           # Require all validation checks
+  
+  # OCR preprocessing settings
+  preprocessing_passes: 3           # Number of preprocessing passes (3 = optimal for dark numbers)
+  allow_substitutes: false          # Allow players not in original roster
+  
+  # Manual editing
+  manual_review_ui_enabled: true
+  validation_dashboard_url: "/admin/placements"
+  
+  # Performance
+  image_cache_ttl_seconds: 3600     # Keep images cached for 1 hour
+  cleanup_processed_images: true    # Delete images after processing

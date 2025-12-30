@@ -41,6 +41,12 @@ CHARACTER_CONFUSIONS = {
 
 class OCRRPipeline:
     """Multi-pass OCR pipeline with ensemble approach."""
+    
+    # TFT placement points mapping
+    PLACEMENT_POINTS = {
+        1: 8, 2: 7, 3: 6, 4: 5,
+        5: 4, 6: 3, 7: 2, 8: 1
+    }
 
     def __init__(self):
         config = _FULL_CFG
@@ -104,6 +110,16 @@ class OCRRPipeline:
             img = cv2.imread(image_path)
             if img is None:
                 raise ValueError(f"Failed to read image: {image_path}")
+
+            # SCALE NORMALIZATION: Resize all images to standard size (865x1295)
+            # This ensures consistent OCR preprocessing across different screenshot resolutions
+            target_height = 865
+            target_width = 1295
+            current_height, current_width = img.shape[:2]
+            
+            if current_height != target_height or current_width != target_width:
+                log.info(f"Resizing image from {current_width}x{current_height} to {target_width}x{target_height}")
+                img = cv2.resize(img, (target_width, target_height), interpolation=cv2.INTER_AREA)
 
             results = {}
 
@@ -215,22 +231,26 @@ class OCRRPipeline:
 
         elif pass_num == 3:
             # Pass 3: Aggressive contrast for DARK placement numbers (1, 6 missing)
-            # Gamma correction to brighten dark areas (gamma < 1.0 brightens)
-            gamma = 0.7  # Values < 1.0 brighten image
+            # Gamma correction (brighten dark areas)
+            gamma = 0.75  # Brighten image
             gamma_table = np.array([((i / 255.0) ** gamma) * 255 for i in np.arange(0, 256)])
             gamma_corrected = cv2.LUT(gray, gamma_table.astype(np.uint8))
 
-            # Aggressive CLAHE (high clipLimit for dark numbers)
-            clahe = cv2.createCLAHE(clipLimit=10.0, tileGridSize=(2, 2))
+            # Aggressive CLAHE (high clipLimit)
+            clahe = cv2.createCLAHE(clipLimit=8.0, tileGridSize=(2, 2))
             enhanced = clahe.apply(gamma_corrected)
 
-            # Thresholding (lower threshold for dark numbers)
+            # Otsu thresholding (adaptive)
             _, thresh = cv2.threshold(
-                enhanced, 80, 255,
-                cv2.THRESH_BINARY
+                enhanced, 0, 255,
+                cv2.THRESH_BINARY + cv2.THRESH_OTSU
             )
 
-            return thresh
+            # Morphological operations to clean up numbers
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+            cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+
+            return cleaned
 
         else:
             return gray
@@ -665,7 +685,112 @@ class OCRRPipeline:
         final_players = list(placement_to_player.values())
         log.info(f"After placement deduplication: {len(final_players)} players with unique placements")
         
+        # FORMAT DETECTION: Check if placement numbers were detected
+        # If < 4 placements detected, likely format without placement numbers (lobbycround3)
+        if len(final_players) < 4 and len(raw_ocr_results) > 0:
+            log.warning("Detected < 4 placements - using Y-based ordering (lobbycround3 format)")
+            final_players = self._y_based_ordering(raw_ocr_results)
+        
         return final_players
+
+    def _y_based_ordering(self, raw_ocr_results: List[Dict]) -> List[Dict]:
+        """
+        Assign placement numbers based on Y position (for formats without placement numbers).
+        
+        Args:
+            raw_ocr_results: List of detected OCR items with Y coordinates
+            
+        Returns:
+            List of players with placement numbers assigned by Y position
+        """
+        # Filter potential player names (exclude numbers, short text, keywords)
+        skip_keywords = ['FIRST', 'PLACE', 'STANDING', 'TEAMFIGHT', 'TACTICS', 
+                     'NORMAL', 'GAMED', 'ONLINE', 'SOCIAL', 'PLAYER',
+                     'SUMMONER', 'ROUND', 'TRAILS', 'CHAMPIONS', 'STANDINGS',
+                     'PLAY', 'AGAIN', 'CONTINUE', '-', 'ROUND', 'ROUND',
+                     'TACTICS', 'TEAMFIGHT', 'TFT', 'SET']
+        
+        # Additional filtering: exclude low-confidence detections, headers, etc.
+        potential_names = [
+            item for item in raw_ocr_results
+            if item['text'] not in skip_keywords
+            and len(item['text']) >= 3
+            and len(item['text']) <= 30
+            and any(c.isalpha() for c in item['text'])
+            and item['x_center'] < 600  # Left/center side
+            and item['confidence'] > 0.3  # Lower confidence threshold (was 0.5)
+            and not any(c.isdigit() for c in item['text'])  # No numbers in name
+            and item['text'].isalpha()  # Only letters
+        ]
+        
+        # CLUSTERING: Group detections by Y position to identify real player names
+        # Real player names are evenly spaced (every ~75 pixels Y)
+        # False positives are scattered/random
+        
+        # Sort by Y
+        potential_names_sorted = sorted(potential_names, key=lambda x: x['y_center'])
+        
+        # Calculate Y gaps between consecutive detections
+        y_gaps = []
+        for i in range(len(potential_names_sorted) - 1):
+            y_gap = potential_names_sorted[i+1]['y_center'] - potential_names_sorted[i]['y_center']
+            y_gaps.append(y_gap)
+        
+        # Find typical gap (median)
+        if len(y_gaps) > 0:
+            y_gaps.sort()
+            typical_gap = y_gaps[len(y_gaps) // 2]
+            
+            # Keep only detections that follow the typical gap pattern
+            filtered_names = [potential_names_sorted[0]]  # Keep first
+            for i in range(1, len(potential_names_sorted)):
+                y_gap = potential_names_sorted[i]['y_center'] - potential_names_sorted[i-1]['y_center']
+                # Accept if gap is within 40-120 pixels of typical
+                if 40 <= y_gap <= 120:
+                    filtered_names.append(potential_names_sorted[i])
+                elif y_gap > 120 and len(filtered_names) < 8:
+                    # Large gap might be next player row - accept if we have room
+                    filtered_names.append(potential_names_sorted[i])
+            
+            potential_names = filtered_names
+        
+        # Sort by Y position (top to bottom)
+        
+        # SMARTER CLUSTERING: Group by Y bands and pick best candidate per band
+        # Sort by Y
+        potential_names_sorted = sorted(potential_names, key=lambda x: x['y_center'])
+        
+        # Group by Y bands (100 pixels each)
+        y_bands = {}
+        for item in potential_names_sorted:
+            band_y = int(item['y_center'] // 100) * 100
+            if band_y not in y_bands:
+                y_bands[band_y] = []
+            y_bands[band_y].append(item)
+        
+        # Pick best candidate from each band (longest name, highest confidence)
+        best_names = []
+        for band_y, candidates in y_bands.items():
+            # Sort by confidence (descending), then by length (descending)
+            candidates_sorted = sorted(candidates, key=lambda x: (-x['confidence'], -len(x['text'])))
+            best_names.append(candidates_sorted[0])
+        
+        potential_names = sorted(best_names, key=lambda x: x['y_center'])
+        
+        # Assign placements 1-8 based on Y order
+        players = []
+        for i, item in enumerate(potential_names_sorted[:8]):  # Max 8 players
+            placement = i + 1  # Placement 1-8
+            players.append({
+                'placement': placement,
+                'name': item['text'],
+                'points': PLACEMENT_POINTS.get(placement, 0)
+            })
+            log.info(f"Assigned placement {placement} to '{item['text']}' based on Y position")
+        
+        log.info(f"Y-based ordering found {len(players)} players")
+        
+        return players
 
     def _alternative_parsing(self, lines: List[str]) -> List[Dict]:
         """Alternative parsing method if standard pattern fails."""

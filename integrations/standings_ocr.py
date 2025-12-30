@@ -111,15 +111,25 @@ class OCRRPipeline:
             if img is None:
                 raise ValueError(f"Failed to read image: {image_path}")
 
-            # SCALE NORMALIZATION: Resize all images to standard size (865x1295)
-            # This ensures consistent OCR preprocessing across different screenshot resolutions
+            # SCALE NORMALIZATION: Resize images to standard size (1295x865) if needed
+            # Only resize if size difference > 10% to avoid unnecessary artifacts
             target_height = 865
             target_width = 1295
             current_height, current_width = img.shape[:2]
             
-            if current_height != target_height or current_width != target_width:
-                log.info(f"Resizing image from {current_width}x{current_height} to {target_width}x{target_height}")
-                img = cv2.resize(img, (target_width, target_height), interpolation=cv2.INTER_AREA)
+            # Calculate size difference percentage
+            height_diff = abs(current_height - target_height) / target_height
+            width_diff = abs(current_width - target_width) / target_width
+            
+            # Only resize if difference > 10%
+            if height_diff > 0.1 or width_diff > 0.1:
+                # Use INTER_CUBIC for upscaling (better quality), INTER_AREA for downscaling
+                is_upscaling = current_height < target_height or current_width < target_width
+                interpolation = cv2.INTER_CUBIC if is_upscaling else cv2.INTER_AREA
+                
+                log.info(f"Resizing image from {current_width}x{current_height} to {target_width}x{target_height} "
+                         f"({'upscale' if is_upscaling else 'downscale'}, interpolation={interpolation})")
+                img = cv2.resize(img, (target_width, target_height), interpolation=interpolation)
 
             results = {}
 
@@ -251,6 +261,29 @@ class OCRRPipeline:
             cleaned = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
 
             return cleaned
+
+        elif pass_num == 4:
+            # Pass 4: Lighter preprocessing for smaller/different formats (lobbyaround3)
+            # Gamma correction (milder than Pass 3)
+            gamma = 0.85  # Light brightening
+            gamma_table = np.array([((i / 255.0) ** gamma) * 255 for i in np.arange(0, 256)])
+            gamma_corrected = cv2.LUT(gray, gamma_table.astype(np.uint8))
+
+            # Light CLAHE
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+            enhanced = clahe.apply(gamma_corrected)
+
+            # Adaptive threshold (mean thresholding)
+            mean_val = enhanced.mean()
+            _, thresh = cv2.threshold(
+                enhanced, mean_val, 255,
+                cv2.THRESH_BINARY
+            )
+
+            # Light denoising
+            denoised = cv2.fastNlMeansDenoising(thresh, None, h=3)
+
+            return denoised
 
         else:
             return gray

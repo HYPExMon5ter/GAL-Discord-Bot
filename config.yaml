@@ -421,7 +421,7 @@ standings_screenshots:
   strict_validation: true           # Require all validation checks
   
   # OCR preprocessing settings
-  preprocessing_passes: 3           # Number of preprocessing passes (3 = optimal with balanced Pass 3)
+  preprocessing_passes: 4           # Number of preprocessing passes (4 = optimal for multiple formats)
   allow_substitutes: false          # Allow players not in original roster
   
   # Manual editing

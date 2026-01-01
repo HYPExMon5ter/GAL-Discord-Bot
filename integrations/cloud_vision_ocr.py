@@ -81,6 +81,12 @@ class CloudVisionOCR:
             # Parse text annotations
             text_annotations = response.text_annotations
             
+            # Extract bounding boxes and text
+            raw_detections = self._parse_annotations(text_annotations)
+            
+            # Merge adjacent text items for multi-word names
+            raw_detections = self._merge_adjacent_text(raw_detections)
+            
             if not text_annotations or len(text_annotations) < 2:
                 log.warning(f"No text detected in {image_path}")
                 return {
@@ -92,11 +98,6 @@ class CloudVisionOCR:
                         "expected_players": 8
                     }
                 }
-            
-            # Extract bounding boxes and text
-            raw_detections = self._parse_annotations(text_annotations)
-            
-            log.info(f"Cloud Vision detected {len(raw_detections)} text items")
             
             # Structure data into TFT standings format
             structured = self._structure_tft_data(raw_detections, image_path)
@@ -173,7 +174,111 @@ class CloudVisionOCR:
         # Sort by vertical position (top to bottom)
         detections.sort(key=lambda x: x["center_y"])
         
+        # Merge adjacent text items (e.g., "Baby" + "Llama" -> "Baby Llama")
+        detections = self._merge_adjacent_text(detections)
+        
         return detections
+    
+    def _merge_adjacent_text(self, detections: List[Dict]) -> List[Dict]:
+        """
+        Merge adjacent text items that likely belong to one name.
+        
+        Examples:
+        - "Baby" + "Llama" (same row, close) -> "Baby Llama"
+        - "Matt" + "Green" (same row, close) -> "Matt Green"
+        - "Lauren" + "TheCorgi" (same row, close) -> "LaurenTheCorgi"
+        
+        Args:
+            detections: List of text detection dicts
+            
+        Returns:
+            List with merged text items
+        """
+        if len(detections) < 2:
+            return detections
+        
+        merged = []
+        used_indices = set()
+        
+        for i, item1 in enumerate(detections):
+            if i in used_indices:
+                continue
+            
+            best_merge = None
+            best_gap = float('inf')
+            
+            # Check for items that could be merged with this one
+            for j, item2 in enumerate(detections):
+                if i == j or j in used_indices:
+                    continue
+                
+                # Calculate gap between items
+                x_gap = abs(item2["center_x"] - item1["center_x"])
+                y_gap = abs(item2["center_y"] - item1["center_y"])
+                
+                # MERGE CONDITIONS:
+                # 1. Items must be on same row (Y gap < 15px)
+                # 2. Items must be close horizontally (X gap < 150px)
+                # 3. Items must be in left-to-right order (item2 is to the right of item1)
+                # 4. Neither item should be a single digit (placement number)
+                text1 = item1["text"].strip()
+                text2 = item2["text"].strip()
+                
+                # Skip if either is a single digit (likely placement number)
+                if text1.isdigit() or text2.isdigit():
+                    continue
+                
+                # Skip if items are too far apart vertically
+                if y_gap > 15:
+                    continue
+                
+                # Skip if items are too far apart horizontally or in wrong order
+                if x_gap > 200 or item2["center_x"] < item1["center_x"]:
+                    continue
+                
+                # This is a potential merge
+                # Prefer closest item with smallest total gap
+                gap = x_gap * 0.3 + y_gap * 3.0
+                if gap < best_gap:
+                    best_gap = gap
+                    best_merge = (j, x_gap, y_gap)
+            
+            # If we found a merge, combine text
+            if best_merge:
+                j, x_gap, y_gap = best_merge
+                item2 = detections[j]
+                
+                # Determine order: leftmost first
+                if item1["center_x"] < item2["center_x"]:
+                    merged_text = f"{item1['text'].strip()}{item2['text'].strip()}"
+                else:
+                    merged_text = f"{item2['text'].strip()}{item1['text'].strip()}"
+                
+                # Calculate combined bounding box
+                x1 = min(item1["bbox"][0][0], item2["bbox"][0][0])
+                y1 = min(item1["bbox"][0][1], item2["bbox"][0][1])
+                x2 = max(item1["bbox"][2][0], item2["bbox"][2][0])
+                y2 = max(item1["bbox"][2][1], item2["bbox"][2][1])
+                
+                merged.append({
+                    "text": merged_text,
+                    "center_x": (x1 + x2) / 2,
+                    "center_y": (y1 + y2) / 2,
+                    "bbox": [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
+                    "confidence": (item1["confidence"] + item2["confidence"]) / 2
+                })
+                
+                used_indices.add(i)
+                used_indices.add(j)
+            else:
+                # No merge found, keep original
+                merged.append(item1)
+                used_indices.add(i)
+        
+        # Sort merged items by Y position
+        merged.sort(key=lambda x: x["center_y"])
+        
+        return merged
     
     def _structure_tft_data(self, detections: List[Dict], image_path: str) -> Dict:
         """
@@ -192,8 +297,19 @@ class CloudVisionOCR:
         skip_keywords = [
             'FIRST', 'PLACE', 'STANDING', 'TEAMFIGHT', 'TACTICS',
             'NORMAL', 'GAME', 'ONLINE', 'SUMMONER', 'ROUND',
-            'CHAMPIONS', 'PLAY', 'AGAIN', 'CONTINUE', 'PLAYER'
+            'CHAMPIONS', 'PLAY', 'AGAIN', 'CONTINUE', 'PLAYER',
+            'SOCIAL', 'GENERAL', 'SQUAD', 'GameID'  # Skip sidebar/social area
         ]
+        
+        # Get image width to filter by position
+        img_width = None
+        try:
+            img = cv2.imread(image_path)
+            if img is not None:
+                img_width = img.shape[1]  # width in pixels
+                log.debug(f"Image width: {img_width}px")
+        except:
+            pass
         
         placements = []  # (placement_num, y_pos, x_pos)
         names = []  # (name, y_pos, x_pos)
@@ -208,8 +324,9 @@ class CloudVisionOCR:
             if any(kw in text_upper for kw in skip_keywords):
                 continue
             
-            # Skip very short text (likely fragments)
-            if len(text) < 2:
+            # Skip very short text (likely fragments), BUT allow single digits (placements 1-8)
+            # Placement numbers are single characters like "1", "2", etc.
+            if len(text) < 2 and not text.isdigit():
                 continue
             
             # Check if this is a placement number (1-8)
@@ -225,6 +342,10 @@ class CloudVisionOCR:
             # Must have at least 3 alpha characters and be 4-20 chars total
             alpha_count = sum(c.isalpha() for c in text)
             
+            # DEBUG: Log filtering decisions for first few items
+            if len(names) < 15:
+                log.debug(f"  Text '{text}': len={len(text)}, alpha={alpha_count}, y={y_pos:.0f}")
+            
             if alpha_count >= 3 and 4 <= len(text) <= 20:
                 # Avoid duplicates (case insensitive)
                 if not any(n[0].upper() == text_upper for n in names):
@@ -232,6 +353,10 @@ class CloudVisionOCR:
                     log.debug(f"Name '{text}' at ({x_pos:.0f}, {y_pos:.0f})")
         
         log.info(f"Detected {len(placements)} placements and {len(names)} names")
+        
+        # DEBUG: Show what was collected
+        log.debug(f"Placements collected: {placements}")
+        log.debug(f"Names collected: {names}")
         
         # Match placements to names by vertical position
         players = self._match_placements_to_names(placements, names)
@@ -304,7 +429,7 @@ class CloudVisionOCR:
         Strategy:
         1. Sort both by Y position (top to bottom)
         2. For each placement, find closest unused name
-        3. Prefer names to the right of placement (higher X)
+        3. Strict requirements: name MUST be to the RIGHT of placement and close in Y
         
         Args:
             placements: List of (placement, y_pos, x_pos) tuples
@@ -334,20 +459,30 @@ class CloudVisionOCR:
                 if idx in used_names:
                     continue
                 
-                # Calculate distance (prioritize Y distance)
+                # Calculate distances
                 y_dist = abs(n_y - p_y)
                 x_dist = abs(n_x - p_x)
                 
-                # Total distance (weighted: Y is more important)
-                dist = y_dist * 2.0 + x_dist * 0.5
-                
-                # Only match names within reasonable distance (same row)
-                if y_dist > 50:  # More than 50px away vertically
+                # REQUIREMENT: Name MUST be to the right of placement
+                # In TFT screenshots, placements are on left, names on right
+                # If name is to the left, it's probably from a different column
+                if n_x <= p_x:
                     continue
                 
-                # Prefer names to the right of placement (typical TFT layout)
-                if n_x < p_x - 50:  # Name is far to the left of placement
+                # REQUIREMENT: Minimum horizontal gap (at least 10px to the right)
+                if n_x - p_x < 10:
                     continue
+                
+                # REQUIREMENT: Must be on same row (within 50px vertically)
+                if y_dist > 50:
+                    continue
+                
+                # DEBUG: Show why this name is being considered
+                if placement_num == 1:  # Only for first placement
+                    log.debug(f"  Considering name '{name} for placement {placement_num}: x_gap={n_x - p_x:.0f}, y_gap={y_dist:.0f}")
+                
+                # Weighted distance (Y is more important)
+                dist = y_dist * 3.0 + x_dist * 0.3
                 
                 if dist < best_dist:
                     best_dist = dist

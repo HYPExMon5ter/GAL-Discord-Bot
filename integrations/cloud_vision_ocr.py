@@ -308,6 +308,7 @@ class CloudVisionOCR:
             camelcase_fixes = [
                 ('Mudkip Enjoyer', 'MudkipEnjoyer'),
                 ('Lauren TheCorgi', 'LaurenTheCorgi'),
+                ('Baby Llama', 'BabyLlama'),
             ]
             for wrong, correct in camelcase_fixes:
                 if wrong in item["text"]:
@@ -337,7 +338,7 @@ class CloudVisionOCR:
             'NORMAL', 'GAME', 'ONLINE', 'SUMMONER', 'ROUND',
             'CHAMPIONS', 'PLAY', 'AGAIN', 'CONTINUE', 'PLAYER',
             'SOCIAL', 'GENERAL', 'SQUAD', 'GameID',
-            'STUDIO', 'ACM', 'MAGICAL', 'TIME'  # Skip sidebar keywords
+            'STUDIO', 'ACM', 'MAGICAL', 'TIME', 'PTS', 'STAT'  # Skip sidebar keywords
         ]
         
         # Get image width to filter by position
@@ -352,6 +353,12 @@ class CloudVisionOCR:
         
         placements = []  # (placement_num, y_pos, x_pos)
         names = []  # (name, y_pos, x_pos)
+        
+        # DEBUG: Show all detections for first image
+        if len(names) < 15 and len(placements) < 8:
+            log.info(f"DEBUG: Total detections before filtering: {len(detections)}")
+            for i, item in enumerate(detections[:20]):  # Show first 20
+                log.info(f"  [{i}] text='{item['text']}' at ({item['center_x']:.0f}, {item['center_y']:.0f})")
         
         for item in detections:
             text = item["text"].strip()
@@ -374,7 +381,7 @@ class CloudVisionOCR:
             
             if placement_num is not None:
                 placements.append((placement_num, y_pos, x_pos))
-                log.debug(f"Placement {placement_num} at ({x_pos:.0f}, {y_pos:.0f})")
+                log.info(f"✓ Placement {placement_num} at ({x_pos:.0f}, {y_pos:.0f})")
                 continue
             
             # FILTER: Skip single character UI elements (before name collection)
@@ -394,7 +401,8 @@ class CloudVisionOCR:
                 log.debug(f"Skipping UI element: {text}")
                 continue
             # Check if this looks like a player name
-            # Must have at least 3 alpha characters and be 4-20 chars total
+            # Must have at least 3 alpha characters and be 3-25 chars total
+            # Increased max length to 25 to catch longer names like "deepestregrets"
             alpha_count = sum(c.isalpha() for c in text)
             
             # DEBUG: Log filtering decisions for first few items
@@ -421,11 +429,13 @@ class CloudVisionOCR:
                 log.debug(f"Skipping single char UI: {text}")
                 continue
             
-            if alpha_count >= 3 and 4 <= len(text) <= 20:
+            if alpha_count >= 3 and 3 <= len(text) <= 40:
                 # Avoid duplicates (case insensitive)
                 if not any(n[0].upper() == text_upper for n in names):
                     names.append((text, y_pos, x_pos))
-                    log.debug(f"Name '{text}' at ({x_pos:.0f}, {y_pos:.0f})")
+                    log.debug(f"✓ Added name '{text}' at ({x_pos:.0f}, {y_pos:.0f})")
+            else:
+                log.debug(f"✗ Filtered '{text}': len={len(text)}, alpha={alpha_count} (need 3-20 len, 3+ alpha)")
         
         log.info(f"Detected {len(placements)} placements and {len(names)} names")
         
@@ -434,6 +444,9 @@ class CloudVisionOCR:
         log.debug(f"Names collected: {names}")
         
         # Match placements to names by vertical position
+        # DEBUG: Show collected data before matching
+        log.info(f"DEBUG: Placements collected (count={len(placements)}): {placements}")
+        log.info(f"DEBUG: Names collected (count={len(names)}): {names}")
         players = self._match_placements_to_names(placements, names)
         
         return {
@@ -525,6 +538,10 @@ class CloudVisionOCR:
         
         used_names = set()
         
+        log.info(f"DEBUG: Matching {len(placements)} placements to {len(names)} names")
+        log.info(f"DEBUG: Placements: {placements}")
+        log.info(f"DEBUG: Names: {names}")
+        
         for placement_num, p_y, p_x in placements_sorted:
             best_name = None
             best_dist = float('inf')
@@ -545,11 +562,11 @@ class CloudVisionOCR:
                     continue
                 
                 # REQUIREMENT: Minimum horizontal gap (at least 10px to the right)
-                if n_x - p_x < 10:
+                if n_x - p_x < 2:
                     continue
                 
                 # REQUIREMENT: Must be on same row (within 50px vertically)
-                if y_dist > 50:
+                if y_dist > 100:
                     continue
                 
                 # DEBUG: Show why this name is being considered
@@ -571,7 +588,7 @@ class CloudVisionOCR:
                     "points": PLACEMENT_POINTS.get(placement_num, 0)
                 })
                 used_names.add(best_idx)
-                log.debug(f"Matched: {placement_num} -> {best_name}")
+                log.info(f"✓ Matched: {placement_num} -> {best_name}")
             else:
                 log.warning(f"No name found for placement {placement_num}")
         

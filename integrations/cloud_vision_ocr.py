@@ -257,10 +257,11 @@ class CloudVisionOCR:
                 item2 = detections[j]
                 
                 # Determine order: leftmost first
-                if item1["center_x"] < item2["center_x"]:
-                    merged_text = f"{item1['text'].strip()} {item2['text'].strip()}"
-                else:
-                    merged_text = f"{item2['text'].strip()} {item1['text'].strip()}"
+                text1 = item1['text'].strip()
+                text2 = item2['text'].strip()
+                
+                # Add space between items
+                merged_text = f"{text1} {text2}"
                 
                 # Calculate combined bounding box
                 x1 = min(item1["bbox"][0][0], item2["bbox"][0][0])

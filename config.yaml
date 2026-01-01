@@ -402,36 +402,24 @@ standings_screenshots:
   batch_window_seconds: 30          # Collect screenshots within 30s window
   max_concurrent_processing: 4      # Process up to 4 images simultaneously
   
-  # Classification settings (simplified - faster and more reliable)
+  # Classification settings
   classification_threshold: 0.60    # 60% confidence for basic validation
   skip_classification: false        # Set to true to bypass classification for trusted channels
   
-  # OCR Engine settings (PaddleOCR - single fast engine)
-  use_gpu: false                    # Set to true if GPU/CUDA available for 3-5x speedup
-  enable_roi_detection: false       # Disabled for speed (can enable if crop needed)
-  timeout_seconds: 30              # OCR timeout to prevent hanging
-
-  # Tesseract OCR configuration (for standings OCR)
-  ocr_engines:
-    tesseract:
-      enabled: true  # Disabled for now - EasyOCR works better
-      path: "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
-      config: "--psm 6 --oem 3"
-    easyocr:
-      enabled: true
-      gpu: false
+  # OCR Engine: Google Cloud Vision API
+  ocr_engine: "cloud_vision"        # Single cloud-based engine (95-98% accuracy)
+  timeout_seconds: 30               # API timeout
+  focus_left_side: true             # Focus on left side for placements + names
+  left_crop_percent: 0.5            # Crop left 50% of image
   
   # Accuracy settings
-  auto_validate_threshold: 0.85     # 85% overall confidence for auto-validation
+  auto_validate_threshold: 0.90     # 90% confidence for auto-validation (Cloud Vision is very accurate)
   player_match_threshold: 0.95      # 95% fuzzy match threshold
   
   # Validation
   expected_lobbies: 4               # Number of lobbies per round
   players_per_lobby: 8
   strict_validation: true           # Require all validation checks
-  
-  # OCR preprocessing settings
-  preprocessing_passes: 7           # Number of preprocessing passes (7 = optimal, includes minimal preprocessing)
   allow_substitutes: false          # Allow players not in original roster
   
   # Manual editing

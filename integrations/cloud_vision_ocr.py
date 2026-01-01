@@ -237,11 +237,11 @@ class CloudVisionOCR:
                     continue
                 
                 # Skip if items are too far apart vertically
-                if y_gap > 25:
+                if y_gap > 40:
                     continue
                 
                 # Skip if items are too far apart horizontally or in wrong order
-                if x_gap > 200 or item2["center_x"] < item1["center_x"]:
+                if x_gap > 350 or item2["center_x"] < item1["center_x"]:
                     continue
                 
                 # This is a potential merge
@@ -302,6 +302,17 @@ class CloudVisionOCR:
             item["text"] = re.sub(r'^[A-ZUEOP]\s+', '', item["text"]).strip()
             # Remove merged keywords (e.g., "MAGICAL STUDIO ACM" -> "MAGICAL")
             item["text"] = re.sub(r'\s+(STUDIO|ACM|GAME|TIME|PLAYER|SOCIAL)$', '', item["text"]).strip()
+            
+            # FIX: Remove extra spaces from camelCase names that should be one word
+            # Examples: "Mudkip Enjoyer" -> "MudkipEnjoyer", "Lauren TheCorgi" -> "LaurenTheCorgi"
+            camelcase_fixes = [
+                ('Mudkip Enjoyer', 'MudkipEnjoyer'),
+                ('Lauren TheCorgi', 'LaurenTheCorgi'),
+            ]
+            for wrong, correct in camelcase_fixes:
+                if wrong in item["text"]:
+                    item["text"] = item["text"].replace(wrong, correct)
+                    log.debug(f"Fixed camelCase: {wrong} -> {correct}")
             # Remove UI suffixes like "E2", "P2" that might appear at end
             item["text"] = re.sub(r'\s+[A-ZUEOP]\d+\s*$', '', item["text"]).strip()
         
@@ -325,7 +336,8 @@ class CloudVisionOCR:
             'FIRST', 'PLACE', 'STANDING', 'TEAMFIGHT', 'TACTICS',
             'NORMAL', 'GAME', 'ONLINE', 'SUMMONER', 'ROUND',
             'CHAMPIONS', 'PLAY', 'AGAIN', 'CONTINUE', 'PLAYER',
-            'SOCIAL', 'GENERAL', 'SQUAD', 'GameID'  # Skip sidebar/social area
+            'SOCIAL', 'GENERAL', 'SQUAD', 'GameID',
+            'STUDIO', 'ACM', 'MAGICAL', 'TIME'  # Skip sidebar keywords
         ]
         
         # Get image width to filter by position

@@ -8,6 +8,7 @@ Cost: $1.50 per 1,000 images (first 1,000/month FREE)
 For 16 images/month: $0.024/month (~2.4 cents) - under free tier
 """
 
+import re
 import logging
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
@@ -141,6 +142,13 @@ class CloudVisionOCR:
         for annotation in annotations[1:]:
             text = annotation.description.strip()
             
+            # PREPROCESS: Clean detected text
+            # Remove special characters and artifacts
+            text = text.replace('\u25b8', '').replace('▸', '')  # Remove arrow/special chars
+            text = re.sub(r'^[^\w\s]+', '', text)  # Remove leading special chars
+            text = re.sub(r'[^\w\s]+$', '', text)  # Remove trailing special chars
+            text = text.strip()
+            
             if not text:
                 continue
             
@@ -229,7 +237,7 @@ class CloudVisionOCR:
                     continue
                 
                 # Skip if items are too far apart vertically
-                if y_gap > 15:
+                if y_gap > 25:
                     continue
                 
                 # Skip if items are too far apart horizontally or in wrong order
@@ -250,9 +258,9 @@ class CloudVisionOCR:
                 
                 # Determine order: leftmost first
                 if item1["center_x"] < item2["center_x"]:
-                    merged_text = f"{item1['text'].strip()}{item2['text'].strip()}"
+                    merged_text = f"{item1['text'].strip()} {item2['text'].strip()}"
                 else:
-                    merged_text = f"{item2['text'].strip()}{item1['text'].strip()}"
+                    merged_text = f"{item2['text'].strip()} {item1['text'].strip()}"
                 
                 # Calculate combined bounding box
                 x1 = min(item1["bbox"][0][0], item2["bbox"][0][0])
@@ -277,6 +285,15 @@ class CloudVisionOCR:
         
         # Sort merged items by Y position
         merged.sort(key=lambda x: x["center_y"])
+        
+        # POST-MERGE: Clean up text
+        for item in merged:
+            # Remove timestamps from merged text (e.g., "Name 36:26" -> "Name")
+            item["text"] = re.sub(r'\s\d{1,2}:\d{2}(?=\s|$)', '', item["text"]).strip()
+            # Remove UI prefixes from merged text (e.g., "P2 Ffoxface" -> "Ffoxface", "U mayxd" -> "mayxd")
+            item["text"] = re.sub(r'^[A-ZU]\d+\s+', '', item["text"]).strip()
+            # Remove UI suffixes like "E2", "P2" that might appear at end
+            item["text"] = re.sub(r'\s+[A-ZE]\d+$', '', item["text"]).strip()
         
         return merged
     
@@ -338,6 +355,22 @@ class CloudVisionOCR:
                 log.debug(f"Placement {placement_num} at ({x_pos:.0f}, {y_pos:.0f})")
                 continue
             
+            # FILTER: Skip single character UI elements (before name collection)
+            # E.g., "E", "P", etc. that are prefixes to timestamps
+            if len(text) == 1 and text.isalpha() and text.isupper():
+                log.debug(f"Skipping single char UI element: {text}")
+                continue
+            
+            # FILTER: Skip timestamp patterns (HH:MM format)
+            # e.g., "36:26", "34:05", "28:26", "26:07", "24:10", "24:24"
+            if re.match(r'^\d{1,2}:\d{2}$', text):
+                log.debug(f"Skipping timestamp: {text}")
+                continue
+            
+            # FILTER: Skip UI elements with colon prefix (e.g., "P2:", "E4:")
+            if re.match(r'^[A-Z]\d+:', text):
+                log.debug(f"Skipping UI element: {text}")
+                continue
             # Check if this looks like a player name
             # Must have at least 3 alpha characters and be 4-20 chars total
             alpha_count = sum(c.isalpha() for c in text)
@@ -345,6 +378,26 @@ class CloudVisionOCR:
             # DEBUG: Log filtering decisions for first few items
             if len(names) < 15:
                 log.debug(f"  Text '{text}': len={len(text)}, alpha={alpha_count}, y={y_pos:.0f}")
+            
+            # FILTER: Skip score artifacts like "0/3", "1/5"
+            if re.match(r'^\d+/\d+$', text):
+                log.debug(f"Skipping score artifact: {text}")
+                continue
+            
+            # FILTER: Skip single letter UI prefixes (U, E, P, etc.)
+            if len(text) == 1 and text.isalpha() and text.isupper():
+                log.debug(f"Skipping single char UI: {text}")
+                continue
+            
+            # FILTER: Skip score artifacts like "0/3", "1/5"
+            if re.match(r'^\d+/\d+$', text):
+                log.debug(f"Skipping score artifact: {text}")
+                continue
+            
+            # FILTER: Skip single letter UI prefixes (U, E, P, etc.)
+            if len(text) == 1 and text.isalpha() and text.isupper():
+                log.debug(f"Skipping single char UI: {text}")
+                continue
             
             if alpha_count >= 3 and 4 <= len(text) <= 20:
                 # Avoid duplicates (case insensitive)

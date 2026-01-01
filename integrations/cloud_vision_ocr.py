@@ -433,7 +433,9 @@ class CloudVisionOCR:
                 # Avoid duplicates (case insensitive)
                 if not any(n[0].upper() == text_upper for n in names):
                     names.append((text, y_pos, x_pos))
-                    log.debug(f"✓ Added name '{text}' at ({x_pos:.0f}, {y_pos:.0f})")
+                    log.info(f"✓ Added name '{text}' at ({x_pos:.0f}, {y_pos:.0f})")
+                else:
+                    log.info(f"✗ Duplicate name filtered: '{text}'")
             else:
                 log.debug(f"✗ Filtered '{text}': len={len(text)}, alpha={alpha_count} (need 3-20 len, 3+ alpha)")
         

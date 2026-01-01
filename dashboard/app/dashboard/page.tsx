@@ -52,6 +52,13 @@ export default function DashboardPage() {
       >
         Archived Graphics
       </Button>
+      <Button
+        variant="ghost"
+        onClick={() => router.push('/admin/placements/review')}
+        className="gal-button-tab w-full sm:w-auto"
+      >
+        Screenshot Review
+      </Button>
     </div>
   );
 

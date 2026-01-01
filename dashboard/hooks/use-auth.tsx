@@ -7,6 +7,7 @@ import { authApi } from '@/lib/api';
 
 interface AuthContextType {
   isAuthenticated: boolean;
+  apiToken: string | undefined;  // Add this!
   login: (masterPassword: string) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
@@ -27,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     setLoading(false);
-  }, []);
+    }, []);
 
   const login = async (masterPassword: string): Promise<boolean> => {
     try {
@@ -84,8 +85,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
+  // Get apiToken safely (localStorage might not be defined in some environments)
+  const apiToken = typeof localStorage !== 'undefined' && localStorage.getItem
+    ? localStorage.getItem('auth_token') || undefined
+    : undefined;
+
   const value: AuthContextType = {
     isAuthenticated,
+    apiToken,
     login,
     logout,
     loading,

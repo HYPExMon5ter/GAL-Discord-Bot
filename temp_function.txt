@@ -1,0 +1,123 @@
+    def _structure_tft_data(self, text_results: List[Dict]) -> Dict:
+        """
+        Structure OCR results into TFT standings format.
+
+        Simple approach: Collect placements and names, then match by Y position.
+        """
+        # Filter out UI elements and collect valid data
+        skip_keywords = ['FIRST', 'PLACE', 'STANDING', 'TEAMFIGHT', 'TACTICS',
+                        'NORMAL', 'GAMED', 'ONLINE', 'SOCIAL', 'PLAYER',
+                        'SUMMONER', 'ROUND', 'TRAILS', 'CHAMPIONS', 'TANDING',
+                        'PLAY', 'AGAIN', 'CONTINUE', 'GAMEID']
+
+        placements = []  # (placement, y_pos)
+        names = []  # (name, y_pos)
+
+        for item in text_results:
+            text = item["text"].strip()
+            y_pos = item["center_y"]
+            text_upper = text.upper()
+
+            # Skip UI keywords
+            if any(keyword in text_upper for keyword in skip_keywords):
+                continue
+
+            # Check if this is a placement number (1-8)
+            if text.isdigit() and 1 <= int(text) <= 8:
+                placements.append((int(text), y_pos))
+            # Check if this looks like a player name
+            # Valid names: 3+ chars, contains at least one letter, no special chars
+            # Additional: Avoid garbage fragments like "GamelD", "TANDING"
+            text_alpha_only = ''.join(c for c in text if c.isalpha())
+            if len(text_alpha_only) >= 3 and len(text_alpha_only) / len(text) >= 0.7:
+                # At least 70% of characters are letters (not digits/special chars)
+                names.append((text, y_pos))
+
+        # Match names to placements by Y position
+        # Strategy: Sort both by Y, then assign closest name to each placement
+        players = []
+
+        print(f"[DEBUG] Found {len(placements)} placements, {len(names)} names")
+
+        if placements and names:
+            # Sort placements by Y
+            placements.sort(key=lambda x: x[1])
+            # Sort names by Y
+            names.sort(key=lambda x: x[1])
+
+            # Assign each placement the closest name that hasn't been used
+            used_names = set()
+
+            for placement, p_y in placements:
+                # Find closest unused name
+                best_name = None
+                best_dist = float('inf')
+                best_idx = -1
+
+                for idx, (name, n_y) in enumerate(names):
+                    if idx in used_names:
+                        continue
+
+                    # Distance between placement and name
+                    dist = abs(p_y - n_y)
+
+                    # Name should be BELOW placement (positive Y distance)
+                    # But allow some flexibility for different formats
+                    if dist < best_dist and dist < 150:  # Max 150px difference
+                        best_dist = dist
+                        best_name = name
+                        best_idx = idx
+
+                if best_name and best_idx >= 0:
+                    players.append({
+                        "placement": placement,
+                        "name": best_name,
+                        "points": PLACEMENT_POINTS.get(placement, 0)
+                    })
+                    used_names.add(best_idx)
+
+        # Sort by placement
+        players.sort(key=lambda x: x["placement"])
+
+        # FALLBACK: If we didn't match all players (6-8), try Y-based ordering
+        # This handles cases where OCR detects names but misses some placement numbers
+        print(f"[DEBUG] Checking fallback: {len(players)} >= 6 and {len(players)} < 8 and {len(names)} > 0")
+        if len(players) >= 6 and len(players) < 8 and names:
+            print(f"[DEBUG] FALLBACK TRIGGERED - using Y-based ordering for remaining names")
+
+            # Use Y-based ordering for remaining names
+            # Names are already sorted by Y from earlier
+            unassigned_names = [(name, y) for idx, (name, y) in enumerate(names)
+                               if idx not in used_names]
+
+            print(f"[DEBUG] used_names indices: {used_names}")
+            print(f"[DEBUG] unassigned_names: {[n for n,_ in unassigned_names]}")
+
+            # Find all placements (1-8) and mark which we have
+            current_placements = set(p["placement"] for p in players)
+            missing_placements = [p for p in range(1, 9) if p not in current_placements]
+
+            print(f"[DEBUG] current_placements: {sorted(current_placements)}")
+            print(f"[DEBUG] missing_placements: {missing_placements}")
+
+            # Assign unassigned names to missing placements
+            # Use Y-sorted order to assign to sorted missing placements
+            for idx, (name, _) in enumerate(unassigned_names):
+                if idx < len(missing_placements):
+                    next_placement = missing_placements[idx]
+                    print(f"[DEBUG] Adding {name} at placement {next_placement}")
+                    players.append({
+                        "placement": next_placement,
+                        "name": name,
+                        "points": PLACEMENT_POINTS.get(next_placement, 0)
+                    })
+
+            # Sort by placement again
+            players.sort(key=lambda x: x["placement"])
+
+        return {
+            "players": players,
+            "player_count": len(players),
+            "expected_players": 8
+        }
+

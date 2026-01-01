@@ -15,6 +15,7 @@ from config import (
 )
 from core.persistence import set_schedule, persisted, save_persisted
 from helpers.schedule_helpers import ScheduleHelper
+from core.events.handlers.screenshot_monitor import get_screenshot_monitor
 
 # In-memory caches for events
 scheduled_event_cache: dict = {}
@@ -659,6 +660,16 @@ def register_discord_events(bot: commands.Bot):
     async def on_error(event_method: str, *args, **kwargs):
         """Global error handler for events."""
         logging.error(f"Error in {event_method}", exc_info=True)
+
+    @bot.event
+    async def on_message(message: discord.Message):
+        """Called when a message is sent. Handles screenshot monitoring."""
+        try:
+            # Delegate to screenshot monitor for automatic standings extraction
+            monitor = get_screenshot_monitor(bot)
+            await monitor.on_message(message)
+        except Exception as e:
+            logging.error(f"Error in screenshot monitor on_message: {e}", exc_info=True)
 
     @bot.event
     async def on_disconnect():

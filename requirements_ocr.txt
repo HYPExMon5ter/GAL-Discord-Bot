@@ -1,0 +1,20 @@
+# OCR System Dependencies - Updated with PaddleOCR
+# Install: pip install -r requirements_ocr.txt
+
+# Core OCR engines
+paddleocr>=2.7.0
+paddlepaddle>=2.5.0  # CPU version for Railway
+
+# Image processing
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# Tesseract (backup OCR engine)
+pytesseract>=0.3.10
+
+# Configuration
+pyyaml>=6.0
+
+# Optional: GPU support for local development (not for Railway)
+# paddlepaddle-gpu>=2.5.0  # Uncomment if using GPU locally

@@ -177,7 +177,7 @@ async def shutdown_event():
 
 
 # Import middleware and routers
-from .routers import configuration, graphics, standings, tournaments, users, websocket, ign_verification
+from .routers import configuration, graphics, standings, tournaments, users, websocket, ign_verification, placements
 from .middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 
 # Add custom middleware first (they will execute in reverse order)
@@ -201,6 +201,7 @@ app.include_router(websocket.router, prefix="/api/v1", tags=["websocket"])
 app.include_router(graphics.router, prefix="/api/v1", tags=["graphics"])
 app.include_router(standings.router, prefix="/api/v1", tags=["scoreboard"])
 app.include_router(ign_verification.router, prefix="/api/v1", tags=["ign-verification"])
+app.include_router(placements.router, prefix="/api/v1", tags=["placements"])
 
 # Reverse proxy for Next.js frontend
 # All non-API routes will be proxied to Next.js running on port 8080

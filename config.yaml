@@ -410,6 +410,16 @@ standings_screenshots:
   use_gpu: false                    # Set to true if GPU/CUDA available for 3-5x speedup
   enable_roi_detection: false       # Disabled for speed (can enable if crop needed)
   timeout_seconds: 30              # OCR timeout to prevent hanging
+
+  # Tesseract OCR configuration (for standings OCR)
+  ocr_engines:
+    tesseract:
+      enabled: true  # Disabled for now - EasyOCR works better
+      path: "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"
+      config: "--psm 6 --oem 3"
+    easyocr:
+      enabled: true
+      gpu: false
   
   # Accuracy settings
   auto_validate_threshold: 0.85     # 85% overall confidence for auto-validation
@@ -421,7 +431,7 @@ standings_screenshots:
   strict_validation: true           # Require all validation checks
   
   # OCR preprocessing settings
-  preprocessing_passes: 4           # Number of preprocessing passes (4 = optimal for multiple formats)
+  preprocessing_passes: 7           # Number of preprocessing passes (7 = optimal, includes minimal preprocessing)
   allow_substitutes: false          # Allow players not in original roster
   
   # Manual editing

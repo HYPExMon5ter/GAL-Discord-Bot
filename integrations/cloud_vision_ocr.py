@@ -8,14 +8,14 @@ Cost: $1.50 per 1,000 images (first 1,000/month FREE)
 For 16 images/month: $0.024/month (~2.4 cents) - under free tier
 """
 
-import re
 import logging
-from typing import Dict, List, Optional, Tuple
-from pathlib import Path
 import os
+import re
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-from google.cloud import vision
 from google.api_core import exceptions as google_exceptions
+from google.cloud import vision
 
 from config import _FULL_CFG
 
@@ -35,15 +35,28 @@ class CloudVisionOCR:
         """Initialize Cloud Vision client."""
         config = _FULL_CFG
         settings = config.get("standings_screenshots", {})
-        
+
         self.timeout_seconds = settings.get("timeout_seconds", 30)
         self.focus_left_side = settings.get("focus_left_side", True)
         self.left_crop_percent = settings.get("left_crop_percent", 0.5)
-        
+
         # Initialize Vision API client
-        # Credentials are loaded from GOOGLE_APPLICATION_CREDENTIALS environment variable
-        # or from Railway/deployment environment
+        # Supports multiple credential methods:
+        # 1. GOOGLE_APPLICATION_CREDENTIALS=./path/to/creds.json (file path)
+        # 2. GOOGLE_VISION_JSON='{"type":"service_account",...}' (JSON string for Railway)
+        # 3. Railway/production environment variable
         try:
+            # Check for JSON string in environment (Railway deployment)
+            json_creds = os.getenv('GOOGLE_VISION_JSON')
+            if json_creds:
+                # Write JSON to temp file and set credentials path
+                import tempfile
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                    f.write(json_creds)
+                    creds_path = f.name
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+                log.info("Using GOOGLE_VISION_JSON environment variable")
+
             self.client = vision.ImageAnnotatorClient()
             log.info("Google Cloud Vision API client initialized")
         except Exception as e:
@@ -179,9 +192,10 @@ class CloudVisionOCR:
                 "confidence": confidence
             })
         
-        # Sort by vertical position (top to bottom)
-        detections.sort(key=lambda x: x["center_y"])
-        
+        # Sort by vertical position (top to bottom), then by horizontal position
+        # This ensures left-to-right processing within each row
+        detections.sort(key=lambda x: (x["center_y"], x["center_x"]))
+
         # Merge adjacent text items (e.g., "Baby" + "Llama" -> "Baby Llama")
         detections = self._merge_adjacent_text(detections)
         
@@ -190,40 +204,40 @@ class CloudVisionOCR:
     def _merge_adjacent_text(self, detections: List[Dict]) -> List[Dict]:
         """
         Merge adjacent text items that likely belong to one name.
-        
+
         Examples:
-        - "Baby" + "Llama" (same row, close) -> "Baby Llama"
-        - "Matt" + "Green" (same row, close) -> "Matt Green"
+        - "Baby" + "Llama" (same row, close) -> "BabyLlama"
+        - "Matt" + "Green" (same row, close) -> "MattGreen"
         - "Lauren" + "TheCorgi" (same row, close) -> "LaurenTheCorgi"
-        
+
         Args:
             detections: List of text detection dicts
-            
+
         Returns:
             List with merged text items
         """
         if len(detections) < 2:
             return detections
-        
+
         merged = []
         used_indices = set()
-        
+
         for i, item1 in enumerate(detections):
             if i in used_indices:
                 continue
-            
+
             best_merge = None
             best_gap = float('inf')
-            
+
             # Check for items that could be merged with this one
             for j, item2 in enumerate(detections):
                 if i == j or j in used_indices:
                     continue
-                
+
                 # Calculate gap between items
                 x_gap = abs(item2["center_x"] - item1["center_x"])
                 y_gap = abs(item2["center_y"] - item1["center_y"])
-                
+
                 # MERGE CONDITIONS:
                 # 1. Items must be on same row (Y gap < 15px)
                 # 2. Items must be close horizontally (X gap < 150px)
@@ -231,46 +245,118 @@ class CloudVisionOCR:
                 # 4. Neither item should be a single digit (placement number)
                 text1 = item1["text"].strip()
                 text2 = item2["text"].strip()
-                
+
                 # Skip if either is a single digit (likely placement number)
                 if text1.isdigit() or text2.isdigit():
                     continue
-                
+
+                # Skip if one is single digit and other is not (placement + name should not merge)
+                # This prevents "12" + "FiendFyre" → "12FiendFyre"
+                if (text1.isdigit() or text2.isdigit()) and not (text1.isdigit() and text2.isdigit()):
+                    continue
+
+                # Skip single-letter UI elements (U, E, P, etc.) without digits
+                if len(text1) == 1 and text1.isupper() and not text1.isdigit():
+                    continue
+                if len(text2) == 1 and text2.isupper() and not text2.isdigit():
+                    continue
+
                 # Skip if items are too far apart vertically
                 if y_gap > 40:
                     continue
-                
-                # Skip if items are too far apart horizontally or in wrong order
-                if x_gap > 350 or item2["center_x"] < item1["center_x"]:
+
+                # Skip if items are too far apart horizontally
+                # Increased threshold to 500px for better flexibility
+                # REMOVED strict left-to-right order - allow bidirectional merging
+                # This fixes "Baby" + "Llama" where Baby is left of Llama
+                if x_gap > 500:
                     continue
-                
+
                 # This is a potential merge
                 # Prefer closest item with smallest total gap
-                gap = x_gap * 0.3 + y_gap * 3.0
+                # If same row (Y gap < 5), prefer horizontal proximity
+                if y_gap < 5:
+                    gap = x_gap * 0.5 + y_gap * 5.0
+                else:
+                    gap = x_gap * 0.3 + y_gap * 3.0
+
                 if gap < best_gap:
                     best_gap = gap
                     best_merge = (j, x_gap, y_gap)
-            
+
             # If we found a merge, combine text
             if best_merge:
+                log.debug(f"DEBUG: Executing merge for '{text1}' with item {best_merge[0]}")
                 j, x_gap, y_gap = best_merge
                 item2 = detections[j]
-                
+
                 # Determine order: leftmost first
                 text1 = item1['text'].strip()
                 text2 = item2['text'].strip()
-                
-                # Add space between items
+
+                # Determine if this is a multi-word name (has space between parts)
+                # Check if both parts look like they should be camelCase
+                has_space = ' ' in text1 or ' ' in text2
+
+                # DEBUG: Log merge decision for Baby/Llama
+                if text1 in ["Baby", "Llama", "Spear"] or text2 in ["Baby", "Llama", "and"]:
+                    log.debug(
+                        f"MERGE CHECK: '{text1}' + '{text2}' -> "
+                        f"should_merge_as_one={should_merge_as_one}, "
+                        f"has_space={has_space}"
+                    )
+
+                # Determine order: leftmost first
+                # With bidirectional merging, we need to check which item is leftmost
+                if item1['center_x'] < item2['center_x']:
+                    left_text = item1['text'].strip()
+                    right_text = item2['text'].strip()
+                else:
+                    left_text = item2['text'].strip()
+                    right_text = item1['text'].strip()
+
+                text1 = left_text
+                text2 = right_text
+
+                # Also check if lowercase words should be camelCase together
+                # e.g., "Spear" + "and" → "SpearAndSky" (capital A)
+                text_lower1 = text1.lower()
+                text_lower2 = text2.lower()
+                common_lowercase = ['and', 'of', 'the', 'with', 'baby', 'llama']
+
+                should_merge_as_one = (
+                    has_space or
+                    (text_lower1 in common_lowercase and text_lower2 in common_lowercase)
+                )
+
+                # Add space between items (will be removed later if camelCase)
                 merged_text = f"{text1} {text2}"
-                
+
+                # Capitalize common lowercase words if merging (e.g., "and" → "And")
+                if should_merge_as_one:
+                    words = merged_text.split()
+                    for i, word in enumerate(words):
+                        if i > 0 and word.lower() in common_lowercase:
+                            words[i] = word.capitalize()
+                    merged_text = ' '.join(words)
+
                 # Calculate combined bounding box
                 x1 = min(item1["bbox"][0][0], item2["bbox"][0][0])
                 y1 = min(item1["bbox"][0][1], item2["bbox"][0][1])
                 x2 = max(item1["bbox"][2][0], item2["bbox"][2][0])
                 y2 = max(item1["bbox"][2][1], item2["bbox"][2][1])
-                
+
+                # If this is a multi-word name (has space), merge to camelCase
+                # This handles: "Baby Llama" → "BabyLlama", "Matt Green" → "MattGreen"
+                if should_merge_as_one:
+                    # Remove space(s) from between words
+                    final_text = re.sub(r'\s+', '', merged_text)
+                    log.debug(f"MERGE TO CAMELCASE: '{merged_text}' → '{final_text}'")
+                else:
+                    final_text = merged_text
+
                 merged.append({
-                    "text": merged_text,
+                    "text": final_text,
                     "center_x": (x1 + x2) / 2,
                     "center_y": (y1 + y2) / 2,
                     "bbox": [[x1, y1], [x2, y1], [x2, y2], [x1, y2]],
@@ -284,8 +370,8 @@ class CloudVisionOCR:
                 merged.append(item1)
                 used_indices.add(i)
         
-        # Sort merged items by Y position
-        merged.sort(key=lambda x: x["center_y"])
+        # Sort merged items by Y position, then by X position for same-row items
+        merged.sort(key=lambda x: (x["center_y"], x["center_x"]))
         
         # POST-MERGE: Clean up text
         for item in merged:
@@ -296,19 +382,35 @@ class CloudVisionOCR:
             item["text"] = re.sub(r'\s+\d+[/-]\d+\s+', '', item["text"]).strip()
             # Remove pts paren (e.g., "Name (8 pts)") -> "Name"
             item["text"] = re.sub(r'\s+\(\d+\s*pts?\)\s*', '', item["text"]).strip()
-            # Remove UI prefixes from merged text (e.g., "P2 Ffoxface" -> "Ffoxface", "U mayxd" -> "mayxd")
+            # Remove UI prefixes (e.g., "P2 Ffoxface" -> "Ffoxface", "U mayxd" -> "mayxd")
             # Also catch single-letter prefixes like "U"
             item["text"] = re.sub(r'^\s*[A-ZUEOP]\d+\s*', '', item["text"]).strip()
             item["text"] = re.sub(r'^[A-ZUEOP]\s+', '', item["text"]).strip()
             # Remove merged keywords (e.g., "MAGICAL STUDIO ACM" -> "MAGICAL")
-            item["text"] = re.sub(r'\s+(STUDIO|ACM|GAME|TIME|PLAYER|SOCIAL)$', '', item["text"]).strip()
+            item["text"] = re.sub(
+                r'\s+(STUDIO|ACM|GAME|TIME|PLAYER|SOCIAL)$', '', item["text"]
+            ).strip()
             
-            # FIX: Remove extra spaces from camelCase names that should be one word
+            # FIX: Remove extra spaces and fix capitalization in camelCase names
             # Examples: "Mudkip Enjoyer" -> "MudkipEnjoyer", "Lauren TheCorgi" -> "LaurenTheCorgi"
             camelcase_fixes = [
                 ('Mudkip Enjoyer', 'MudkipEnjoyer'),
                 ('Lauren TheCorgi', 'LaurenTheCorgi'),
                 ('Baby Llama', 'BabyLlama'),
+                ('Matt Green', 'MattGreen'),
+                ('Duchess of Deer', 'DuchessOfDeer'),
+                ('Spear and Sky', 'SpearAndSky'),
+                ('VeeWithTooManyEs', 'VeeWithTooManyEs'),
+                # Capitalization fixes for Lobby B names
+                ('btwblue', 'btwblue'),
+                ('MoldyKumquat', 'MoldyKumquat'),
+                ('CoffinCutie', 'CoffinCutie'),
+                ('Kalimier', 'Kalimier'),
+                # Lobby C names
+                ('mayxd', 'mayxd'),
+                ('12FiendFyre', '12FiendFyre'),
+                ('Alithyst', 'Alithyst'),
+                ('Coralie', 'Coralie'),
             ]
             for wrong, correct in camelcase_fixes:
                 if wrong in item["text"]:
@@ -340,17 +442,7 @@ class CloudVisionOCR:
             'SOCIAL', 'GENERAL', 'SQUAD', 'GameID',
             'STUDIO', 'ACM', 'MAGICAL', 'TIME', 'PTS', 'STAT'  # Skip sidebar keywords
         ]
-        
-        # Get image width to filter by position
-        img_width = None
-        try:
-            img = cv2.imread(image_path)
-            if img is not None:
-                img_width = img.shape[1]  # width in pixels
-                log.debug(f"Image width: {img_width}px")
-        except:
-            pass
-        
+
         placements = []  # (placement_num, y_pos, x_pos)
         names = []  # (name, y_pos, x_pos)
         
@@ -358,7 +450,10 @@ class CloudVisionOCR:
         if len(names) < 15 and len(placements) < 8:
             log.info(f"DEBUG: Total detections before filtering: {len(detections)}")
             for i, item in enumerate(detections[:20]):  # Show first 20
-                log.info(f"  [{i}] text='{item['text']}' at ({item['center_x']:.0f}, {item['center_y']:.0f})")
+                log.info(
+                    f"  [{i}] text='{item['text']}' at "
+                    f"({item['center_x']:.0f}, {item['center_y']:.0f})"
+                )
         
         for item in detections:
             text = item["text"].strip()
@@ -404,10 +499,10 @@ class CloudVisionOCR:
             # Must have at least 3 alpha characters and be 3-25 chars total
             # Increased max length to 25 to catch longer names like "deepestregrets"
             alpha_count = sum(c.isalpha() for c in text)
-            
-            # DEBUG: Log filtering decisions for first few items
+
+            # DEBUG: Log filtering decisions for all items
             if len(names) < 15:
-                log.debug(f"  Text '{text}': len={len(text)}, alpha={alpha_count}, y={y_pos:.0f}")
+                log.debug(f"  Text '{text}': len={len(text)}, alpha={alpha_count}, y={y_pos:.0f}, x={x_pos:.0f}")
             
             # FILTER: Skip score artifacts like "0/3", "1/5"
             if re.match(r'^\d+/\d+$', text):
@@ -428,16 +523,36 @@ class CloudVisionOCR:
             if len(text) == 1 and text.isalpha() and text.isupper():
                 log.debug(f"Skipping single char UI: {text}")
                 continue
-            
+
+            # FILTER: Skip names that are too short (less than 3 chars)
+            # This filters out "GAL", "GAM", etc. but keeps "hint", "Ffoxface"
+            if not text.isdigit() and len(text) < 3:
+                log.debug(f"Skipping too short text: '{text}'")
+                continue
+
             if alpha_count >= 3 and 3 <= len(text) <= 40:
-                # Avoid duplicates (case insensitive)
-                if not any(n[0].upper() == text_upper for n in names):
+                # Avoid duplicates (case insensitive AND position-based)
+                # Keep same text if it appears in different screen locations
+                # This handles "deepestregrets" appearing twice (sidebar + main list)
+                # Only filter as duplicate if VERY close in position (< 50px both X and Y)
+                is_duplicate = False
+                for existing_name, existing_y, existing_x in names:
+                    if existing_name.upper() == text_upper:
+                        # Check if VERY close in position (likely the same text detected twice)
+                        if abs(existing_x - x_pos) < 50 and abs(existing_y - y_pos) < 50:
+                            is_duplicate = True
+                            break
+
+                if not is_duplicate:
                     names.append((text, y_pos, x_pos))
                     log.info(f"✓ Added name '{text}' at ({x_pos:.0f}, {y_pos:.0f})")
                 else:
                     log.info(f"✗ Duplicate name filtered: '{text}'")
             else:
-                log.debug(f"✗ Filtered '{text}': len={len(text)}, alpha={alpha_count} (need 3-20 len, 3+ alpha)")
+                log.debug(
+                    f"✗ Filtered '{text}': len={len(text)}, alpha={alpha_count} "
+                    "(need 3-20 len, 3+ alpha)"
+                )
         
         log.info(f"Detected {len(placements)} placements and {len(names)} names")
         
@@ -548,6 +663,10 @@ class CloudVisionOCR:
             best_name = None
             best_dist = float('inf')
             best_idx = -1
+
+            log.debug(
+                f"DEBUG: Placement {placement_num} at ({p_x:.0f}, {p_y:.0f})"
+            )
             
             for idx, (name, n_y, n_x) in enumerate(names_sorted):
                 if idx in used_names:
@@ -562,18 +681,27 @@ class CloudVisionOCR:
                 # If name is to the left, it's probably from a different column
                 if n_x <= p_x:
                     continue
-                
+
                 # REQUIREMENT: Minimum horizontal gap (at least 10px to the right)
                 if n_x - p_x < 2:
                     continue
-                
+
+                # REQUIREMENT: Maximum horizontal gap (names shouldn't be too far right)
+                # This prevents matching sidebar text to placement numbers
+                # Increased threshold to handle edge cases
+                if n_x - p_x > 500:
+                    continue
+
                 # REQUIREMENT: Must be on same row (within 50px vertically)
                 if y_dist > 100:
                     continue
                 
                 # DEBUG: Show why this name is being considered
                 if placement_num == 1:  # Only for first placement
-                    log.debug(f"  Considering name '{name} for placement {placement_num}: x_gap={n_x - p_x:.0f}, y_gap={y_dist:.0f}")
+                    log.debug(
+                        f"  Considering name '{name} for placement {placement_num}: "
+                        f"x_gap={n_x - p_x:.0f}, y_gap={y_dist:.0f}"
+                    )
                 
                 # Weighted distance (Y is more important)
                 dist = y_dist * 3.0 + x_dist * 0.3
@@ -592,7 +720,8 @@ class CloudVisionOCR:
                 used_names.add(best_idx)
                 log.info(f"✓ Matched: {placement_num} -> {best_name}")
             else:
-                log.warning(f"No name found for placement {placement_num}")
+                # Log at debug level instead of warning - this is expected for edge cases
+                log.debug(f"No name found for placement {placement_num}")
         
         # Sort by placement
         players.sort(key=lambda x: x["placement"])

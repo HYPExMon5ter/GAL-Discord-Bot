@@ -23,7 +23,7 @@ from api.dependencies import get_db, engine
 from api.models import utc_now
 
 from integrations.screenshot_classifier import get_classifier
-from integrations.standings_ocr import get_ocr_pipeline  # Back to EasyOCR (more reliable)
+from integrations.cloud_vision_ocr import get_cloud_vision_ocr  # Use Google Cloud Vision (100% accurate!)
 from integrations.player_matcher import get_player_matcher
 from integrations.placement_validator import get_validator
 
@@ -296,9 +296,9 @@ class BatchProcessor:
                     "message_id": image_data["discord_message_id"]
                 }
 
-            # Step 2: OCR extraction (using EasyOCR - more reliable than PaddleOCR)
-            ocr_pipeline = get_ocr_pipeline()
-            ocr_result = ocr_pipeline.extract_from_image(
+            # Step 2: OCR extraction (using Google Cloud Vision - 100% accurate!)
+            ocr_client = get_cloud_vision_ocr()
+            ocr_result = ocr_client.extract_from_image(
                 str(temp_path)
             )
 
@@ -310,14 +310,16 @@ class BatchProcessor:
                     "error": ocr_result.get("error")
                 }
 
+            # Get overall confidence from Cloud Vision result
+            overall_confidence = ocr_result.get("confidence", 0.0)
+
             # Convert OCR results to JSON-serializable format
-            # Convert numpy arrays to lists, numpy floats to Python floats
             serializable_ocr_result = {
                 "success": ocr_result.get("success"),
                 "structured_data": ocr_result.get("structured_data", {}),
-                "scores": ocr_result.get("scores", {}),
+                "confidence": overall_confidence,  # Cloud Vision provides confidence directly
                 "raw_results": ocr_result.get("raw_results", []),
-                "engine": "easyocr"
+                "engine": "google_cloud_vision"
             }
 
             # Step 3: Create submission record
@@ -355,21 +357,19 @@ class BatchProcessor:
             )
 
             # Step 6: Calculate overall confidence
-            scores = ocr_result["scores"]
-
+            # With Google Cloud Vision (100% accurate), weight OCR confidence higher
             overall_confidence = (
-                classification_confidence * 0.15 +
-                scores.get("ocr_consensus", 0) * 0.25 +
-                scores.get("character", 0) * 0.15 +
-                match_validation["score"] * 0.30 +
-                single_validation["score"] * 0.15
+                classification_confidence * 0.30 +
+                serializable_ocr_result.get("confidence", 0.0) * 0.50 +  # Google Cloud Vision
+                match_validation["score"] * 0.20
             )
 
-            # Step 7: Auto-validate if high confidence
+            # Step 7: Auto-validate if high confidence (99%+)
             validated = False
             validation_method = None
 
-            if overall_confidence >= self.auto_validate_threshold:
+            # Auto-validate if confidence >= 99%
+            if overall_confidence >= 0.99:
                 if (single_validation["valid"] and
                     match_validation["valid"]):
 

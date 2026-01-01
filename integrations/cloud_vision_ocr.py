@@ -300,6 +300,8 @@ class CloudVisionOCR:
             # Also catch single-letter prefixes like "U"
             item["text"] = re.sub(r'^\s*[A-ZUEOP]\d+\s*', '', item["text"]).strip()
             item["text"] = re.sub(r'^[A-ZUEOP]\s+', '', item["text"]).strip()
+            # Remove merged keywords (e.g., "MAGICAL STUDIO ACM" -> "MAGICAL")
+            item["text"] = re.sub(r'\s+(STUDIO|ACM|GAME|TIME|PLAYER|SOCIAL)$', '', item["text"]).strip()
             # Remove UI suffixes like "E2", "P2" that might appear at end
             item["text"] = re.sub(r'\s+[A-ZUEOP]\d+\s*$', '', item["text"]).strip()
         

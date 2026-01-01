@@ -290,11 +290,18 @@ class CloudVisionOCR:
         # POST-MERGE: Clean up text
         for item in merged:
             # Remove timestamps from merged text (e.g., "Name 36:26" -> "Name")
-            item["text"] = re.sub(r'\s\d{1,2}:\d{2}(?=\s|$)', '', item["text"]).strip()
+            item["text"] = re.sub(r'\s\d{1,2}:\d{2}\s*', '', item["text"]).strip()
+            # Remove score ratios (e.g., "Name 6-5", "Name 0/3") -> "Name"
+            item["text"] = re.sub(r'\s+\d+[/-]\d+\s*$', '', item["text"]).strip()
+            item["text"] = re.sub(r'\s+\d+[/-]\d+\s+', '', item["text"]).strip()
+            # Remove pts paren (e.g., "Name (8 pts)") -> "Name"
+            item["text"] = re.sub(r'\s+\(\d+\s*pts?\)\s*', '', item["text"]).strip()
             # Remove UI prefixes from merged text (e.g., "P2 Ffoxface" -> "Ffoxface", "U mayxd" -> "mayxd")
-            item["text"] = re.sub(r'^[A-ZU]\d+\s+', '', item["text"]).strip()
+            # Also catch single-letter prefixes like "U"
+            item["text"] = re.sub(r'^\s*[A-ZUEOP]\d+\s*', '', item["text"]).strip()
+            item["text"] = re.sub(r'^[A-ZUEOP]\s+', '', item["text"]).strip()
             # Remove UI suffixes like "E2", "P2" that might appear at end
-            item["text"] = re.sub(r'\s+[A-ZE]\d+$', '', item["text"]).strip()
+            item["text"] = re.sub(r'\s+[A-ZUEOP]\d+\s*$', '', item["text"]).strip()
         
         return merged
     
